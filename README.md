@@ -42,7 +42,8 @@ Your app ◄── Pseudonym ◄── AI answer
 To adopt it, an app only changes its API base URL. No code changes.
 
 _(All example data in this repo is synthetic. 4111 1111 1111 1111 is a published
-test card number.)_
+test card number. Person-name detection is planned; emails and card numbers come
+first.)_
 
 ## The promise
 
@@ -76,18 +77,25 @@ What Pseudonym is being built to do:
 
 ## Supported data types
 
-| Type                               | Validation                     | Available |
-| ---------------------------------- | ------------------------------ | --------- |
-| Email                              | pattern                        | planned   |
-| Phone (India + international)      | libphonenumber                 | planned   |
-| Aadhaar                            | Verhoeff check digit + context | planned   |
-| PAN                                | format + entity-type letter    | planned   |
-| Card number                        | Luhn + issuer prefix           | planned   |
-| IFSC, UPI ID, IP address, API keys | pattern + context              | planned   |
-| Person names                       | local NER model                | planned   |
+| Type                               | Validation                     | Status  |
+| ---------------------------------- | ------------------------------ | ------- |
+| Email                              | pattern                        | planned |
+| Phone (India + international)      | libphonenumber                 | planned |
+| Aadhaar                            | Verhoeff check digit + context | planned |
+| PAN                                | format + entity-type letter    | planned |
+| Card number                        | Luhn + issuer prefix           | planned |
+| IFSC, UPI ID, IP address, API keys | pattern + context              | planned |
+| Person names                       | local NER model                | planned |
 
 Measured precision and recall will be published here once the evaluation suite
 exists. Until then, no accuracy numbers are claimed.
+
+## Unsupported input
+
+Pseudonym will handle text chat messages (system, user and assistant roles),
+streamed and non-streamed. Tool/function calls, image or audio content,
+embeddings and other endpoints are out of scope at first: they will be
+**rejected with a 4xx error**, never forwarded unredacted.
 
 ## Threat model (summary)
 
