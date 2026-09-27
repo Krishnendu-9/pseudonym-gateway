@@ -8,12 +8,9 @@ coverage/
 .env.*
 !.env.example
 
-# Claude Code personal settings (the shared settings.json is committed)
-.claude/settings.local.json
+# Claude Code settings are local only, never committed
+.claude/
 
 # Private working docs (see CLAUDE.md "Documentation")
 dev_docs/
-
 CLAUDE.md
-# Claude Code settings (local only)
-.claude/
