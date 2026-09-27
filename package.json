@@ -1,0 +1,38 @@
+{
+  "name": "pseudonym-gateway",
+  "version": "0.1.0",
+  "description": "An OpenAI-compatible privacy gateway that pseudonymises personal data before it reaches an LLM and restores it in the reply.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "26.6.3",
+    "@vitest/coverage-v8": "5.0.2",
+    "eslint": "10.11.0",
+    "eslint-config-prettier": "10.1.8",
+    "fast-check": "4.10.2",
+    "prettier": "3.9.9",
+    "tsx": "4.23.15",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "8.70.1",
+    "vitest": "5.0.2"
+  }
+}
