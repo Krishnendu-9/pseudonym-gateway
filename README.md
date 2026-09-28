@@ -118,7 +118,9 @@ long.
 Known gaps in the built detectors: values glued to letters (`UID234…`) are
 not detected, so that hashes and API keys are not cut up; nor are emails
 written as "name at example dot com", quoted or IP-literal addresses, or the
-16-digit Aadhaar Virtual ID.
+16-digit Aadhaar Virtual ID. Two phone numbers glued together by a hyphen or
+a bracket with no space (`<number>-<number>`) are currently not detected; a
+fix is pending.
 
 Measured precision and recall will be published here once the evaluation suite
 exists. Until then, no accuracy numbers are claimed.

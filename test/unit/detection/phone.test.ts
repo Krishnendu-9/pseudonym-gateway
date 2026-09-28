@@ -6,8 +6,10 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { detect } from '../../../src/detection/detect.js';
+import type { Span } from '../../../src/detection/normalise.js';
+import { hideExtensionMarkers } from '../../../src/detection/phone.js';
 import { createRng } from '../../../src/synthetic/rng.js';
-import { indianMobile } from '../../../src/synthetic/values.js';
+import { indianMobile, ukDramaMobile } from '../../../src/synthetic/values.js';
 import { compose } from '../../support/compose.js';
 import { assertPropertyQuietly, seedArb } from '../../support/quiet-property.js';
 
@@ -120,6 +122,101 @@ describe('phone detection', () => {
     it('finds a number right after an emoji', () => {
       const { text, spans } = compose`\u{1F4DE}${'+44 20 7946 0123'}`;
       expect(detect(text)).toEqual([phoneAt(spans[0]!)]);
+    });
+  });
+
+  // bug-log 7: libphonenumber read "<a>, <b>" as a number with an extension,
+  // reported a match that stopped inside <b>, and that match was dropped, so
+  // neither number was redacted.
+  describe('lists of numbers (bug-log 7)', () => {
+    // True if one detection covers the whole span.
+    const covers = (found: readonly { start: number; end: number }[], span: Span): boolean =>
+      found.some((d) => d.start <= span.start && d.end >= span.end);
+    const SEPARATORS = [
+      ', ',
+      ',',
+      ' , ',
+      ',, ',
+      '; ',
+      ';',
+      ' # ',
+      '#',
+      '~',
+      ' ~ ',
+      ' x ',
+      ' X ',
+      ' ext ',
+      ' Ext. ',
+      ' extn ',
+      ' extension ',
+      ' int ',
+      ' доб ',
+      ' anexo ',
+    ];
+
+    it.each(SEPARATORS.map((s) => [JSON.stringify(s), s] as const))(
+      'finds both Indian mobiles in "<a>%s<b>", each exactly',
+      (_name, separator) => {
+        const r = createRng(700);
+        let wrong = 0;
+        for (let i = 0; i < 100; i++) {
+          const { text, spans } =
+            compose`Numbers ${indianMobile(r)}${separator}${indianMobile(r)} ok`;
+          const numbers = [spans[0]!, spans[2]!]; // spans[1] is the separator
+          const found = detect(text);
+          const exact =
+            found.length === 2 &&
+            found.every(
+              (d, j) =>
+                d.type === 'PHONE' && d.start === numbers[j]!.start && d.end === numbers[j]!.end,
+            );
+          if (!exact) wrong++;
+        }
+        expect(wrong).toBe(0);
+      },
+    );
+
+    it.each(SEPARATORS.map((s) => [JSON.stringify(s), s] as const))(
+      'redacts both unvalidated UK drama numbers in "call <a>%s<b>"',
+      (_name, separator) => {
+        const r = createRng(701);
+        let leaked = 0;
+        for (let i = 0; i < 50; i++) {
+          const { text, spans } =
+            compose`call ${ukDramaMobile(r)}${separator}${ukDramaMobile(r)} ok`;
+          const found = detect(text);
+          if (!covers(found, spans[0]!) || !covers(found, spans[2]!)) leaked++;
+        }
+        expect(leaked).toBe(0);
+      },
+    );
+
+    it('widens a match that stops inside a digit run instead of dropping it', () => {
+      // In "<a>(<b>" libphonenumber reports a piece that starts or ends inside
+      // one of the numbers. Keeping it and widening to the runs covers both.
+      const r = createRng(702);
+      let leaked = 0;
+      for (let i = 0; i < 200; i++) {
+        const { text, spans } = compose`Numbers ${indianMobile(r)}(${indianMobile(r)} ok`;
+        const found = detect(text);
+        if (!covers(found, spans[0]!) || !covers(found, spans[1]!)) leaked++;
+      }
+      expect(leaked).toBe(0);
+    });
+
+    it('still finds a number that has an extension; the extension stays visible', () => {
+      const { text, spans } =
+        compose`Office ${'+1 202-555-0143'} ext 12, or ${'+44 20 7946 0123'};4`;
+      expect(detect(text)).toEqual([phoneAt(spans[0]!), phoneAt(spans[1]!)]);
+    });
+
+    it('hides only standalone extension markers, keeping every offset', () => {
+      const text = 'Text Alex next, mixture; x #1 ~ Ext. extn int доб anexo xt6 3x';
+      const hidden = hideExtensionMarkers(text);
+      expect(hidden).toHaveLength(text.length);
+      expect(hidden).toBe(
+        'Text Alex next\n mixture\n \n \n1 \n \n\n\n. \n\n\n\n \n\n\n \n\n\n \n\n\n\n\n xt6 3x',
+      );
     });
   });
 
