@@ -11,6 +11,7 @@ import { createRng } from '../../../src/synthetic/rng.js';
 import { CARD_NETWORK_NAMES, cardNumber, groupDigits } from '../../../src/synthetic/values.js';
 import { PUBLISHED_TEST_CARDS } from '../../fixtures/published-test-cards.js';
 import { compose } from '../../support/compose.js';
+import { numberAt } from '../../support/number-at.js';
 import { assertPropertyQuietly, seedArb } from '../../support/quiet-property.js';
 
 /** A number with this prefix and length that is certainly NOT Luhn-valid. */
@@ -173,9 +174,11 @@ describe('card detection', () => {
   });
 
   describe('unvalidated: accepted only with a keyword', () => {
-    it('Luhn-valid but no known issuer: dropped without context, kept next to "card"', () => {
+    it('Luhn-valid but no known issuer: not a card without context, kept next to "card"', () => {
       const number = withLuhn('1', 16);
-      expect(detect(`Ref ${number} ok`)).toEqual([]);
+      // Without a keyword it is only a long number: the safety net (ADR-011) takes it.
+      const bare = compose`Ref ${number} ok`;
+      expect(detect(bare.text)).toEqual([numberAt(bare.spans[0]!)]);
       const { text, spans } = compose`My card ${number}`;
       expect(detect(text)).toEqual([cardAt(spans[0]!, false, true)]);
     });
@@ -188,23 +191,32 @@ describe('card detection', () => {
     });
   });
 
-  describe('tricky negatives', () => {
-    it('ignores a card number inside a longer unbroken number', () => {
-      expect(detect('Ref 41111111111111110 ok')).toEqual([]);
-      expect(detect('Ref 94111111111111111 ok')).toEqual([]);
+  // None of these is a card, but each is a long number, so the safety net
+  // (ADR-011) redacts it as NUMBER instead.
+  describe('tricky negatives: not a card (the safety net takes them)', () => {
+    const onlyNumber = (text: string, value: string): void => {
+      const start = text.indexOf(value);
+      expect(detect(text)).toEqual([numberAt({ start, end: start + value.length })]);
+    };
+
+    it('a card number inside a longer unbroken number', () => {
+      onlyNumber('Ref 41111111111111110 ok', '41111111111111110');
+      onlyNumber('Ref 94111111111111111 ok', '94111111111111111');
     });
 
-    it('ignores 20 or more digits', () => {
-      expect(detect(`Ref ${withLuhn('4', 20)} ok`)).toEqual([]);
+    it('20 or more digits', () => {
+      const { text, spans } = compose`Ref ${withLuhn('4', 20)} ok`;
+      expect(detect(text)).toEqual([numberAt(spans[0]!)]);
     });
 
-    it('ignores a card number glued to letters', () => {
-      expect(detect('sk_live_4111111111111111')).toEqual([]);
-      expect(detect('abc4111111111111111def')).toEqual([]);
+    it('a card number glued to letters', () => {
+      onlyNumber('sk_live_4111111111111111', '4111111111111111');
+      onlyNumber('abc4111111111111111def', '4111111111111111');
     });
 
-    it('ignores a millisecond timestamp (13 digits, no issuer starts with 1)', () => {
-      expect(detect(`at ${withLuhn('17', 13)} ms`)).toEqual([]);
+    it('a millisecond timestamp (13 digits, no issuer starts with 1)', () => {
+      const { text, spans } = compose`at ${withLuhn('17', 13)} ms`;
+      expect(detect(text)).toEqual([numberAt(spans[0]!)]);
     });
   });
 });

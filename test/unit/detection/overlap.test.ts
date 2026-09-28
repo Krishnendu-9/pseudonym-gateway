@@ -42,8 +42,8 @@ describe('resolveOverlaps: the three rules (ADR-003)', () => {
     expect(resolveOverlaps([c(higher, 0, 12), c(lower, 0, 12)])).toEqual([c(higher, 0, 12)]);
   });
 
-  it('the priority order is Aadhaar > Card > PAN > Phone > Email', () => {
-    expect(DETECTION_TYPES).toEqual(['AADHAAR', 'CARD', 'PAN', 'PHONE', 'EMAIL']);
+  it('the priority order is Aadhaar > Card > PAN > Phone > Email > Number (the safety net, last)', () => {
+    expect(DETECTION_TYPES).toEqual(['AADHAAR', 'CARD', 'PAN', 'PHONE', 'EMAIL', 'NUMBER']);
   });
 
   it('rules apply in order: validation first, then length, then type', () => {

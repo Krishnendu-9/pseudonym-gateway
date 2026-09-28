@@ -11,6 +11,7 @@ import { hideExtensionMarkers } from '../../../src/detection/phone.js';
 import { createRng } from '../../../src/synthetic/rng.js';
 import { indianMobile, ukDramaMobile } from '../../../src/synthetic/values.js';
 import { compose } from '../../support/compose.js';
+import { numberAt } from '../../support/number-at.js';
 import { assertPropertyQuietly, seedArb } from '../../support/quiet-property.js';
 
 const rng = createRng(9110);
@@ -92,8 +93,9 @@ describe('phone detection', () => {
   });
 
   describe('tricky negatives', () => {
-    it('ignores a valid number glued to letters', () => {
-      expect(detect(`id=ab${indianMobile(rng)}cd`)).toEqual([]);
+    it('is not a phone when glued to letters (the safety net takes it, ADR-011)', () => {
+      const { text, spans } = compose`id=ab${indianMobile(rng)}cd`;
+      expect(detect(text)).toEqual([numberAt(spans[0]!)]);
     });
 
     it('ignores a possible number glued to letters, even with context', () => {
@@ -111,7 +113,10 @@ describe('phone detection', () => {
 
     it.each([
       ['a date', 'Due 2024-05-01, thanks'],
-      ['an IP address', 'Server 192.168.1.10 is down'],
+      [
+        'a short IP address (under 9 digits; longer ones are NUMBER, ADR-011)',
+        'Server 10.0.0.1 down',
+      ],
       ['a short number', 'Room 4021'],
       ['a price', 'Total Rs 1,49,999.00'],
       ['a year range', 'From 1998 to 2024'],

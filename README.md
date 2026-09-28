@@ -96,6 +96,7 @@ Pseudonym to protect data today.
 | Aadhaar                            | Verhoeff check digit, first digit 2–9                                                 | detection only (unit-tested) |
 | PAN                                | format + holder-type letter                                                           | detection only (unit-tested) |
 | Card number                        | Luhn + issuer prefix (Visa, Mastercard, Amex, Discover, RuPay, Diners, JCB, UnionPay) | detection only (unit-tested) |
+| Any other number of 9+ digits      | none: a safety net for numbers no detector claimed (bank accounts, odd layouts)       | detection only (unit-tested) |
 | IFSC, UPI ID, IP address, API keys | pattern + context                                                                     | planned                      |
 | Person names                       | local NER model                                                                       | planned                      |
 
@@ -106,9 +107,14 @@ Which detected matches count (and will be redacted once Phases 2–3 exist):
   check digit): only if a keyword for that type is nearby ("Aadhaar", "UID",
   "card", "PAN", "call", "mobile", and Hindi आधार, कार्ड, पैन, फ़ोन, मोबाइल).
 - **Email:** on the pattern alone.
+- **Any stretch of 9 or more digits that no detector claimed**, counted across
+  dots, hyphens, dashes, brackets and `+` but not spaces: always, as a generic
+  number. Dates such as `2024-09-28 14:30` and amounts such as `1,25,000` stay
+  below that and are not touched.
 
 This leans towards redacting: a check digit passes about 1 in 10 random
-numbers, so some ordinary numbers (order IDs, invoice numbers) will be
+numbers, and every number of 9+ digits is caught, so ordinary numbers (order
+IDs, tracking numbers, build numbers, digit stretches inside hashes) will be
 replaced too; the user will still see the real number in the reply. Digits in any
 script (Devanagari, Bengali, Tamil, full-width…) and numbers split by invisible
 characters are detected. Detection fails closed: a value found inside a longer
@@ -116,11 +122,12 @@ number takes the whole number with it, and no input is skipped for being too
 long.
 
 Known gaps in the built detectors: values glued to letters (`UID234…`) are
-not detected, so that hashes and API keys are not cut up; nor are emails
-written as "name at example dot com", quoted or IP-literal addresses, or the
-16-digit Aadhaar Virtual ID. Two phone numbers glued together by a hyphen or
-a bracket with no space (`<number>-<number>`) are currently not detected; a
-fix is pending.
+not recognised as their type, so that hashes and API keys are not cut up
+(numbers of 9+ digits are still caught as generic numbers); a number written
+in space-separated groups that fails its checks (an Aadhaar or card with a
+typo) is caught only with a keyword nearby, because spaces do not join digits
+for the safety net; nor are emails written as "name at example dot com",
+quoted or IP-literal addresses, or the 16-digit Aadhaar Virtual ID.
 
 Measured precision and recall will be published here once the evaluation suite
 exists. Until then, no accuracy numbers are claimed.

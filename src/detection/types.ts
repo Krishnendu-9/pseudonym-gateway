@@ -6,8 +6,12 @@
 
 import type { Span } from './normalise.js';
 
-/** Data types detected so far, in overlap priority order (ADR-003), highest first. */
-export const DETECTION_TYPES = ['AADHAAR', 'CARD', 'PAN', 'PHONE', 'EMAIL'] as const;
+/**
+ * Data types detected so far, in overlap priority order (ADR-003), highest
+ * first. NUMBER is the safety net for long numbers nothing else claimed
+ * (ADR-011), so it always comes last.
+ */
+export const DETECTION_TYPES = ['AADHAAR', 'CARD', 'PAN', 'PHONE', 'EMAIL', 'NUMBER'] as const;
 
 export type DetectionType = (typeof DETECTION_TYPES)[number];
 

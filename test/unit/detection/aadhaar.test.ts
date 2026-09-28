@@ -11,6 +11,7 @@ import { isVerhoeffValid, verhoeffCheckDigit } from '../../../src/detection/verh
 import { createRng, type Rng } from '../../../src/synthetic/rng.js';
 import { aadhaar, groupDigits } from '../../../src/synthetic/values.js';
 import { compose } from '../../support/compose.js';
+import { numberAt } from '../../support/number-at.js';
 import { assertPropertyQuietly, seedArb } from '../../support/quiet-property.js';
 
 const rng = createRng(20260928);
@@ -124,14 +125,20 @@ describe('Aadhaar detection', () => {
   });
 
   describe('tricky negatives', () => {
-    it('ignores 12 valid digits inside a longer unbroken number', () => {
-      expect(detect(`Ref ${valid()}7 ok`)).toEqual([]);
-      expect(detect(`Ref 7${valid()} ok`)).toEqual([]);
+    // These are not Aadhaar numbers, but they are long numbers, so the
+    // safety net (ADR-011) redacts them as NUMBER instead.
+    it('is not an Aadhaar inside a longer unbroken number (the safety net takes it)', () => {
+      const after = compose`Ref ${`${valid()}7`} ok`;
+      expect(detect(after.text)).toEqual([numberAt(after.spans[0]!)]);
+      const before = compose`Ref ${`7${valid()}`} ok`;
+      expect(detect(before.text)).toEqual([numberAt(before.spans[0]!)]);
     });
 
-    it('ignores a valid Aadhaar glued to letters or an underscore', () => {
-      expect(detect(`token=ab${valid()}cd`)).toEqual([]);
-      expect(detect(`key_${valid()}`)).toEqual([]);
+    it('is not an Aadhaar glued to letters or an underscore (the safety net takes it)', () => {
+      const letters = compose`token=ab${valid()}cd`;
+      expect(detect(letters.text)).toEqual([numberAt(letters.spans[0]!)]);
+      const underscore = compose`key_${valid()}`;
+      expect(detect(underscore.text)).toEqual([numberAt(underscore.spans[0]!)]);
     });
 
     it('ignores 12 digits after a plus sign (a phone number with its country code)', () => {

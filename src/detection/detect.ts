@@ -11,6 +11,7 @@ import { digitRuns, widenToRuns } from './digit-runs.js';
 import { hasContext } from './context.js';
 import { emailCandidates } from './email.js';
 import { normalise } from './normalise.js';
+import { unclaimedNumbers } from './number.js';
 import { resolveOverlaps } from './overlap.js';
 import { panCandidates } from './pan.js';
 import { phoneCandidates } from './phone.js';
@@ -47,12 +48,14 @@ export function detect(original: string): Detection[] {
   // whole digit runs it touches, so that the types are decided first (a card
   // still beats an Aadhaar found in its first 12 digits) and no part of a
   // number is left visible. Widening can make winners in one run overlap, so
-  // resolve again. Finally map back, and resolve once more: rounding out to
-  // whole clusters could, in principle, make two neighbours share a character.
+  // resolve again. Then the safety net claims long numbers nobody else did
+  // (ADR-011). Finally map back, and resolve once more: rounding out to whole
+  // clusters could, in principle, make two neighbours share a character.
   const runs = digitRuns(text);
   const widened = resolveOverlaps(
     resolveOverlaps(accepted).map((d) => ({ ...d, ...widenToRuns(d, runs) })),
   );
-  const mapped = widened.map((d) => ({ ...d, ...normalised.toOriginal(d) }));
+  const numbers = unclaimedNumbers(text, widened).map((d) => ({ ...d, context: false }));
+  const mapped = [...widened, ...numbers].map((d) => ({ ...d, ...normalised.toOriginal(d) }));
   return resolveOverlaps(mapped);
 }
