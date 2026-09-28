@@ -139,24 +139,33 @@ describe('Verhoeff: agrees with a reference derived from first principles', () =
     expect(referenceCheckDigit('123456789012')).toBe('0');
   });
 
-  it('matches the reference for every payload of 1 to 5 digits (111,110 payloads)', () => {
-    let mismatches = 0;
-    for (let length = 1; length <= 5; length++) {
-      for (let n = 0; n < 10 ** length; n++) {
-        const payload = String(n).padStart(length, '0');
-        const check = referenceCheckDigit(payload);
-        const wrong = String((Number(check) + 1) % 10);
-        if (
-          verhoeffCheckDigit(payload) !== check ||
-          !isVerhoeffValid(payload + check) ||
-          isVerhoeffValid(payload + wrong)
-        ) {
-          mismatches++;
+  // Exhaustive, so slow: 0.7 s alone, but 5.2 s (over Vitest's 5 s default)
+  // when the whole suite runs in parallel, and 7.3 s under coverage
+  // (bug-log entry 4).
+  const EXHAUSTIVE_TIMEOUT_MS = 60_000;
+
+  it(
+    'matches the reference for every payload of 1 to 5 digits (111,110 payloads)',
+    { timeout: EXHAUSTIVE_TIMEOUT_MS },
+    () => {
+      let mismatches = 0;
+      for (let length = 1; length <= 5; length++) {
+        for (let n = 0; n < 10 ** length; n++) {
+          const payload = String(n).padStart(length, '0');
+          const check = referenceCheckDigit(payload);
+          const wrong = String((Number(check) + 1) % 10);
+          if (
+            verhoeffCheckDigit(payload) !== check ||
+            !isVerhoeffValid(payload + check) ||
+            isVerhoeffValid(payload + wrong)
+          ) {
+            mismatches++;
+          }
         }
       }
-    }
-    expect(mismatches).toBe(0);
-  });
+      expect(mismatches).toBe(0);
+    },
+  );
 
   it('matches the reference for random payloads of 6 to 30 digits (reaches rows 6 and 7 of P)', () => {
     assertPropertyQuietly(

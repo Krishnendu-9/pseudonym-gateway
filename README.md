@@ -6,7 +6,9 @@ reaches an LLM, and restores it in the reply.**
 > **Status: work in progress.** Not ready for production use. The design below is
 > being built; the [supported data types](#supported-data-types) table shows what
 > is available today. Built so far: Unicode normalisation with an offset map, and
-> the Verhoeff and Luhn check digits. No data type is detected yet.
+> detectors for email, phone, Aadhaar, PAN and card numbers, as a library with
+> unit tests. Nothing is replaced or sent anywhere yet: placeholders, the gateway
+> and provider adapters come next. Detection accuracy has not been measured yet.
 
 ---
 
@@ -81,15 +83,42 @@ What Pseudonym is being built to do:
 
 ## Supported data types
 
-| Type                               | Validation                     | Status  |
-| ---------------------------------- | ------------------------------ | ------- |
-| Email                              | pattern                        | planned |
-| Phone (India + international)      | libphonenumber                 | planned |
-| Aadhaar                            | Verhoeff check digit + context | planned |
-| PAN                                | format + entity-type letter    | planned |
-| Card number                        | Luhn + issuer prefix           | planned |
-| IFSC, UPI ID, IP address, API keys | pattern + context              | planned |
-| Person names                       | local NER model                | planned |
+**Detection only, so far.** The detectors below find values and report where
+they are, and they are unit-tested. **Nothing is redacted end to end yet:**
+replacing values with placeholders and restoring them (Phase 2) and the gateway
+that forwards requests to a provider (Phase 3) are not built. Do not rely on
+Pseudonym to protect data today.
+
+| Type                               | Validation                                                                            | Status                       |
+| ---------------------------------- | ------------------------------------------------------------------------------------- | ---------------------------- |
+| Email                              | pattern (Unicode addresses included)                                                  | detection only (unit-tested) |
+| Phone (India + international)      | libphonenumber-js, full metadata                                                      | detection only (unit-tested) |
+| Aadhaar                            | Verhoeff check digit, first digit 2–9                                                 | detection only (unit-tested) |
+| PAN                                | format + holder-type letter                                                           | detection only (unit-tested) |
+| Card number                        | Luhn + issuer prefix (Visa, Mastercard, Amex, Discover, RuPay, Diners, JCB, UnionPay) | detection only (unit-tested) |
+| IFSC, UPI ID, IP address, API keys | pattern + context                                                                     | planned                      |
+| Person names                       | local NER model                                                                       | planned                      |
+
+Which detected matches count (and will be redacted once Phases 2–3 exist):
+
+- **Validated** (passes the checks above): always.
+- **Right shape, failed checks** (for example an Aadhaar with a typo in its
+  check digit): only if a keyword for that type is nearby ("Aadhaar", "UID",
+  "card", "PAN", "call", "mobile", and Hindi आधार, कार्ड, पैन, फ़ोन, मोबाइल).
+- **Email:** on the pattern alone.
+
+This leans towards redacting: a check digit passes about 1 in 10 random
+numbers, so some ordinary numbers (order IDs, invoice numbers) will be
+replaced too; the user will still see the real number in the reply. Digits in any
+script (Devanagari, Bengali, Tamil, full-width…) and numbers split by invisible
+characters are detected. Detection fails closed: a value found inside a longer
+number takes the whole number with it, and no input is skipped for being too
+long.
+
+Known gaps in the built detectors: values glued to letters (`UID234…`) are
+not detected, so that hashes and API keys are not cut up; nor are emails
+written as "name at example dot com", quoted or IP-literal addresses, or the
+16-digit Aadhaar Virtual ID.
 
 Measured precision and recall will be published here once the evaluation suite
 exists. Until then, no accuracy numbers are claimed.
@@ -127,11 +156,10 @@ The gateway server is not built yet.
 
 ## Tech stack
 
-Installed today: TypeScript (strict) · Node.js 22 · Zod · Vitest · fast-check ·
-ESLint · Prettier
+Installed today: TypeScript (strict) · Node.js 22 · Zod · libphonenumber-js
+(phone validation) · Vitest · fast-check · ESLint · Prettier
 
-Chosen but not yet installed: Fastify (HTTP server, added in Phase 3) ·
-libphonenumber-js (phone validation, added in Phase 1b)
+Chosen but not yet installed: Fastify (HTTP server, added in Phase 3)
 
 ## License
 
