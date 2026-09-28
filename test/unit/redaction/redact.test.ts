@@ -1,0 +1,227 @@
+// redactMessage: real detections and LITERAL bracket-shaped text, replaced
+// against a shared PlaceholderMapping (ADR-002, ADR-013). Generated
+// personal-looking values stay in memory only, and comparisons that embed
+// one (the output text, unlike detect()'s offsets, still contains it if the
+// code under test is wrong) go through assertTextEqualQuietly so a failure
+// never prints one (ADR-009). Literal-placeholder syntax ("[AADHAAR_1]" as
+// text, not a real Aadhaar) carries no such risk and is compared directly.
+
+import { describe, expect, it } from 'vitest';
+import { redactMessage } from '../../../src/redaction/redact.js';
+import { PlaceholderMapping } from '../../../src/redaction/mapping.js';
+import { createRng } from '../../../src/synthetic/rng.js';
+import { aadhaar, email, groupDigits, indianMobile, pan } from '../../../src/synthetic/values.js';
+import { assertTextEqualQuietly } from '../../support/quiet-text.js';
+
+const rng = createRng(2026);
+
+describe('redactMessage: real detections', () => {
+  it('replaces a validated Aadhaar with [AADHAAR_1]', () => {
+    const mapping = new PlaceholderMapping();
+    const value = groupDigits(aadhaar(rng), [4, 4, 4], ' ');
+    const redacted = redactMessage(`My Aadhaar is ${value}.`, mapping);
+    assertTextEqualQuietly(redacted, 'My Aadhaar is [AADHAAR_1].');
+  });
+
+  it('gives every value in one message a placeholder, in order', () => {
+    const mapping = new PlaceholderMapping();
+    const aadhaarValue = groupDigits(aadhaar(rng), [4, 4, 4], ' ');
+    const panValue = pan(rng);
+    const redacted = redactMessage(`Aadhaar ${aadhaarValue}, PAN ${panValue}.`, mapping);
+    assertTextEqualQuietly(redacted, 'Aadhaar [AADHAAR_1], PAN [PAN_1].');
+  });
+});
+
+describe('redactMessage: value keys dedupe the same value (ADR-013)', () => {
+  it('PAN is matched case-insensitively to one placeholder', () => {
+    const mapping = new PlaceholderMapping();
+    const value = pan(rng);
+    const redacted = redactMessage(
+      `PAN ${value.toUpperCase()} and PAN ${value.toLowerCase()}`,
+      mapping,
+    );
+    assertTextEqualQuietly(redacted, 'PAN [PAN_1] and PAN [PAN_1]');
+  });
+
+  it('email is matched case-insensitively to one placeholder, restoring the first surface form', () => {
+    const mapping = new PlaceholderMapping();
+    const value = email(rng);
+    const upper = value.toUpperCase();
+    const redacted = redactMessage(`Mail ${upper} or ${value}`, mapping);
+    assertTextEqualQuietly(redacted, 'Mail [EMAIL_1] or [EMAIL_1]');
+    // The first surface form (the upper-case one) is what would be restored.
+    expect(mapping.lookup('EMAIL', 1)?.value === upper).toBe(true);
+  });
+
+  it('a phone with and without the +91 country code is the same value (default region IN)', () => {
+    const mapping = new PlaceholderMapping();
+    const mobile = indianMobile(rng);
+    const redacted = redactMessage(`Call +91 ${mobile} or ${mobile} directly`, mapping);
+    assertTextEqualQuietly(redacted, 'Call [PHONE_1] or [PHONE_1] directly');
+  });
+
+  it('an Aadhaar written with different separators is the same value', () => {
+    const mapping = new PlaceholderMapping();
+    const digits = aadhaar(rng);
+    const spaced = groupDigits(digits, [4, 4, 4], ' ');
+    const dashed = groupDigits(digits, [4, 4, 4], '-');
+    const redacted = redactMessage(`Ref ${spaced} matches ${dashed}`, mapping);
+    assertTextEqualQuietly(redacted, 'Ref [AADHAAR_1] matches [AADHAAR_1]');
+  });
+
+  // libphonenumber's own POSSIBLE search (phone.ts) is more permissive than
+  // parsePhoneNumberFromString: an unusual, unvalidated shape like this one
+  // (found by detect(), context "call" nearby) is a PHONE candidate that
+  // cannot be re-parsed into an E.164 key at all. The value key then falls
+  // back to the normalised surface text, so the number still gets (and
+  // keeps) one placeholder instead of the request failing.
+  it('still assigns one placeholder to an unvalidated phone shape with no E.164 form', () => {
+    const mapping = new PlaceholderMapping();
+    assertTextEqualQuietly(redactMessage('call 0 0287369447 now', mapping), 'call [PHONE_1] now');
+    assertTextEqualQuietly(
+      redactMessage('call 0 0287369447 again', mapping),
+      'call [PHONE_1] again',
+    );
+  });
+});
+
+describe('redactMessage: LITERAL namespace (ADR-002)', () => {
+  it('replaces an exact bracketed placeholder the user typed with [LITERAL_1]', () => {
+    const mapping = new PlaceholderMapping();
+    expect(redactMessage('Please keep [AADHAAR_1] as it is.', mapping)).toBe(
+      'Please keep [LITERAL_1] as it is.',
+    );
+  });
+
+  it('is case-insensitive and accepts a space instead of an underscore', () => {
+    const mapping = new PlaceholderMapping();
+    expect(redactMessage('See [pan_1] and [Card 2].', mapping)).toBe(
+      'See [LITERAL_1] and [LITERAL_2].',
+    );
+  });
+
+  it('recursion: text shaped like a literal placeholder is itself a literal', () => {
+    const mapping = new PlaceholderMapping();
+    expect(redactMessage('Keep [LITERAL_1] unchanged.', mapping)).toBe(
+      'Keep [LITERAL_1] unchanged.',
+    );
+  });
+
+  it('deduplicates the exact same literal text to one placeholder', () => {
+    const mapping = new PlaceholderMapping();
+    const redacted = redactMessage('[AADHAAR_1] said hi to [AADHAAR_1] again.', mapping);
+    expect(redacted).toBe('[LITERAL_1] said hi to [LITERAL_1] again.');
+  });
+
+  it('a different exact literal string gets a different index', () => {
+    const mapping = new PlaceholderMapping();
+    const redacted = redactMessage('[AADHAAR_1] and [aadhaar_1] differ in case.', mapping);
+    expect(redacted).toBe('[LITERAL_1] and [LITERAL_2] differ in case.');
+  });
+
+  it('does not confuse a real detection with a literal placeholder of a different type', () => {
+    const mapping = new PlaceholderMapping();
+    const value = pan(rng);
+    const redacted = redactMessage(`PAN ${value}, keep [CARD_9] literally.`, mapping);
+    assertTextEqualQuietly(redacted, 'PAN [PAN_1], keep [LITERAL_1] literally.');
+  });
+
+  // The literal index grammar is exactly formatPlaceholder's (1-9999, no
+  // leading zero, ADR-013): a leading zero is not recognised at all...
+  it('does not treat a leading-zero index as a literal', () => {
+    const mapping = new PlaceholderMapping();
+    expect(redactMessage('Keep [PAN_01] as it is.', mapping)).toBe('Keep [PAN_01] as it is.');
+  });
+
+  // ...and neither does an index over 4 digits. A space-separated bracket is
+  // not glued to what follows it (only an underscore, letter, digit or mark
+  // counts as glued; see digit-runs.ts), so [CARD 4111111111111111] would
+  // overlap a real, validated card number - except its "index" is 16 digits,
+  // far past the 4-digit cap, so it is never literal-shaped in the first
+  // place. detect() claims the digits on its own instead, and the surrounding
+  // "[CARD " and "]" are left as ordinary text (nothing matches them). Either
+  // way the real card number is never in the output. "4111111111111111" is
+  // Visa's published test number, safe to write literally (ADR-009).
+  it('an index over 4 digits is not literal-shaped; the real card inside is redacted on its own', () => {
+    const mapping = new PlaceholderMapping();
+    const redacted = redactMessage('See [CARD 4111111111111111] please.', mapping);
+    expect(redacted).toBe('See [CARD [CARD_1]] please.');
+    expect(redacted).not.toContain('4111111111111111');
+  });
+});
+
+describe('redactMessage: loose-variant reservation (ADR-002, ADR-013)', () => {
+  it('a bare underscore variant reserves its index, even in UPPERCASE', () => {
+    const mapping = new PlaceholderMapping();
+    const redacted = redactMessage('Card_1 was my old code. My card is 4111111111111111.', mapping);
+    expect(redacted).toBe('Card_1 was my old code. My card is [CARD_2].');
+  });
+
+  it('a bare space variant does NOT reserve for CARD, in Title Case or UPPERCASE (2026-09-29 decision)', () => {
+    const mapping1 = new PlaceholderMapping();
+    expect(redactMessage('Card 1 was my old code. My card is 4111111111111111.', mapping1)).toBe(
+      'Card 1 was my old code. My card is [CARD_1].',
+    );
+
+    const mapping2 = new PlaceholderMapping();
+    expect(redactMessage('CARD 1 was my old code. My card is 4111111111111111.', mapping2)).toBe(
+      'CARD 1 was my old code. My card is [CARD_1].',
+    );
+  });
+
+  it('a bare space variant DOES reserve for AADHAAR (keeps the bare space form)', () => {
+    const mapping = new PlaceholderMapping();
+    const digits = aadhaar(rng);
+    const redacted = redactMessage(
+      `Aadhaar 1 is a placeholder-looking phrase. My real Aadhaar is ${digits}.`,
+      mapping,
+    );
+    assertTextEqualQuietly(
+      redacted,
+      'Aadhaar 1 is a placeholder-looking phrase. My real Aadhaar is [AADHAAR_2].',
+    );
+  });
+
+  it('a loose variant overlapping a literal bracket does not reserve (nothing ambiguous is left behind)', () => {
+    const mapping = new PlaceholderMapping();
+    // [CARD_1] is itself a literal (becomes [LITERAL_1]); the "CARD_1" text
+    // inside it must not also reserve CARD index 1.
+    const redacted = redactMessage('Keep [CARD_1] as it is. My card is 4111111111111111.', mapping);
+    expect(redacted).toBe('Keep [LITERAL_1] as it is. My card is [CARD_1].');
+  });
+});
+
+describe('redactMessage: cross-message consistency (design doc, "no cross-request vault")', () => {
+  it('redacting the same history twice, with fresh mappings, gives identical output', () => {
+    const aadhaarValue = groupDigits(aadhaar(rng), [4, 4, 4], ' ');
+    const panValue = pan(rng);
+    const history = [`Aadhaar ${aadhaarValue}.`, `Also my PAN is ${panValue}.`];
+
+    const redactHistory = (): string[] => {
+      const mapping = new PlaceholderMapping();
+      return history.map((message) => redactMessage(message, mapping));
+    };
+
+    const [first, second] = redactHistory();
+    const [again1, again2] = redactHistory();
+    assertTextEqualQuietly(first!, again1!);
+    assertTextEqualQuietly(second!, again2!);
+  });
+
+  it('appending a message never renumbers earlier placeholders', () => {
+    const mapping = new PlaceholderMapping();
+    const aadhaarValue = groupDigits(aadhaar(rng), [4, 4, 4], ' ');
+    const panValue = pan(rng);
+
+    const first = redactMessage(`Aadhaar ${aadhaarValue}.`, mapping);
+    assertTextEqualQuietly(first, 'Aadhaar [AADHAAR_1].');
+
+    const second = redactMessage(`My PAN is ${panValue}.`, mapping);
+    assertTextEqualQuietly(second, 'My PAN is [PAN_1].');
+
+    // Re-processing the first message's text again (as a fresh call, the way
+    // a stateless request replays the whole history) still gets [AADHAAR_1]:
+    // the earlier index was never reused or shifted by the new message.
+    assertTextEqualQuietly(redactMessage(`Aadhaar ${aadhaarValue}.`, mapping), first);
+  });
+});

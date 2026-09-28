@@ -3,12 +3,13 @@
 **An OpenAI-compatible privacy gateway that pseudonymises personal data before it
 reaches an LLM, and restores it in the reply.**
 
-> **Status: work in progress.** Not ready for production use. The design below is
-> being built; the [supported data types](#supported-data-types) table shows what
-> is available today. Built so far: Unicode normalisation with an offset map, and
-> detectors for email, phone, Aadhaar, PAN and card numbers, as a library with
-> unit tests. Nothing is replaced or sent anywhere yet: placeholders, the gateway
-> and provider adapters come next. Detection accuracy has not been measured yet.
+> **Status: work in progress (Phase 2 of 8 done).** Not ready for production use.
+> Built so far, as a library with unit tests: Unicode normalisation with an
+> offset map; detectors for email, phone, Aadhaar, PAN and card numbers; and
+> placeholder redaction and restoration (deterministic numbering, tolerant
+> restoration, no restoring inside URLs). **Nothing is redacted end to end
+> yet:** there is no gateway, so nothing is received from an app or sent to a
+> provider. That comes in Phase 3. Detection accuracy has not been measured yet.
 
 ---
 
@@ -76,31 +77,32 @@ What Pseudonym is being built to do:
   replaced in the original text, so a hidden value is replaced completely.
 - **Streaming-safe restoration.** Placeholders split across streamed chunks
   (`[PER` + `SON_1]`) are restored correctly with minimal buffering.
-- **Injection-aware.** Values are not restored inside URLs or links, blocking a
-  known data-exfiltration trick.
+- **Injection-aware.** Values are not restored inside URLs, markdown links or
+  HTML attributes, blocking a known image-URL exfiltration trick. This covers
+  that one path, not prompt injection in general.
 - **Proof plan.** A no-leak test, property-based streaming tests, and an
   evaluation suite with a held-out, hand-written adversarial dataset.
 
 ## Supported data types
 
-**Detection only, so far.** The detectors below find values and report where
-they are, and they are unit-tested. **Nothing is redacted end to end yet:**
-replacing values with placeholders and restoring them (Phase 2) and the gateway
-that forwards requests to a provider (Phase 3) are not built. Do not rely on
-Pseudonym to protect data today.
+**Library only, so far.** The detectors below find values, and the redaction
+library replaces them with placeholders and restores them; both are
+unit-tested. **Nothing is redacted end to end yet:** the gateway that receives
+requests and forwards them to a provider (Phase 3) is not built. Do not rely
+on Pseudonym to protect data today.
 
-| Type                               | Validation                                                                            | Status                       |
-| ---------------------------------- | ------------------------------------------------------------------------------------- | ---------------------------- |
-| Email                              | pattern (Unicode addresses included)                                                  | detection only (unit-tested) |
-| Phone (India + international)      | libphonenumber-js, full metadata                                                      | detection only (unit-tested) |
-| Aadhaar                            | Verhoeff check digit, first digit 2–9                                                 | detection only (unit-tested) |
-| PAN                                | format + holder-type letter                                                           | detection only (unit-tested) |
-| Card number                        | Luhn + issuer prefix (Visa, Mastercard, Amex, Discover, RuPay, Diners, JCB, UnionPay) | detection only (unit-tested) |
-| Any other number of 9+ digits      | none: a safety net for numbers no detector claimed (bank accounts, odd layouts)       | detection only (unit-tested) |
-| IFSC, UPI ID, IP address, API keys | pattern + context                                                                     | planned                      |
-| Person names                       | local NER model                                                                       | planned                      |
+| Type                               | Validation                                                                            | Status                          |
+| ---------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------- |
+| Email                              | pattern (Unicode addresses included)                                                  | redaction library (unit-tested) |
+| Phone (India + international)      | libphonenumber-js, full metadata                                                      | redaction library (unit-tested) |
+| Aadhaar                            | Verhoeff check digit, first digit 2–9                                                 | redaction library (unit-tested) |
+| PAN                                | format + holder-type letter                                                           | redaction library (unit-tested) |
+| Card number                        | Luhn + issuer prefix (Visa, Mastercard, Amex, Discover, RuPay, Diners, JCB, UnionPay) | redaction library (unit-tested) |
+| Any other number of 9+ digits      | none: a safety net for numbers no detector claimed (bank accounts, odd layouts)       | redaction library (unit-tested) |
+| IFSC, UPI ID, IP address, API keys | pattern + context                                                                     | planned                         |
+| Person names                       | local NER model                                                                       | planned                         |
 
-Which detected matches count (and will be redacted once Phases 2–3 exist):
+Which detected matches count (and will be redacted once the Phase 3 gateway exists):
 
 - **Validated** (passes the checks above): always.
 - **Right shape, failed checks** (for example an Aadhaar with a typo in its
