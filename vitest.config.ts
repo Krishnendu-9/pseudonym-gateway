@@ -4,6 +4,10 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['test/**/*.test.ts'],
+    // A timeout only guards against a hang. The 5 s default failed property
+    // tests on a busy machine, so no test asserts wall-clock time any more:
+    // linear-time tests compare growth ratios instead (test/support/linear-time.ts).
+    testTimeout: 30_000,
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],

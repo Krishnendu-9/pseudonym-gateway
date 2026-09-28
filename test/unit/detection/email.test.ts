@@ -7,6 +7,7 @@ import { detect } from '../../../src/detection/detect.js';
 import { createRng } from '../../../src/synthetic/rng.js';
 import { email } from '../../../src/synthetic/values.js';
 import { compose } from '../../support/compose.js';
+import { growthRatio, MAX_GROWTH_RATIO } from '../../support/linear-time.js';
 import { assertPropertyQuietly, seedArb } from '../../support/quiet-property.js';
 
 /** The emails detect() finds in `text`, as the substrings they cover. */
@@ -84,29 +85,21 @@ describe('email detection', () => {
     );
   });
 
+  // Each case makes the input 4 times longer and checks the time grows
+  // about 4 times, not 16 or more (test/support/linear-time.ts).
   describe('backtracking (ReDoS) safety', () => {
-    const fast = (text: string): number => {
-      const t = performance.now();
-      detect(text);
-      return performance.now() - t;
-    };
-
-    it('scans a 50,000-character token with no @ in linear time', () => {
-      expect(fast('a'.repeat(50_000))).toBeLessThan(1000);
-      expect(fast('a.'.repeat(25_000))).toBeLessThan(1000);
-    });
-
-    it('scans a long domain with no valid top-level domain in linear time', () => {
-      expect(fast(`priya@${'a.'.repeat(25_000)}1`)).toBeLessThan(1000);
-      expect(fast(`priya@${'a-'.repeat(25_000)}`)).toBeLessThan(1000);
-    });
-
-    it('scans many @ signs in linear time', () => {
-      expect(fast('a@'.repeat(25_000))).toBeLessThan(1000);
-    });
-
-    it('scans a 50,000-character domain label with no dot in linear time', () => {
-      expect(fast(`priya@${'b'.repeat(50_000)}`)).toBeLessThan(1000);
+    it.each([
+      ['a long token with no @', (n: number) => 'a'.repeat(n)],
+      ['a long dotted token with no @', (n: number) => 'a.'.repeat(n / 2)],
+      [
+        'a long domain with no valid top-level domain',
+        (n: number) => `priya@${'a.'.repeat(n / 2)}1`,
+      ],
+      ['a long hyphenated domain', (n: number) => `priya@${'a-'.repeat(n / 2)}`],
+      ['many @ signs', (n: number) => 'a@'.repeat(n / 2)],
+      ['a long domain label with no dot', (n: number) => `priya@${'b'.repeat(n)}`],
+    ])('scans %s in linear time', (_name, make) => {
+      expect(growthRatio(make, 25_000, detect)).toBeLessThan(MAX_GROWTH_RATIO);
     });
   });
 
@@ -132,9 +125,15 @@ describe('email detection', () => {
       ['a 50,000-character domain label', `priya@${'b'.repeat(50_000)}.example`],
       ['a 5,000-character top-level domain', `priya@example.${'c'.repeat(5_000)}`],
     ])('finds %s', (_name, address) => {
-      const t = performance.now();
       expect(whole(`Mail ${address} now`, address)).toBe(true);
-      expect(performance.now() - t).toBeLessThan(1000);
+    });
+
+    it.each([
+      ['a long local part', (n: number) => `Mail ${'p'.repeat(n)}@example.com now`],
+      ['a long domain label', (n: number) => `Mail priya@${'b'.repeat(n)}.example now`],
+      ['a long top-level domain', (n: number) => `Mail priya@example.${'c'.repeat(n)} now`],
+    ])('finds an address with %s in linear time', (_name, make) => {
+      expect(growthRatio(make, 25_000, detect)).toBeLessThan(MAX_GROWTH_RATIO);
     });
 
     it('finds an address after 100,000 characters of other text', () => {
