@@ -67,7 +67,8 @@ What Pseudonym is being built to do:
   always `[PERSON_1]`, without storing anything between requests.
 - **India-aware detection.** Aadhaar (Verhoeff check digit), PAN, IFSC and UPI IDs
   alongside emails, phone numbers and card numbers (Luhn check).
-- **Unicode-hardened.** Full-width, mathematical and Devanagari digits are
+- **Unicode-hardened.** Digits in any script (full-width, mathematical,
+  Devanagari, Bengali, Tamil and every other Unicode decimal digit) are
   normalised, and invisible characters that can hide data (zero-width spaces,
   soft hyphens, direction marks) are removed before detection. Values are still
   replaced in the original text, so a hidden value is replaced completely.

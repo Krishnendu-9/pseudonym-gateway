@@ -4,22 +4,24 @@ import { normalise, type NormalisedText, type Span } from '../../../src/detectio
 import { INVISIBLES, obfuscate } from '../../../src/synthetic/obfuscate.js';
 import { createRng } from '../../../src/synthetic/rng.js';
 import { aadhaar, cardNumber, groupDigits } from '../../../src/synthetic/values.js';
+import { allDecimalDigits, decimalDigitValue } from '../../support/decimal-digits.js';
 import { assertPropertyQuietly, seedArb } from '../../support/quiet-property.js';
 
 // The oracle: what normalise(s).text must equal. Whole-string NFKC is easy to
 // trust; normalise() works cluster by cluster so it can keep an offset map.
+// Digit values come from walking the Unicode data, not from the generated table.
 const reference = (s: string): string =>
   s
     .replace(/\p{Default_Ignorable_Code_Point}/gu, '')
     .normalize('NFKC')
-    .replace(/[०-९]/g, (d) => String(d.charCodeAt(0) - 0x0966));
+    .replace(/\p{Nd}/gu, (d) => String(decimalDigitValue(d.codePointAt(0)!)));
 
 const codePoints = (min: number, max: number) =>
   fc.integer({ min, max }).map((c) => String.fromCodePoint(c));
 
 // Characters that stress normalisation: invisibles, combining marks, Hangul
 // jamo (which compose across clusters), compatibility forms that expand,
-// Devanagari, full-width and mathematical digits, emoji sequences, CR LF.
+// Devanagari, every decimal digit in Unicode, emoji sequences, CR LF.
 const trickyString = fc.string({
   unit: fc.oneof(
     fc.constantFrom(
@@ -34,6 +36,7 @@ const trickyString = fc.string({
     codePoints(0x0900, 0x097f), // Devanagari, including digits and vowel signs
     codePoints(0xff10, 0xff5a), // full-width digits and letters
     codePoints(0x1d7ce, 0x1d7ff), // mathematical digits
+    fc.constantFrom(...allDecimalDigits()).map((c) => String.fromCodePoint(c)),
   ),
   maxLength: 30,
 });
@@ -65,7 +68,7 @@ function groups(n: NormalisedText): { text: string; source: Span }[] {
 const onlyInvisible = (s: string): boolean => /^\p{Default_Ignorable_Code_Point}*$/u.test(s);
 
 describe('normalise: properties', () => {
-  it('equals whole-string NFKC of the visible text, with Devanagari digits as ASCII', () => {
+  it('equals whole-string NFKC of the visible text, with every decimal digit as ASCII', () => {
     assertPropertyQuietly(
       fc.property(anyString, (s) => normalise(s).text === reference(s)),
       RUNS,
@@ -152,6 +155,40 @@ describe('normalise: examples', () => {
 
   it('turns Devanagari digits into ASCII', () => {
     expect(normalise('कार्ड ४१११ १११११').text).toBe('कार्ड 4111 11111');
+  });
+
+  it.each([
+    ['Bengali', 0x09e6],
+    ['Gurmukhi', 0x0a66],
+    ['Gujarati', 0x0ae6],
+    ['Odia', 0x0b66],
+    ['Tamil', 0x0be6],
+    ['Telugu', 0x0c66],
+    ['Kannada', 0x0ce6],
+    ['Malayalam', 0x0d66],
+    ['Arabic-Indic', 0x0660],
+    ['Extended Arabic-Indic (Urdu)', 0x06f0],
+    ['Thai', 0x0e50],
+  ])('turns %s digits into ASCII', (_script, zero) => {
+    const digits = String.fromCodePoint(...Array.from({ length: 10 }, (_, d) => zero + d));
+    expect(normalise(`no. ${digits}.`).text).toBe('no. 0123456789.');
+  });
+
+  it('maps a decimal digit outside the BMP (two UTF-16 units) to one ASCII digit', () => {
+    // U+104A4 OSMANYA DIGIT FOUR: NFKC leaves it alone; only the digit table maps it.
+    const n = normalise('x\u{104A4}1');
+    expect(n.text).toBe('x41');
+    expect(n.toOriginal({ start: 1, end: 2 })).toEqual({ start: 1, end: 3 });
+    expect(n.toOriginal({ start: 2, end: 3 })).toEqual({ start: 3, end: 4 });
+  });
+
+  it('maps both sides of two blocks that touch (U+116D9 is a 9, U+116DA a 0)', () => {
+    expect(normalise('\u{116D9}\u{116DA}').text).toBe('90');
+  });
+
+  it('leaves number characters that are not decimal digits alone', () => {
+    // Tamil ௰ (ten) is No, not Nd, and NFKC keeps it; Roman numeral Ⅻ is spelled out.
+    expect(normalise('Ⅻ ௰').text).toBe('XII ௰');
   });
 
   it('turns mathematical digits (two UTF-16 units each) into ASCII and maps both units', () => {

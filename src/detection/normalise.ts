@@ -1,6 +1,6 @@
 // Normalisation for detection, with an offset map back to the original text.
 //
-// Detectors run on normalised text, so a full-width or Devanagari Aadhaar, or
+// Detectors run on normalised text, so a full-width or Bengali-digit Aadhaar, or
 // one split by zero-width characters, looks like plain ASCII digits. But the
 // replacement happens in the original text (that is what gets sent), so every
 // normalised code unit remembers which range of the original it came from.
@@ -11,7 +11,8 @@
 //      soft hyphen, bidi controls, variation selectors, tag characters).
 //   2. Split what is left into grapheme clusters (user-perceived characters).
 //   3. NFKC each cluster (full-width and mathematical digits become ASCII, NBSP
-//      becomes a space), then map Devanagari digits to ASCII.
+//      becomes a space), then map every other decimal digit (\p{Nd}: Devanagari,
+//      Bengali, Tamil, Arabic-Indic, Thai and the rest) to ASCII.
 //
 // NFKC is applied cluster by cluster, not to the whole string, so that every
 // output code unit has one known source range. That is only safe at boundaries
@@ -22,6 +23,8 @@
 // visible text. Removing invisibles before segmenting means a zero-width
 // character cannot split a letter from its accent.
 
+import { DECIMAL_DIGIT_ZEROS } from './decimal-digit-zeros.js';
+
 /** Half-open range [start, end) of UTF-16 code unit indices. */
 export interface Span {
   readonly start: number;
@@ -29,8 +32,15 @@ export interface Span {
 }
 
 const INVISIBLE_RUN = /\p{Default_Ignorable_Code_Point}+/gu;
-const DEVANAGARI_DIGIT = /[०-९]/g;
-const DEVANAGARI_ZERO = 0x0966;
+
+// Built from the generated table, so every character it matches has a known
+// block zero. ASCII digits are left out: they are already what we want.
+const NON_ASCII_DECIMAL_DIGIT = new RegExp(
+  `[${DECIMAL_DIGIT_ZEROS.filter((zero) => zero !== 0x30)
+    .map((zero) => `\\u{${zero.toString(16)}}-\\u{${(zero + 9).toString(16)}}`)
+    .join('')}]`,
+  'gu',
+);
 
 // Grapheme segmentation does not depend on the locale.
 const graphemes = new Intl.Segmenter('en', { granularity: 'grapheme' });
@@ -76,8 +86,23 @@ export class NormalisedText {
   }
 }
 
-function devanagariDigitsToAscii(s: string): string {
-  return s.replace(DEVANAGARI_DIGIT, (d) => String(d.charCodeAt(0) - DEVANAGARI_ZERO));
+/** The zero of the block a decimal digit belongs to: the largest zero <= cp. */
+function blockZero(cp: number): number {
+  let lo = 0;
+  let hi = DECIMAL_DIGIT_ZEROS.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (DECIMAL_DIGIT_ZEROS[mid]! <= cp) lo = mid;
+    else hi = mid - 1;
+  }
+  return DECIMAL_DIGIT_ZEROS[lo]!;
+}
+
+function decimalDigitsToAscii(s: string): string {
+  return s.replace(NON_ASCII_DECIMAL_DIGIT, (d) => {
+    const cp = d.codePointAt(0)!;
+    return String(cp - blockZero(cp));
+  });
 }
 
 export function normalise(original: string): NormalisedText {
@@ -105,7 +130,7 @@ export function normalise(original: string): NormalisedText {
   let groupNormalised = '';
   const flush = (): void => {
     if (groupEnd === groupStart) return;
-    const out = devanagariDigitsToAscii(groupNormalised);
+    const out = decimalDigitsToAscii(groupNormalised);
     const start = visibleToOriginal[groupStart]!;
     const end = visibleToOriginal[groupEnd - 1]! + 1;
     text += out;
