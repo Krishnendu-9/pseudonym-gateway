@@ -5,7 +5,8 @@ reaches an LLM, and restores it in the reply.**
 
 > **Status: work in progress.** Not ready for production use. The design below is
 > being built; the [supported data types](#supported-data-types) table shows what
-> is available today.
+> is available today. Built so far: Unicode normalisation with an offset map, and
+> the Verhoeff and Luhn check digits. No data type is detected yet.
 
 ---
 
@@ -66,8 +67,10 @@ What Pseudonym is being built to do:
   always `[PERSON_1]`, without storing anything between requests.
 - **India-aware detection.** Aadhaar (Verhoeff check digit), PAN, IFSC and UPI IDs
   alongside emails, phone numbers and card numbers (Luhn check).
-- **Unicode-hardened.** Full-width and Devanagari digits, and zero-width characters
-  used to hide data, are normalised before detection.
+- **Unicode-hardened.** Full-width, mathematical and Devanagari digits are
+  normalised, and invisible characters that can hide data (zero-width spaces,
+  soft hyphens, direction marks) are removed before detection. Values are still
+  replaced in the original text, so a hidden value is replaced completely.
 - **Streaming-safe restoration.** Placeholders split across streamed chunks
   (`[PER` + `SON_1]`) are restored correctly with minimal buffering.
 - **Injection-aware.** Values are not restored inside URLs or links, blocking a
