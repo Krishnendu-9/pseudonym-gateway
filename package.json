@@ -6,10 +6,12 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.20.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "start": "node --disable-sigusr1 --env-file-if-exists=.env dist/src/main.js",
+    "dev": "tsx --env-file-if-exists=.env src/main.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -21,6 +23,7 @@
     "gen:digits": "tsx scripts/generate-decimal-digit-zeros.ts && prettier --write src/detection/decimal-digit-zeros.ts"
   },
   "dependencies": {
+    "fastify": "5.12.5",
     "libphonenumber-js": "~1.13.14",
     "zod": "4.6.5"
   },

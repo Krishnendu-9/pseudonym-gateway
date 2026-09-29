@@ -68,6 +68,14 @@ export class PlaceholderMapping {
     return formatPlaceholder(namespace, entry.index);
   }
 
+  /** How many placeholders have been assigned, across all namespaces
+   * (reservations do not count). */
+  get size(): number {
+    let total = 0;
+    for (const state of this.#namespaces.values()) total += state.byIndex.size;
+    return total;
+  }
+
   /**
    * Records that `index` in `namespace` is also a loose variant found in the
    * user's own text (ADR-002, ADR-013).

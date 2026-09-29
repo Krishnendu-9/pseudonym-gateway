@@ -182,6 +182,17 @@ describe('restore: restoration safety (design doc)', () => {
     );
   });
 
+  it('leaves the token after "[label]:" in prose unrestored (the cost of the bug-log 14 fix)', () => {
+    // Every "[…]:" may be a reference definition, so the token after it is
+    // treated as a destination even in ordinary prose. The safe side, and a
+    // documented cost (Phase 8 threat-model notes in CLAUDE.md).
+    const mapping = mappingWith([['EMAIL', 'asha@example.org']]);
+    expect(restore('[Note]: [EMAIL_1] replied.', mapping)).toBe('[Note]: [EMAIL_1] replied.');
+    expect(restore('[Note]:\n[EMAIL_1] replied.', mapping)).toBe('[Note]:\n[EMAIL_1] replied.');
+    // Only that one token: the next one restores.
+    expect(restore('[Note]: see [EMAIL_1].', mapping)).toBe('[Note]: see asha@example.org.');
+  });
+
   it('does not restore inside a markdown link, an href attribute, or a bare URL', () => {
     const mapping = mappingWith([['AADHAAR', '234567890123']]);
     expect(restore('[here](https://example.com/x?d=[AADHAAR_1])', mapping)).toBe(

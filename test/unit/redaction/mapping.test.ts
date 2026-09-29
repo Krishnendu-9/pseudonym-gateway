@@ -79,3 +79,16 @@ describe('PlaceholderMapping: lookup', () => {
     expect(mapping.lookup('CARD', 1)).toBeUndefined();
   });
 });
+
+describe('PlaceholderMapping: size', () => {
+  it('counts assigned placeholders across namespaces, not repeats or reservations', () => {
+    const mapping = new PlaceholderMapping();
+    expect(mapping.size).toBe(0);
+    mapping.reserve('CARD', 1);
+    expect(mapping.size).toBe(0);
+    mapping.getOrAssign('CARD', 'a', 'a');
+    mapping.getOrAssign('CARD', 'a', 'a');
+    mapping.getOrAssign('LITERAL', '[PAN_1]', '[PAN_1]');
+    expect(mapping.size).toBe(2);
+  });
+});

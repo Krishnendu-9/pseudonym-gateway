@@ -43,6 +43,14 @@ const LITERAL_PATTERN = bracketPattern(ALL_NAMESPACES);
 const BARE_UNDERSCORE_PATTERN = barePattern(ALL_NAMESPACES, '_');
 const BARE_SPACE_PATTERN = barePattern([...BARE_SPACE_NAMESPACES], ' ');
 
+/**
+ * Text that has been through redactMessage() (or is Pseudonym's own fixed
+ * text, see gateway/instruction.ts). A compile-time tag only: at run time it
+ * is a plain string. Provider adapters accept nothing else, so text that
+ * skipped redaction cannot be sent to a provider without a type error.
+ */
+export type RedactedText = string & { readonly __brand: 'RedactedText' };
+
 interface Span {
   readonly start: number;
   readonly end: number;
@@ -97,7 +105,7 @@ function reserveLooseVariants(
 }
 
 /** Redacts one message's text, assigning placeholders from (and into) `mapping`. */
-export function redactMessage(text: string, mapping: PlaceholderMapping): string {
+export function redactMessage(text: string, mapping: PlaceholderMapping): RedactedText {
   const literalSpans: ReplacementSpan[] = [...text.matchAll(LITERAL_PATTERN)].map((match) => ({
     start: match.index,
     end: match.index + match[0].length,
@@ -124,5 +132,5 @@ export function redactMessage(text: string, mapping: PlaceholderMapping): string
       text.slice(cursor, span.start) + mapping.getOrAssign(span.namespace, span.key, span.value);
     cursor = span.end;
   }
-  return out + text.slice(cursor);
+  return (out + text.slice(cursor)) as RedactedText;
 }

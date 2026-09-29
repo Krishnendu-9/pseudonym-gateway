@@ -3,13 +3,15 @@
 **An OpenAI-compatible privacy gateway that pseudonymises personal data before it
 reaches an LLM, and restores it in the reply.**
 
-> **Status: work in progress (Phase 2 of 8 done).** Not ready for production use.
-> Built so far, as a library with unit tests: Unicode normalisation with an
-> offset map; detectors for email, phone, Aadhaar, PAN and card numbers; and
-> placeholder redaction and restoration (deterministic numbering, tolerant
-> restoration, no restoring inside URLs). **Nothing is redacted end to end
-> yet:** there is no gateway, so nothing is received from an app or sent to a
-> provider. That comes in Phase 3. Detection accuracy has not been measured yet.
+> **Status: work in progress (Phase 3 of 8 done).** Not ready for production use.
+> Pseudonym now runs as a gateway: `POST /v1/chat/completions` (OpenAI format,
+> **non-streaming only**) redacts emails, phone numbers, Aadhaar, PAN, card
+> numbers and any other number of 9+ digits, forwards the request to a local
+> [Ollama](https://ollama.com) model, and restores the values in the answer.
+> A no-leak test sends 737 planted values through it and checks none reaches
+> the provider. **Person names and API keys are not detected yet** (they are
+> sent as written), streaming is rejected, and detection accuracy has not
+> been measured yet.
 
 ---
 
@@ -43,11 +45,12 @@ Your app ◄── Pseudonym ◄── AI answer
 > Sorry about that, Priya Sharma. I've flagged the duplicate charge on card
 > 4111 1111 1111 1111 and we'll email priya.sharma@example.com within 24 hours.
 
-To adopt it, an app only changes its API base URL. No code changes.
+To adopt it, an app changes its API base URL and sets the model name to the one
+Pseudonym is configured for. No other code changes.
 
 _(All example data in this repo is synthetic. 4111 1111 1111 1111 is a published
-test card number. Person-name detection is planned; emails and card numbers come
-first.)_
+test card number. Person-name detection is planned (Phase 6): today, the name in
+this example would be sent as written; the email and card number would not.)_
 
 ## The promise
 
@@ -64,7 +67,9 @@ detection rates instead of marketing numbers.
 What Pseudonym is being built to do:
 
 - **OpenAI-compatible API.** `POST /v1/chat/completions`; switch by changing the
-  base URL.
+  base URL and the model name. Every request field is on an allowlist:
+  message text and `stop` are redacted, numeric settings are forwarded,
+  `user` is dropped, and anything else is rejected rather than forwarded.
 - **Stateless by design.** Chat APIs resend the full history on every request, so
   Pseudonym re-pseudonymises it deterministically each time. The same person is
   always `[PERSON_1]`, without storing anything between requests.
@@ -75,34 +80,44 @@ What Pseudonym is being built to do:
   normalised, and invisible characters that can hide data (zero-width spaces,
   soft hyphens, direction marks) are removed before detection. Values are still
   replaced in the original text, so a hidden value is replaced completely.
-- **Streaming-safe restoration.** Placeholders split across streamed chunks
-  (`[PER` + `SON_1]`) are restored correctly with minimal buffering.
+- **Placeholder instruction.** When a request contains placeholders,
+  Pseudonym adds one short system message asking the model to copy them
+  exactly, since a placeholder the model rewrites ("email 1") cannot be
+  restored. On by default and switchable (`PSEUDONYM_PLACEHOLDER_INSTRUCTION`);
+  whether it helps will be measured, and the default will follow.
+- **Streaming-safe restoration** (planned, Phase 4). Placeholders split across
+  streamed chunks (`[PER` + `SON_1]`) will be restored correctly with minimal
+  buffering. Until then, streaming requests are rejected.
 - **Injection-aware.** Values are not restored inside URLs, markdown links or
   HTML attributes, blocking a known image-URL exfiltration trick. This covers
   that one path, not prompt injection in general.
-- **Proof plan.** A no-leak test, property-based streaming tests, and an
-  evaluation suite with a held-out, hand-written adversarial dataset.
+- **Proof.** Built: a no-leak test (737 planted values through the real gateway
+  to a recording mock provider; none may arrive in any form) and a canary test
+  (every error path forced; no planted value in any response, log line or
+  error), each shown able to fail by switching off one detector or check at a
+  time. Planned: property-based streaming tests, and an evaluation suite with
+  a held-out, hand-written adversarial dataset.
 
 ## Supported data types
 
-**Library only, so far.** The detectors below find values, and the redaction
-library replaces them with placeholders and restores them; both are
-unit-tested. **Nothing is redacted end to end yet:** the gateway that receives
-requests and forwards them to a provider (Phase 3) is not built. Do not rely
-on Pseudonym to protect data today.
+The types marked "redacted" below are replaced before a request leaves
+Pseudonym, in every message and in `stop`. Everything else in a message is
+sent as written: a person's name or an API key typed into a message **goes to
+the provider today**. Accuracy has not been measured yet (Phase 5), so do not
+rely on Pseudonym to protect real data.
 
-| Type                               | Validation                                                                            | Status                          |
-| ---------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------- |
-| Email                              | pattern (Unicode addresses included)                                                  | redaction library (unit-tested) |
-| Phone (India + international)      | libphonenumber-js, full metadata                                                      | redaction library (unit-tested) |
-| Aadhaar                            | Verhoeff check digit, first digit 2–9                                                 | redaction library (unit-tested) |
-| PAN                                | format + holder-type letter                                                           | redaction library (unit-tested) |
-| Card number                        | Luhn + issuer prefix (Visa, Mastercard, Amex, Discover, RuPay, Diners, JCB, UnionPay) | redaction library (unit-tested) |
-| Any other number of 9+ digits      | none: a safety net for numbers no detector claimed (bank accounts, odd layouts)       | redaction library (unit-tested) |
-| IFSC, UPI ID, IP address, API keys | pattern + context                                                                     | planned                         |
-| Person names                       | local NER model                                                                       | planned                         |
+| Type                               | Validation                                                                            | Status   |
+| ---------------------------------- | ------------------------------------------------------------------------------------- | -------- |
+| Email                              | pattern (Unicode addresses included)                                                  | redacted |
+| Phone (India + international)      | libphonenumber-js, full metadata                                                      | redacted |
+| Aadhaar                            | Verhoeff check digit, first digit 2–9                                                 | redacted |
+| PAN                                | format + holder-type letter                                                           | redacted |
+| Card number                        | Luhn + issuer prefix (Visa, Mastercard, Amex, Discover, RuPay, Diners, JCB, UnionPay) | redacted |
+| Any other number of 9+ digits      | none: a safety net for numbers no detector claimed (bank accounts, odd layouts)       | redacted |
+| IFSC, UPI ID, IP address, API keys | pattern + context                                                                     | planned  |
+| Person names                       | local NER model                                                                       | planned  |
 
-Which detected matches count (and will be redacted once the Phase 3 gateway exists):
+Which detected matches count:
 
 - **Validated** (passes the checks above): always.
 - **Right shape, failed checks** (for example an Aadhaar with a typo in its
@@ -128,7 +143,9 @@ not recognised as their type, so that hashes and API keys are not cut up
 (numbers of 9+ digits are still caught as generic numbers); a number written
 in space-separated groups that fails its checks (an Aadhaar or card with a
 typo) is caught only with a keyword nearby, because spaces do not join digits
-for the safety net; nor are emails written as "name at example dot com",
+for the safety net; a number with a **line break** between its digit groups
+(or split across two messages) is not caught at all, since each part is too
+short for the safety net; nor are emails written as "name at example dot com",
 quoted or IP-literal addresses, or the 16-digit Aadhaar Virtual ID.
 
 Measured precision and recall will be published here once the evaluation suite
@@ -136,41 +153,78 @@ exists. Until then, no accuracy numbers are claimed.
 
 ## Unsupported input
 
-Pseudonym will handle text chat messages (system, user and assistant roles),
-streamed and non-streamed. Tool/function calls, image or audio content,
-embeddings and other endpoints are out of scope at first: they will be
-**rejected with a 4xx error**, never forwarded unredacted.
+Pseudonym handles text chat messages (system, user and assistant roles),
+non-streamed. Everything else is **rejected with a 4xx error**, never
+forwarded unredacted:
+
+- `stream: true` (streaming comes in Phase 4);
+- a message `name` (names cannot be redacted until Phase 6);
+- tool/function calls and tool messages, the `developer` role;
+- image, audio and file content parts;
+- `metadata`/`store`, logprobs, `n` other than 1, `json_schema` response
+  formats;
+- a `model` other than the one Pseudonym is configured for;
+- **any request field Pseudonym does not know**;
+- other endpoints (embeddings, `/v1/models`, …), bodies over 256 KiB, and
+  anything that is not `application/json`.
+
+The `user` and `safety_identifier` fields are accepted and dropped: they
+exist to identify the end user to the provider. Error messages never repeat
+what was sent, and a provider's own error message is never passed on (it can
+echo the prompt): the client gets a 502 with the provider's status code.
 
 ## Threat model (summary)
 
 **Protects against:** the AI provider seeing detected personal values, and
 provider-side logging or training on them.
 
-**Does not protect against:** values the detectors miss; anything your application
-logs before calling Pseudonym; a compromised Pseudonym host; prompt injection that
+**Does not protect against:** values the detectors miss (today that includes
+every person's name and API key); anything your application logs before
+calling Pseudonym; a compromised Pseudonym host; prompt injection that
 manipulates answers (only the URL-exfiltration path is mitigated).
+
+**Inside Pseudonym:** the mapping from placeholders back to real values
+exists only in memory for one request, and is never logged, stored or put in
+an error. It is not encrypted (the key would sit in the same process), and
+JavaScript strings cannot be reliably wiped, so someone who can read the
+process's memory can read values. In production (`NODE_ENV=production`)
+Pseudonym refuses to start if the debugger, heap snapshots or diagnostic
+reports could be switched on, or, on Linux, if core dumps are enabled or
+`--disable-sigusr1` is missing. It cannot stop a host that pipes core dumps
+to a handler (the kernel then ignores the limit; Pseudonym warns), and it can
+verify none of this on Windows or macOS. Production means Linux.
+
+Logs contain the method, route, status and timing of each request, never a
+body, a URL or an error message.
 
 The full threat model will be documented as the project matures.
 
 ## Running locally
 
-Requires Node.js 22+.
+Requires Node.js 22.20+ and, to actually talk to a model,
+[Ollama](https://ollama.com) with a model pulled (for example
+`ollama pull qwen3:8b`). The tests do not need Ollama.
 
 ```bash
 npm install
 npm test            # run the test suite
 npm run lint        # lint
 npm run typecheck   # type-check
+
+cp .env.example .env    # then set PSEUDONYM_MODEL to your Ollama model
+npm run dev             # gateway on http://127.0.0.1:3000/v1
 ```
 
-The gateway server is not built yet.
+Point your OpenAI client at `http://127.0.0.1:3000/v1` and use the same model
+name as `PSEUDONYM_MODEL`; requests naming any other model are rejected.
+`.env.example` lists every setting (body limit, timeout, restoration safety,
+the placeholder instruction).
 
 ## Tech stack
 
-Installed today: TypeScript (strict) · Node.js 22 · Zod · libphonenumber-js
-(phone validation) · Vitest · fast-check · ESLint · Prettier
-
-Chosen but not yet installed: Fastify (HTTP server, added in Phase 3)
+TypeScript (strict) · Node.js 22 · Fastify (with its Pino logger) · Zod ·
+libphonenumber-js (phone validation) · Vitest · fast-check · ESLint · Prettier.
+The provider is called with Node's built-in `fetch`.
 
 ## License
 

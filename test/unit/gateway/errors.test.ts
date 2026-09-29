@@ -1,0 +1,189 @@
+// Error mapping and what may be logged about an error: every message a
+// client sees is fixed text, and a logged error keeps its name, code and
+// stack frames but never its message.
+
+import { describe, expect, it } from 'vitest';
+import { GatewayError, safeErrorDetails, toGatewayError } from '../../../src/gateway/errors.js';
+import { ProviderError } from '../../../src/providers/provider.js';
+import { PlaceholderLimitError } from '../../../src/redaction/placeholder.js';
+
+const LIMIT = 262_144;
+const fastifyError = (code: string, statusCode: number): Error =>
+  Object.assign(new Error(`message with canary@example.com (${code})`), { code, statusCode });
+
+describe('toGatewayError', () => {
+  it('passes a GatewayError through unchanged', () => {
+    const error = new GatewayError(400, 'x', 'y');
+    expect(toGatewayError(error, LIMIT)).toBe(error);
+  });
+
+  it('PlaceholderLimitError → 422, fixed message, no namespace', () => {
+    const safe = toGatewayError(new PlaceholderLimitError('EMAIL'), LIMIT);
+    expect(safe.body()).toEqual({
+      error: {
+        message: 'too many distinct values of one type in one request',
+        type: 'invalid_request_error',
+        param: null,
+        code: 'too_many_values',
+      },
+    });
+    expect(safe.statusCode).toBe(422);
+  });
+
+  it.each([
+    [new ProviderError('timeout'), 504, 'provider_timeout', 'the provider did not answer in time'],
+    [
+      new ProviderError('http', 400),
+      502,
+      'provider_error',
+      'the provider returned an error (status 400)',
+    ],
+    [
+      new ProviderError('http', 503),
+      502,
+      'provider_error',
+      'the provider returned an error (status 503)',
+    ],
+    [
+      new ProviderError('bad_response'),
+      502,
+      'provider_bad_response',
+      'the provider returned an unusable response',
+    ],
+    [
+      new ProviderError('unavailable'),
+      502,
+      'provider_unavailable',
+      'the provider could not be reached',
+    ],
+    [
+      new ProviderError('aborted'),
+      502,
+      'provider_unavailable',
+      'the provider could not be reached',
+    ],
+  ])('%s → %i %s', (error, status, code, message) => {
+    const safe = toGatewayError(error, LIMIT);
+    expect([safe.statusCode, safe.code, safe.message, safe.type]).toEqual([
+      status,
+      code,
+      message,
+      'api_error',
+    ]);
+  });
+
+  it.each([
+    ['FST_ERR_CTP_INVALID_JSON_BODY', 400, 400, 'invalid_json', 'request body is not valid JSON'],
+    ['FST_ERR_CTP_EMPTY_JSON_BODY', 400, 400, 'invalid_json', 'request body is not valid JSON'],
+    [
+      'FST_ERR_CTP_BODY_TOO_LARGE',
+      413,
+      413,
+      'body_too_large',
+      'request body is larger than 262144 bytes',
+    ],
+    [
+      'FST_ERR_CTP_INVALID_MEDIA_TYPE',
+      415,
+      415,
+      'unsupported_media_type',
+      'content type must be application/json',
+    ],
+    ['FST_ERR_SOMETHING_ELSE', 400, 400, 'invalid_request', 'invalid request'],
+    ['FST_ERR_SOMETHING_ELSE', 499, 400, 'invalid_request', 'invalid request'],
+    ['FST_ERR_SOMETHING_ELSE', 500, 500, 'internal_error', 'internal error'],
+  ])('Fastify %s (%i) → %i %s, message replaced', (code, upstream, status, ourCode, message) => {
+    const safe = toGatewayError(fastifyError(code, upstream), LIMIT);
+    expect([safe.statusCode, safe.code, safe.message]).toEqual([status, ourCode, message]);
+  });
+
+  it.each([
+    ['an Error', new Error('boom canary@example.com')],
+    ['a string', 'canary@example.com'],
+    ['null', null],
+    ['an object with a non-string code', { code: 42, statusCode: 'x' }],
+  ])('anything else (%s) → 500, fixed message', (_name, error) => {
+    const safe = toGatewayError(error, LIMIT);
+    expect(safe.body()).toEqual({
+      error: { message: 'internal error', type: 'api_error', param: null, code: 'internal_error' },
+    });
+  });
+
+  it('a 404 GatewayError has type not_found_error', () => {
+    expect(new GatewayError(404, 'not_found', 'x').type).toBe('not_found_error');
+  });
+});
+
+describe('safeErrorDetails', () => {
+  it('an unexpected Error: name and stack frames, never the message', () => {
+    const error = new Error('failed on canary@example.com');
+    const details = safeErrorDetails(error);
+    expect(details.name).toBe('Error');
+    expect(JSON.stringify(details)).not.toContain('canary');
+    expect((details.frames as string[]).length).toBeGreaterThan(0);
+    expect((details.frames as string[]).every((f) => f.startsWith('at '))).toBe(true);
+  });
+
+  it('a multi-line message shaped like stack frames is still dropped', () => {
+    const error = new Error('first line\n    at canary@example.com (4111 1111 1111 1111)');
+    const details = safeErrorDetails(error);
+    expect(JSON.stringify(details)).not.toContain('canary');
+    expect(JSON.stringify(details)).not.toContain('4111');
+  });
+
+  it('a message changed after the stack was read: header and message disagree, no frames at all', () => {
+    const error = new Error('original');
+    void error.stack; // V8 formats the stack on first access
+    error.message = 'changed to canary@example.com';
+    const details = safeErrorDetails(error);
+    expect(details.frames).toEqual([]);
+    expect(JSON.stringify(details)).not.toContain('canary');
+  });
+
+  it('a message changed before the stack was read: the lazy stack uses the new header, still cut', () => {
+    const error = new Error('original');
+    error.message = 'changed to canary@example.com';
+    const details = safeErrorDetails(error);
+    expect((details.frames as string[]).length).toBeGreaterThan(0);
+    expect(JSON.stringify(details)).not.toContain('canary');
+  });
+
+  it('an error without a stack', () => {
+    const error = new Error('x');
+    delete error.stack;
+    expect(safeErrorDetails(error)).toEqual({ name: 'Error', frames: [] });
+  });
+
+  it('known errors: name and code, no frames', () => {
+    expect(safeErrorDetails(new GatewayError(400, 'stream_not_supported', 'x'))).toEqual({
+      name: 'GatewayError',
+      code: 'stream_not_supported',
+    });
+    expect(safeErrorDetails(new ProviderError('http', 502))).toEqual({
+      name: 'ProviderError',
+      failure: 'http',
+      status: 502,
+    });
+    expect(safeErrorDetails(new ProviderError('timeout'))).toEqual({
+      name: 'ProviderError',
+      failure: 'timeout',
+    });
+    expect(safeErrorDetails(new PlaceholderLimitError('EMAIL'))).toEqual({
+      name: 'PlaceholderLimitError',
+    });
+    expect(safeErrorDetails(fastifyError('FST_ERR_CTP_BODY_TOO_LARGE', 413))).toEqual({
+      name: 'Error',
+      code: 'FST_ERR_CTP_BODY_TOO_LARGE',
+    });
+  });
+
+  it('a code that does not look like a code is not logged', () => {
+    const error = Object.assign(new Error('x'), { code: 'canary@example.com' });
+    expect(JSON.stringify(safeErrorDetails(error))).not.toContain('canary');
+  });
+
+  it('a thrown non-Error: only its type', () => {
+    expect(safeErrorDetails('canary@example.com')).toEqual({ name: 'string' });
+    expect(safeErrorDetails(undefined)).toEqual({ name: 'undefined' });
+  });
+});
