@@ -88,6 +88,18 @@ function fromProvider(error: ProviderError): GatewayError {
         'provider_bad_response',
         'the provider returned an unusable response',
       );
+    case 'too_large':
+      return new GatewayError(
+        502,
+        'provider_response_too_large',
+        'the provider response was larger than the response size limit',
+      );
+    case 'stream_error':
+      return new GatewayError(
+        502,
+        'provider_error',
+        'the provider reported an error during the stream',
+      );
     case 'unavailable':
     case 'aborted':
       return new GatewayError(502, 'provider_unavailable', 'the provider could not be reached');

@@ -14,6 +14,7 @@ import { aadhaar, groupDigits } from '../../src/synthetic/values.js';
 import {
   chatBody,
   post,
+  readStreamed,
   startTestGateway,
   TEST_MODEL,
   type TestGateway,
@@ -22,6 +23,11 @@ import {
   completionBody,
   echoLastUserMessage,
   okCompletion,
+  ollamaStreamEvents,
+  sseData,
+  STREAM_ID,
+  STREAM_USAGE,
+  streamed,
   type Responder,
 } from '../support/mock-provider.js';
 import { assertTextEqualQuietly } from '../support/quiet-text.js';
@@ -47,6 +53,7 @@ interface SentBody {
   model: string;
   messages: { role: string; content: string }[];
   stream: boolean;
+  stream_options?: unknown;
   stop?: string[];
   [key: string]: unknown;
 }
@@ -370,16 +377,19 @@ describe('the placeholder instruction (ADR-017)', () => {
 describe('request errors (OpenAI error shape)', () => {
   const errorOf = (body: string) => JSON.parse(body) as { error: Record<string, unknown> };
 
-  it('stream: true is rejected with a clear 400 and nothing is sent', async () => {
+  it('stream_options without stream: true is rejected with a clear 400 and nothing is sent', async () => {
     gateway = await startTestGateway();
-    const response = await post(gateway, { ...chatBody('hi'), stream: true });
+    const response = await post(gateway, {
+      ...chatBody('hi'),
+      stream_options: { include_usage: true },
+    });
     expect(response.statusCode).toBe(400);
     expect(errorOf(response.body)).toEqual({
       error: {
-        message: 'streaming is not supported yet',
+        message: 'stream_options is only allowed when stream is true',
         type: 'invalid_request_error',
         param: null,
-        code: 'stream_not_supported',
+        code: 'invalid_request',
       },
     });
     expect(gateway.provider.requests).toHaveLength(0);
@@ -534,7 +544,7 @@ describe('logging', () => {
 
   it('logs a rejected request at info and a failed one at error, with safe details only', async () => {
     gateway = await startTestGateway();
-    await post(gateway, { ...chatBody('hi'), stream: true });
+    await post(gateway, { ...chatBody('hi'), tools: [] });
     gateway.provider.respondWith((_req, res) => {
       res.writeHead(500);
       res.end();
@@ -545,7 +555,7 @@ describe('logging', () => {
     expect(rejected).toMatchObject({
       level: 30,
       statusCode: 400,
-      error: { name: 'GatewayError', code: 'stream_not_supported' },
+      error: { name: 'GatewayError', code: 'unsupported_feature' },
     });
     const failed = lines.find((l) => l.msg === 'request failed')!;
     expect(failed).toMatchObject({
@@ -553,5 +563,178 @@ describe('logging', () => {
       statusCode: 502,
       error: { name: 'ProviderError', failure: 'http', status: 500 },
     });
+  });
+});
+
+describe('streaming (ADR-019)', () => {
+  const streamBody = (...messages: string[]): Record<string, unknown> => ({
+    ...chatBody(...messages),
+    stream: true,
+  });
+
+  it('redacts before sending, and streams the answer back restored, as server-sent events', async () => {
+    gateway = await startTestGateway();
+    gateway.provider.respondWith(
+      streamed(ollamaStreamEvents(['Refund issued to card [CA', 'RD_1] for ', '[EMAIL_1].'])),
+    );
+    const response = await post(
+      gateway,
+      streamBody(`My card ${CARD} was charged twice. Email me at asha@example.org.`),
+    );
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toBe('text/event-stream; charset=utf-8');
+    expect(response.headers['cache-control']).toBe('no-cache');
+    const sent = sentBodies(gateway)[0]!;
+    expect(sent.stream).toBe(true);
+    expect(sent.stream_options).toBeUndefined();
+    expect(sent.messages).toEqual([
+      { role: 'user', content: 'My card [CARD_1] was charged twice. Email me at [EMAIL_1].' },
+    ]);
+    const streamedAnswer = readStreamed(response.body);
+    expect(streamedAnswer.content).toBe(`Refund issued to card ${CARD} for asha@example.org.`);
+    expect(streamedAnswer.done).toBe(true);
+    expect(streamedAnswer.error).toBeUndefined();
+    expect(new Set(streamedAnswer.chunks.map((c) => c.model))).toEqual(new Set([TEST_MODEL]));
+    expect(new Set(streamedAnswer.chunks.map((c) => c.id))).toEqual(new Set([STREAM_ID]));
+  });
+
+  it('gives the same answer as the non-streaming path for the same provider text', async () => {
+    const text = 'Card [CARD_1], mail [EMAIL_1], ![x](https://a.example/?d=[EMAIL_1]) CARD_1.x';
+    const request = `Card ${CARD}, mail asha@example.org`;
+    gateway = await startTestGateway();
+    gateway.provider.respondWith(okCompletion(text));
+    const whole = answer((await post(gateway, chatBody(request))).body);
+    gateway.provider.respondWith(streamed(ollamaStreamEvents([...text].map((ch) => ch))));
+    const pieces = readStreamed((await post(gateway, streamBody(request))).body).content;
+    expect(pieces).toBe(whole);
+    expect(whole).toContain('?d=[EMAIL_1]');
+  });
+
+  it('include_usage: forwarded to the provider, and the usage chunk comes last', async () => {
+    gateway = await startTestGateway();
+    gateway.provider.respondWith(streamed(ollamaStreamEvents(['ok'], { usage: true })));
+    const response = await post(gateway, {
+      ...streamBody('hi'),
+      stream_options: { include_usage: true },
+    });
+    expect(sentBodies(gateway)[0]!.stream_options).toEqual({ include_usage: true });
+    const { chunks, done } = readStreamed(response.body);
+    expect(chunks.at(-1)).toMatchObject({ choices: [], usage: STREAM_USAGE });
+    expect(chunks.slice(0, -1).every((c) => c.usage === null)).toBe(true);
+    expect(done).toBe(true);
+  });
+
+  it.each<[string, Responder, number, string, number?]>([
+    [
+      'provider status 500 → 502',
+      (_req, res) => {
+        res.writeHead(500, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: { message: 'upstream said something' } }));
+      },
+      502,
+      'provider_error',
+    ],
+    [
+      'a 200 that is not an event stream → 502',
+      (_req, res) => {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(completionBody('not a stream'));
+      },
+      502,
+      'provider_bad_response',
+    ],
+    ['no first chunk in time → 504', streamed([], { end: false }), 504, 'provider_timeout', 150],
+  ])(
+    'a failure before the first chunk is an ordinary HTTP error: %s',
+    async (_name, responder, status, code, timeoutMs) => {
+      gateway = await startTestGateway(timeoutMs === undefined ? {} : { timeoutMs });
+      gateway.provider.respondWith(responder);
+      const response = await post(gateway, streamBody('hi'));
+      expect(response.statusCode).toBe(status);
+      expect(response.headers['content-type']).toMatch(/^application\/json/);
+      expect((JSON.parse(response.body) as { error: { code: string } }).error.code).toBe(code);
+      expect(response.body).not.toContain('upstream said');
+    },
+  );
+
+  it.each<[string, (string | Uint8Array)[], string, string]>([
+    [
+      'the stream is cut off without [DONE]',
+      ollamaStreamEvents(['Refund to [CARD_1]']).slice(0, 1),
+      'provider_bad_response',
+      'the provider returned an unusable response',
+    ],
+    [
+      'the provider sends an error event',
+      [
+        ...ollamaStreamEvents(['Refund to [CARD_1]']).slice(0, 1),
+        sseData({ error: { message: 'upstream said something' } }),
+      ],
+      'provider_error',
+      'the provider reported an error during the stream',
+    ],
+  ])(
+    'a failure after the start: held text flushed, then an error event (%s)',
+    async (_name, parts, code, message) => {
+      gateway = await startTestGateway();
+      gateway.provider.respondWith(streamed(parts));
+      const response = await post(gateway, streamBody(`Card ${CARD}`));
+      expect(response.statusCode).toBe(200);
+      const result = readStreamed(response.body);
+      expect(result.content).toBe(`Refund to ${CARD}`);
+      expect(result.error).toEqual({ error: { message, type: 'api_error', param: null, code } });
+      expect(result.done).toBe(false);
+      expect(response.body).not.toContain('upstream said');
+      const lines = gateway.logs.map((l) => JSON.parse(l) as Record<string, unknown>);
+      expect(lines.find((l) => l.msg === 'stream failed')).toMatchObject({
+        level: 50,
+        code,
+        error: { name: 'ProviderError' },
+      });
+    },
+  );
+
+  it('a gap between chunks longer than the timeout → provider_timeout error event', async () => {
+    gateway = await startTestGateway({ timeoutMs: 400 });
+    gateway.provider.respondWith(
+      streamed(ollamaStreamEvents(['partial answer']).slice(0, 1), { end: false }),
+    );
+    const result = readStreamed((await post(gateway, streamBody('hi'))).body);
+    expect(result.content).toBe('partial answer');
+    expect(result.error?.error.code).toBe('provider_timeout');
+  });
+
+  it('a stream larger than the response size limit → provider_response_too_large error event', async () => {
+    gateway = await startTestGateway({ maxResponseBytes: 4_000 });
+    const events = ollamaStreamEvents(Array.from({ length: 40 }, () => 'word '));
+    gateway.provider.respondWith(streamed([events[0]!, events.slice(1).join('')], { pauseMs: 30 }));
+    const response = await post(gateway, streamBody('hi'));
+    const expected = {
+      error: {
+        message: 'the provider response was larger than the response size limit',
+        type: 'api_error',
+        param: null,
+        code: 'provider_response_too_large',
+      },
+    };
+    // If both writes reach one network read, the cap trips before the first
+    // chunk and the answer is an ordinary 502; otherwise it ends the stream
+    // (bug-log 20). Same error either way.
+    if (response.statusCode === 502) {
+      expect(JSON.parse(response.body)).toEqual(expected);
+    } else {
+      expect(response.statusCode).toBe(200);
+      expect(readStreamed(response.body).error).toEqual(expected);
+    }
+  });
+
+  it('a non-streamed answer larger than the response size limit → 502 provider_response_too_large', async () => {
+    gateway = await startTestGateway({ maxResponseBytes: 1_000 });
+    gateway.provider.respondWith(okCompletion('x'.repeat(2_000)));
+    const response = await post(gateway, chatBody('hi'));
+    expect(response.statusCode).toBe(502);
+    expect((JSON.parse(response.body) as { error: { code: string } }).error.code).toBe(
+      'provider_response_too_large',
+    );
   });
 });

@@ -3,17 +3,18 @@
 **An OpenAI-compatible privacy gateway that pseudonymises personal data before it
 reaches an LLM, and restores it in the reply.**
 
-> **Status: work in progress (Phase 3 of 8 done; Phase 4 half done: streaming
-> restoration is built and tested, the streaming endpoint is not).** Not ready
-> for production use.
-> Pseudonym now runs as a gateway: `POST /v1/chat/completions` (OpenAI format,
-> **non-streaming only**) redacts emails, phone numbers, Aadhaar, PAN, card
-> numbers and any other number of 9+ digits, forwards the request to a local
-> [Ollama](https://ollama.com) model, and restores the values in the answer.
-> A no-leak test sends 737 planted values through it and checks none reaches
-> the provider. **Person names and API keys are not detected yet** (they are
-> sent as written), streaming is rejected, and detection accuracy has not
-> been measured yet.
+> **Status: work in progress (Phase 4 of 8 done).** Not ready for production
+> use.
+> Pseudonym runs as a gateway: `POST /v1/chat/completions` (OpenAI format,
+> streaming and non-streaming) redacts emails, phone numbers, Aadhaar, PAN,
+> card numbers and any other number of 9+ digits, forwards the request to a
+> local [Ollama](https://ollama.com) model, and restores the values in the
+> answer, including when it arrives as a stream. No-leak tests send planted
+> values through both paths and check none reaches the provider. **Person
+> names and API keys are not detected yet** (they are sent as written), and
+> detection accuracy has not been measured yet. It has been tested against
+> a mock of Ollama built from Ollama's documentation and source, not yet
+> against a running Ollama.
 
 ---
 
@@ -87,23 +88,27 @@ What Pseudonym is being built to do:
   exactly, since a placeholder the model rewrites ("email 1") cannot be
   restored. On by default and switchable (`PSEUDONYM_PLACEHOLDER_INSTRUCTION`);
   whether it helps will be measured, and the default will follow.
-- **Streaming-safe restoration** (engine built; endpoint planned, Phase 4b).
-  Placeholders split across streamed chunks (`[CAR` + `D_1]`) are restored
-  correctly, holding back at most 15 characters and only while the text
-  could still become a placeholder. A property test checks that any way of
-  cutting an answer gives exactly the same result as restoring it whole.
-  Until the endpoint exists, streaming requests are rejected.
+- **Streaming.** `stream: true` returns OpenAI-style server-sent events
+  (with `stream_options.include_usage` if asked). Placeholders split across
+  streamed chunks (`[CAR` + `D_1]`) are restored correctly, holding back
+  at most 15 characters and only while the text could still become a
+  placeholder. A property test checks that any way of cutting an answer
+  gives exactly the same result as restoring it whole. If the provider
+  fails after the stream has started, the client gets what was already
+  decided, then an `error` event (the same fixed messages as an HTTP
+  error) and no `[DONE]`.
 - **Injection-aware.** Values are not restored inside URLs, markdown links or
   HTML attributes, or where they would become part of a hostname
   (`CARD_1.attacker.example`), blocking a known image-URL exfiltration trick.
   This covers that one path, not prompt injection in general.
-- **Proof.** Built: a no-leak test (737 planted values through the real gateway
-  to a recording mock provider; none may arrive in any form) and a canary test
-  (every error path forced; no planted value in any response, log line or
-  error), each shown able to fail by switching off one detector or check at a
-  time; property-based streaming restoration tests. Planned: streaming
-  no-leak and canary tests, and an evaluation suite with
-  a held-out, hand-written adversarial dataset.
+- **Proof.** Built: no-leak tests, streaming and non-streaming (seeded
+  histories full of planted values through the real gateway to a recording
+  mock provider; none may arrive in any form), and canary tests (every error
+  path forced, before and during a stream; no planted value in any
+  response, log line or error), each shown able to fail by switching off
+  one detector or check at a time; property-based streaming restoration
+  tests. Planned: an evaluation suite with a held-out, hand-written
+  adversarial dataset.
 
 ## Supported data types
 
@@ -161,15 +166,15 @@ exists. Until then, no accuracy numbers are claimed.
 ## Unsupported input
 
 Pseudonym handles text chat messages (system, user and assistant roles),
-non-streamed. Everything else is **rejected with a 4xx error**, never
+streamed or not. Everything else is **rejected with a 4xx error**, never
 forwarded unredacted:
 
-- `stream: true` (the streaming endpoint comes in Phase 4b);
 - a message `name` (names cannot be redacted until Phase 6);
 - tool/function calls and tool messages, the `developer` role;
 - image, audio and file content parts;
 - `metadata`/`store`, logprobs, `n` other than 1, `json_schema` response
-  formats;
+  formats; `stream_options` other than `include_usage`, or without
+  `stream: true`;
 - a `model` other than the one Pseudonym is configured for;
 - **any request field Pseudonym does not know**;
 - other endpoints (embeddings, `/v1/models`, …), bodies over 256 KiB, and
@@ -179,6 +184,11 @@ The `user` and `safety_identifier` fields are accepted and dropped: they
 exist to identify the end user to the provider. Error messages never repeat
 what was sent, and a provider's own error message is never passed on (it can
 echo the prompt): the client gets a 502 with the provider's status code.
+Pseudonym reads at most 1 MiB of a provider's response
+(`PSEUDONYM_MAX_RESPONSE_BYTES`), streamed or not; beyond that the answer
+fails with `provider_response_too_large`. Counted on the wire, 1 MiB is
+about 5,000 streamed tokens (each token arrives in its own ~210-byte
+chunk), so a long streamed answer can hit it; raise the limit if yours do.
 
 ## Threat model (summary)
 
@@ -224,8 +234,11 @@ npm run dev             # gateway on http://127.0.0.1:3000/v1
 
 Point your OpenAI client at `http://127.0.0.1:3000/v1` and use the same model
 name as `PSEUDONYM_MODEL`; requests naming any other model are rejected.
-`.env.example` lists every setting (body limit, timeout, restoration safety,
-the placeholder instruction).
+`.env.example` lists every setting (body and response limits, timeout,
+restoration safety, the placeholder instruction). The timeout covers the
+whole call when not streaming; when streaming it applies to each wait (for
+the first chunk, then between chunks), so a long answer that keeps arriving
+is never cut off by it.
 
 ## Tech stack
 

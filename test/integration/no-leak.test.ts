@@ -14,6 +14,9 @@
 // failure reports the history, the value's type and the form it leaked in,
 // never the value. How this test is shown to be able to fail (disabling a
 // detector) is recorded in dev_docs/testing-guide.md.
+//
+// The second block does it all again with stream: true (ADR-019), and
+// checks the streamed answer restores exactly what the user wrote.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { obfuscate } from '../../src/synthetic/obfuscate.js';
@@ -29,11 +32,12 @@ import {
 import {
   chatBody,
   post,
+  readStreamed,
   startTestGateway,
   TEST_MODEL,
   type TestGateway,
 } from '../support/gateway.js';
-import { echoLastUserMessage } from '../support/mock-provider.js';
+import { echoLastUserMessage, echoLastUserMessageStreamed } from '../support/mock-provider.js';
 import { expandCaptured, leakedForm } from '../support/leak-check.js';
 import { assertTextEqualQuietly } from '../support/quiet-text.js';
 
@@ -143,20 +147,69 @@ function makeHistory(rng: Rng): History {
   return { body, planted, lastUserText };
 }
 
+/** Histories totalling at least 300 messages, from one seed. */
+function makeHistories(seed: number): History[] {
+  const rng = createRng(seed);
+  const histories: History[] = [];
+  let messageCount = 0;
+  while (messageCount < 300) {
+    const history = makeHistory(rng);
+    histories.push(history);
+    messageCount += (history.body.messages as unknown[]).length;
+  }
+  return histories;
+}
+
+/**
+ * Sends every history (its body shaped by `bodyOf`) and fails if any
+ * planted value reached the provider in any form. The failure counts leaked
+ * values by "TYPE form" (e.g. "CARD squashed") and names the first few
+ * histories: small enough to print in full, and never a value.
+ */
+async function expectNoLeaks(
+  gateway: TestGateway,
+  histories: readonly History[],
+  bodyOf: (history: History) => Record<string, unknown>,
+): Promise<void> {
+  const leaks: Record<string, number> = {};
+  const firstLeaks: string[] = [];
+  const statuses: number[] = [];
+  const sentBefore = gateway.provider.requests.length;
+  for (const [i, history] of histories.entries()) {
+    const before = gateway.provider.requests.length;
+    const response = await post(gateway, bodyOf(history));
+    statuses.push(response.statusCode);
+    const sent = gateway.provider.requests.slice(before);
+    const captured = expandCaptured(sent.map((r) => r.body).join('\n'));
+    for (const planted of history.planted) {
+      const form = leakedForm(captured, planted.value);
+      if (!form) continue;
+      const key = `${planted.type} ${form}`;
+      leaks[key] = (leaks[key] ?? 0) + 1;
+      if (firstLeaks.length < 5) firstLeaks.push(`history ${i}: ${key}`);
+    }
+  }
+
+  expect(statuses.filter((s) => s !== 200)).toEqual([]);
+  expect(gateway.provider.requests.length - sentBefore).toBe(histories.length);
+  expect(histories.length).toBeGreaterThan(50);
+  expect(histories.reduce((n, h) => n + h.planted.length, 0)).toBeGreaterThan(500);
+  // Thrown rather than compared: Vitest truncates objects in its failure
+  // messages, and the full breakdown is what the mutation record needs.
+  if (firstLeaks.length > 0) {
+    throw new Error(
+      `Leaks by type and form: ${JSON.stringify(leaks)}; first: ${firstLeaks.join(', ')}`,
+    );
+  }
+}
+
 describe('no-leak: nothing planted reaches the provider', () => {
   let gateway: TestGateway;
-  const histories: History[] = [];
+  const histories = makeHistories(20_260_929);
 
   beforeAll(async () => {
     gateway = await startTestGateway();
     gateway.provider.respondWith(echoLastUserMessage);
-    const rng = createRng(20_260_929);
-    let messageCount = 0;
-    while (messageCount < 300) {
-      const history = makeHistory(rng);
-      histories.push(history);
-      messageCount += (history.body.messages as unknown[]).length;
-    }
   });
 
   afterAll(async () => {
@@ -164,38 +217,7 @@ describe('no-leak: nothing planted reaches the provider', () => {
   });
 
   it('sends every history, and no planted value in any form', async () => {
-    // Counts of leaked values by "TYPE form" (e.g. "CARD squashed"), plus
-    // the first few histories they were in: small enough for a failure diff
-    // to print in full, and never a value.
-    const leaks: Record<string, number> = {};
-    const firstLeaks: string[] = [];
-    const statuses: number[] = [];
-    for (const [i, history] of histories.entries()) {
-      const before = gateway.provider.requests.length;
-      const response = await post(gateway, history.body);
-      statuses.push(response.statusCode);
-      const sent = gateway.provider.requests.slice(before);
-      const captured = expandCaptured(sent.map((r) => r.body).join('\n'));
-      for (const planted of history.planted) {
-        const form = leakedForm(captured, planted.value);
-        if (!form) continue;
-        const key = `${planted.type} ${form}`;
-        leaks[key] = (leaks[key] ?? 0) + 1;
-        if (firstLeaks.length < 5) firstLeaks.push(`history ${i}: ${key}`);
-      }
-    }
-
-    expect(statuses.filter((s) => s !== 200)).toEqual([]);
-    expect(gateway.provider.requests).toHaveLength(histories.length);
-    expect(histories.length).toBeGreaterThan(50);
-    expect(histories.reduce((n, h) => n + h.planted.length, 0)).toBeGreaterThan(500);
-    // Thrown rather than compared: Vitest truncates objects in its failure
-    // messages, and the full breakdown is what the mutation record needs.
-    if (firstLeaks.length > 0) {
-      throw new Error(
-        `Leaks by type and form: ${JSON.stringify(leaks)}; first: ${firstLeaks.join(', ')}`,
-      );
-    }
+    await expectNoLeaks(gateway, histories, (h) => h.body);
   });
 
   it('restores every value in the answer (the provider echoes the last user message)', async () => {
@@ -226,5 +248,78 @@ describe('no-leak: nothing planted reaches the provider', () => {
       messages: { content: string }[];
     };
     expect(sent.messages.map((m) => m.content)).toEqual(['What is the capital of France?']);
+  });
+});
+
+// Streaming (ADR-019): another set of histories, sent with stream: true.
+// The provider streams the redacted last user message back cut into pieces,
+// inside most placeholders and at a few other places, so the round trip
+// also shows that the stream restorer never loses, doubles or garbles a
+// placeholder split across chunks.
+
+const PLACEHOLDER = /\[[A-Z]+_\d+\]/g;
+
+let cutsInsidePlaceholders = 0;
+
+/** Cuts `text` inside most of its placeholders, and at up to 4 other places. */
+function cutPieces(text: string, rng: Rng): string[] {
+  const cuts = new Set<number>();
+  for (const match of text.matchAll(PLACEHOLDER)) {
+    if (rng.chance(0.8)) {
+      cuts.add(match.index + rng.int(1, match[0].length - 1));
+      cutsInsidePlaceholders++;
+    }
+  }
+  const extra = rng.int(0, 4);
+  for (let i = 0; i < extra && text.length > 1; i++) cuts.add(rng.int(1, text.length - 1));
+  const pieces: string[] = [];
+  let from = 0;
+  for (const at of [...cuts].sort((a, b) => a - b)) {
+    pieces.push(text.slice(from, at));
+    from = at;
+  }
+  pieces.push(text.slice(from));
+  return pieces;
+}
+
+describe('no-leak: streaming', () => {
+  let gateway: TestGateway;
+  const histories = makeHistories(20_260_930);
+
+  beforeAll(async () => {
+    gateway = await startTestGateway();
+    const cutRng = createRng(4_040);
+    gateway.provider.respondWith(
+      echoLastUserMessageStreamed((text) => cutPieces(text, cutRng), { usage: true }),
+    );
+  });
+
+  afterAll(async () => {
+    await gateway.close();
+  });
+
+  it('sends every history with stream: true, and no planted value in any form', async () => {
+    await expectNoLeaks(gateway, histories, (h) => ({ ...h.body, stream: true }));
+    const streamedFlags = gateway.provider.requests.map(
+      (r) => (JSON.parse(r.body) as { stream: unknown }).stream,
+    );
+    expect(new Set(streamedFlags)).toEqual(new Set([true]));
+  });
+
+  it('restores every value in the streamed answer, however it was cut', async () => {
+    cutsInsidePlaceholders = 0;
+    for (const history of histories) {
+      const response = await post(gateway, {
+        ...history.body,
+        stream: true,
+        stream_options: { include_usage: true },
+      });
+      const streamed = readStreamed(response.body);
+      if (!streamed.done || streamed.error) throw new Error('a stream did not finish cleanly');
+      assertTextEqualQuietly(streamed.content, history.lastUserText);
+    }
+    // The cuts really did land inside placeholders, many times over (199
+    // with these seeds).
+    expect(cutsInsidePlaceholders).toBeGreaterThan(150);
   });
 });

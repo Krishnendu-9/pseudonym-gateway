@@ -55,6 +55,7 @@ const provider = createOllamaProvider({
   model: env.PSEUDONYM_MODEL,
   apiKey: env.PSEUDONYM_PROVIDER_API_KEY,
   timeoutMs: env.PSEUDONYM_PROVIDER_TIMEOUT_MS,
+  maxResponseBytes: env.PSEUDONYM_MAX_RESPONSE_BYTES,
 });
 
 const app = buildServer(

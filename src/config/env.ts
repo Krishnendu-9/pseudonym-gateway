@@ -21,12 +21,18 @@ const envSchema = z.object({
   PSEUDONYM_MODEL: z.string().min(1),
   PSEUDONYM_PROVIDER_BASE_URL: z.url({ protocol: /^https?$/ }).default('http://localhost:11434/v1'),
   PSEUDONYM_PROVIDER_API_KEY: z.string().min(1).optional(),
-  // Local models on a CPU can take minutes for a long answer.
+  // Local models on a CPU can take minutes for a long answer. Streaming
+  // applies it to every wait instead: the headers, then each next piece.
   PSEUDONYM_PROVIDER_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
   // 256 KiB (ADR-015): about 64k English tokens; redacting it takes about
   // 0.25 s for prose and about 1.1 s for digit-heavy text, during which the
   // event loop serves nothing else.
   PSEUDONYM_MAX_BODY_BYTES: z.coerce.number().int().positive().default(262_144),
+  // 1 MiB (ADR-020): the most of a provider response the gateway will read,
+  // streaming or not. Counted on the wire: a 4,000-token English answer is
+  // about 16 KB non-streamed, but streamed each token is its own ~210-byte
+  // chunk, so 1 MiB is about 5,000 streamed tokens (ADR-020, open issue).
+  PSEUDONYM_MAX_RESPONSE_BYTES: z.coerce.number().int().positive().default(1_048_576),
   PSEUDONYM_RESTORE_IN_UNSAFE_REGIONS: booleanFlag('false'),
   // Provisional default until Phase 5 measures it (ADR-017).
   PSEUDONYM_PLACEHOLDER_INSTRUCTION: booleanFlag('true'),

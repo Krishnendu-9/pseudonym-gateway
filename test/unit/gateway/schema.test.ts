@@ -72,7 +72,6 @@ describe('parseChatRequest: accepted', () => {
     'modalities',
     'metadata',
     'store',
-    'stream_options',
     'top_logprobs',
     'logit_bias',
     'prediction',
@@ -84,7 +83,6 @@ describe('parseChatRequest: accepted', () => {
 
 describe('parseChatRequest: unsupported features, each with its own message', () => {
   it.each([
-    [{ stream: true }, 'stream_not_supported', 'streaming is not supported yet'],
     [{ tools: [] }, 'unsupported_feature', 'tool and function calling is not supported'],
     [{ tool_choice: 'auto' }, 'unsupported_feature', 'tool and function calling is not supported'],
     [{ functions: [] }, 'unsupported_feature', 'tool and function calling is not supported'],
@@ -109,11 +107,6 @@ describe('parseChatRequest: unsupported features, each with its own message', ()
       { store: false },
       'unsupported_feature',
       'stored completions (store, metadata) are not supported',
-    ],
-    [
-      { stream_options: {} },
-      'unsupported_feature',
-      'stream_options needs streaming, which is not supported yet',
     ],
     [{ logprobs: true }, 'unsupported_feature', 'logprobs are not supported'],
     [{ top_logprobs: 2 }, 'unsupported_feature', 'logprobs are not supported'],
@@ -278,5 +271,44 @@ describe('renderPath', () => {
     expect(renderPath(['Priya@example.com'])).toBe('request');
     expect(renderPath(['messages', 0, 'Priya'])).toBe('messages[0]');
     expect(renderPath(['messages', Symbol('x')])).toBe('messages');
+  });
+});
+
+describe('parseChatRequest: streaming (ADR-019)', () => {
+  it.each([
+    [{ stream: true }],
+    [{ stream: true, stream_options: { include_usage: true } }],
+    [{ stream: true, stream_options: { include_usage: false } }],
+    [{ stream: true, stream_options: { include_usage: null } }],
+    [{ stream: true, stream_options: {} }],
+    [{ stream: true, stream_options: null }],
+    [{ stream: false, stream_options: null }],
+  ])('accepted: %j', (fields) => {
+    expect(parseChatRequest({ ...base, ...fields })).toEqual({ ...base, ...fields });
+  });
+
+  it.each([
+    [{ stream_options: { include_usage: true } }],
+    [{ stream: false, stream_options: {} }],
+    [{ stream: null, stream_options: { include_usage: false } }],
+  ])('stream_options without stream: true → 400 (OpenAI does the same): %j', (fields) => {
+    expect(rejection({ ...base, ...fields })).toEqual({
+      code: 'invalid_request',
+      message: 'stream_options is only allowed when stream is true',
+      status: 400,
+    });
+  });
+
+  it('an unknown stream option is rejected without naming it', () => {
+    expect(
+      rejection({ ...base, stream: true, stream_options: { 'priya@example.com': true } }),
+    ).toEqual({ code: 'invalid_request', message: 'unknown field in stream_options', status: 400 });
+  });
+
+  it.each([
+    [{ stream: true, stream_options: { include_usage: 'yes' } }, 'stream_options.include_usage'],
+    [{ stream: true, stream_options: 'usage' }, 'stream_options'],
+  ])('a wrongly typed stream option: %j', (fields, where) => {
+    expect(rejection({ ...base, ...fields }).message).toBe(`invalid value at ${where}`);
   });
 });

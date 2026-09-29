@@ -1,26 +1,35 @@
-// The HTTP server: one endpoint, POST /v1/chat/completions (non-streaming),
-// in OpenAI's format.
+// The HTTP server: one endpoint, POST /v1/chat/completions, in OpenAI's
+// format, streaming (server-sent events) or not.
 //
 // A request's life: Fastify parses the JSON body (application/json only,
 // capped at the body limit) -> parseChatRequest() applies the allowlist ->
 // one PlaceholderMapping is created -> redactRequest() redacts every piece of
-// client text into it -> the provider answers in placeholders -> restore()
+// client text into it -> the provider answers in placeholders -> restoration
 // puts real values back into the answer -> the response is built field by
-// field. The mapping is referenced only from the handler's scope, so it is
-// unreachable once the response is sent (ADR-012).
+// field. The mapping is referenced only from the handler's scope (and, when
+// streaming, from the stream's restorer), so it is unreachable once the
+// response is sent or the stream ends (ADR-012).
 //
 // Redaction and restoration run in the route handler, not in the
 // preValidation/onSend hooks ADR-001 first sketched (ADR-001 amendment):
 // onSend only sees the serialised payload, the wrong place to restore.
+//
+// Streaming (ADR-019): everything up to the provider's first chunk happens
+// before a byte is sent, so every failure there (a provider error status,
+// no answer in time, a first chunk we cannot use) is an ordinary HTTP error
+// from the error handler. After that the response is 200 and a failure
+// becomes an `error` event at the end of the stream (stream.ts).
 
+import { Readable } from 'node:stream';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { ChatProvider } from '../providers/provider.js';
 import { PlaceholderMapping } from '../redaction/mapping.js';
-import { restore } from '../redaction/restore.js';
+import { restore, StreamRestorer } from '../redaction/restore.js';
 import { GatewayError, safeErrorDetails, toGatewayError } from './errors.js';
 import { loggerOptions, type LogStream } from './logging.js';
 import { redactRequest } from './redact-request.js';
 import { parseChatRequest } from './schema.js';
+import { sseEvents } from './stream.js';
 
 export interface ServerConfig {
   /** The one model requests must name (ADR-014). */
@@ -69,6 +78,7 @@ export function buildServer(config: ServerConfig, provider: ChatProvider): Fasti
     const outbound = redactRequest(chat, mapping, {
       placeholderInstruction: config.placeholderInstruction,
     });
+    const restoreOptions = { restoreInUnsafeRegions: config.restoreInUnsafeRegions };
 
     // A client that disconnects should not keep a provider call running.
     const controller = new AbortController();
@@ -76,10 +86,29 @@ export function buildServer(config: ServerConfig, provider: ChatProvider): Fasti
       if (!reply.raw.writableFinished) controller.abort();
     });
 
+    if (chat.stream === true) {
+      const includeUsage = chat.stream_options?.include_usage === true;
+      const stream = await provider.stream(outbound, controller.signal, { includeUsage });
+      const events = sseEvents(stream, {
+        model: config.model,
+        includeUsage,
+        restorer: new StreamRestorer(mapping, restoreOptions),
+        onError: (error) => {
+          const safe = toGatewayError(error, config.bodyLimit);
+          const details = { error: safeErrorDetails(error), code: safe.code };
+          if (controller.signal.aborted) request.log.info(details, 'stream ended: client left');
+          else request.log.error(details, 'stream failed');
+          return safe;
+        },
+      });
+      return reply
+        .header('content-type', 'text/event-stream; charset=utf-8')
+        .header('cache-control', 'no-cache')
+        .send(Readable.from(events));
+    }
+
     const result = await provider.complete(outbound, controller.signal);
-    const content = restore(result.content, mapping, {
-      restoreInUnsafeRegions: config.restoreInUnsafeRegions,
-    });
+    const content = restore(result.content, mapping, restoreOptions);
 
     return {
       id: result.id,

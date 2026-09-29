@@ -14,7 +14,7 @@ import {
   unsafeRegions,
   UnsafeRegionScanner,
 } from '../../../src/redaction/unsafe-regions.js';
-import { growthRatio, MAX_GROWTH_RATIO } from '../../support/linear-time.js';
+import { growthRatio, MAX_GROWTH_RATIO, ofLength } from '../../support/linear-time.js';
 import { assertPropertyQuietly } from '../../support/quiet-property.js';
 import { legacyUnsafeRegions, oracleUnsafeRegions } from '../../support/restore-reference.js';
 import { streamedAnswerArb } from '../../support/restoration-text.js';
@@ -284,8 +284,8 @@ describe('unsafeRegions: linear time (bug-log 16)', () => {
     ['a host label chain, repeated', 'a-b.c'],
     ['prose', 'word word '],
   ])('%s', (_name, unit) => {
-    const make = (n: number): string => unit.repeat(n);
-    expect(growthRatio(make, 20_000, unsafeRegions)).toBeLessThan(MAX_GROWTH_RATIO);
+    const make = (n: number): string => ofLength(unit, n);
+    expect(growthRatio(make, 80_000, unsafeRegions)).toBeLessThan(MAX_GROWTH_RATIO);
   });
 });
 

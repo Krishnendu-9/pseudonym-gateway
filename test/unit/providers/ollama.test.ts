@@ -1,18 +1,34 @@
 // The Ollama adapter against a real HTTP mock of Ollama's OpenAI-compatible
 // endpoint: the exact bytes it sends, what it keeps from the answer, and
-// that every failure becomes a ProviderError naming the kind only.
+// that every failure becomes a ProviderError naming the kind only. Both
+// calls, `complete` and `stream` (ADR-019), and the response size cap on
+// each (ADR-020).
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createOllamaProvider, type OllamaConfig } from '../../../src/providers/ollama.js';
+import {
+  createOllamaProvider,
+  MAX_EVENT_BYTES,
+  type OllamaConfig,
+} from '../../../src/providers/ollama.js';
 import {
   ProviderError,
   type ChatProvider,
   type ProviderChatRequest,
+  type ProviderStream,
+  type ProviderStreamEvent,
 } from '../../../src/providers/provider.js';
 import type { RedactedText } from '../../../src/redaction/redact.js';
 import {
   completionBody,
+  ollamaStreamEvents,
+  sseData,
   startMockProvider,
+  STREAM_CREATED,
+  STREAM_ID,
+  STREAM_USAGE,
+  streamChunk,
+  streamed,
+  streamPiece,
   type MockProvider,
   type Responder,
 } from '../../support/mock-provider.js';
@@ -35,7 +51,13 @@ afterEach(async () => {
 });
 
 const provider = (config: Partial<OllamaConfig> = {}): ChatProvider =>
-  createOllamaProvider({ baseUrl: mock.baseUrl, model: 'qwen3:8b', timeoutMs: 2_000, ...config });
+  createOllamaProvider({
+    baseUrl: mock.baseUrl,
+    model: 'qwen3:8b',
+    timeoutMs: 2_000,
+    maxResponseBytes: 1_048_576,
+    ...config,
+  });
 
 const respond =
   (status: number, body: string): Responder =>
@@ -168,6 +190,18 @@ describe('createOllamaProvider: failures', () => {
     ]);
   });
 
+  it('204 No Content (ok to fetch, but no body at all) → bad_response, for both calls', async () => {
+    mock.respondWith((_req, res) => {
+      res.writeHead(204);
+      res.end();
+    });
+    const complete = await failure(provider().complete(REQUEST, new AbortController().signal));
+    const stream = await failure(
+      provider().stream(REQUEST, new AbortController().signal, { includeUsage: false }),
+    );
+    expect([complete.failure, stream.failure]).toEqual(['bad_response', 'bad_response']);
+  });
+
   it('no answer within the timeout → timeout', async () => {
     mock.respondWith(() => undefined);
     const error = await failure(
@@ -203,6 +237,368 @@ describe('createOllamaProvider: failures', () => {
     });
     const error = await failure(provider().complete(REQUEST, controller.signal));
     expect(error.failure).toBe('aborted');
+    await closed;
+  });
+});
+
+describe('createOllamaProvider: the response size cap on complete (ADR-020)', () => {
+  it('a declared Content-Length over the cap → too_large, before the body is read', async () => {
+    mock.respondWith((_req, res) => {
+      res.writeHead(200, { 'content-type': 'application/json', 'content-length': '2000' });
+      res.write('{"id":');
+      // Never finishes: only the header can have decided it.
+    });
+    const error = await failure(
+      provider({ maxResponseBytes: 1_000 }).complete(REQUEST, new AbortController().signal),
+    );
+    expect(error.failure).toBe('too_large');
+  });
+
+  it('a chunked body that grows past the cap → too_large', async () => {
+    mock.respondWith((_req, res) => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(completionBody('x'.repeat(2_000)));
+    });
+    const error = await failure(
+      provider({ maxResponseBytes: 1_000 }).complete(REQUEST, new AbortController().signal),
+    );
+    expect(error.failure).toBe('too_large');
+  });
+
+  it('a body exactly at the cap is read', async () => {
+    const body = completionBody('ok');
+    mock.respondWith(respond(200, body));
+    const result = await provider({ maxResponseBytes: Buffer.byteLength(body) }).complete(
+      REQUEST,
+      new AbortController().signal,
+    );
+    expect(result.content).toBe('ok');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// stream()
+
+const openStream = (
+  config: Partial<OllamaConfig> = {},
+  signal = new AbortController().signal,
+  includeUsage = false,
+): Promise<ProviderStream> => provider(config).stream(REQUEST, signal, { includeUsage });
+
+async function collect(stream: ProviderStream): Promise<ProviderStreamEvent[]> {
+  const events: ProviderStreamEvent[] = [];
+  for await (const event of stream.events) events.push(event);
+  return events;
+}
+
+/** The failure the iteration ends with, and the events before it. */
+async function midStreamFailure(
+  stream: ProviderStream,
+): Promise<{ events: ProviderStreamEvent[]; error: ProviderError }> {
+  const events: ProviderStreamEvent[] = [];
+  const error = await failure(
+    (async () => {
+      for await (const event of stream.events) events.push(event);
+    })(),
+  );
+  return { events, error };
+}
+
+const piece = streamPiece;
+const finishChunk = (reason = 'stop'): string =>
+  sseData(streamChunk([{ index: 0, delta: {}, finish_reason: reason }]));
+const usageChunk = sseData(streamChunk([], { usage: STREAM_USAGE }));
+const DONE = sseData('[DONE]');
+
+describe('createOllamaProvider.stream: the request', () => {
+  it('sends stream: true, and stream_options only when usage is asked for', async () => {
+    mock.respondWith(streamed(ollamaStreamEvents(['a'])));
+    await collect(await openStream());
+    await collect(await openStream({}, undefined, true));
+    const [plain, withUsage] = mock.requests.map((r) => JSON.parse(r.body) as object);
+    expect(plain).toEqual({
+      model: 'qwen3:8b',
+      messages: [
+        { role: 'system', content: 'Be brief.' },
+        { role: 'user', content: 'Card [CARD_1]?' },
+      ],
+      stream: true,
+      temperature: 0.5,
+      max_tokens: 20,
+    });
+    expect(withUsage).toEqual({ ...plain, stream_options: { include_usage: true } });
+  });
+});
+
+describe('createOllamaProvider.stream: the answer', () => {
+  it("resolves with the first chunk's id and created, then yields content, finish, usage", async () => {
+    mock.respondWith(streamed(ollamaStreamEvents(['Yes, ', '[CARD', '_1].'], { usage: true })));
+    const stream = await openStream({}, undefined, true);
+    expect([stream.id, stream.created]).toEqual([STREAM_ID, STREAM_CREATED]);
+    expect(await collect(stream)).toEqual([
+      { type: 'content', text: 'Yes, ' },
+      { type: 'content', text: '[CARD' },
+      { type: 'content', text: '_1].' },
+      { type: 'finish', reason: 'stop' },
+      { type: 'usage', usage: STREAM_USAGE },
+    ]);
+  });
+
+  it('skips empty and missing content, and drops reasoning, role and timings', async () => {
+    mock.respondWith(
+      streamed([
+        sseData(streamChunk([{ index: 0, delta: { role: 'assistant' }, finish_reason: null }])),
+        piece('', { reasoning: 'thinking...' }),
+        sseData(streamChunk([{ index: 0, delta: { content: null }, finish_reason: null }])),
+        piece('ok'),
+        finishChunk('length'),
+        DONE,
+      ]),
+    );
+    expect(await collect(await openStream())).toEqual([
+      { type: 'content', text: 'ok' },
+      { type: 'finish', reason: 'length' },
+    ]);
+  });
+
+  it('content and finish_reason in one chunk: content first', async () => {
+    mock.respondWith(
+      streamed([
+        sseData(streamChunk([{ index: 0, delta: { content: 'end' }, finish_reason: 'stop' }])),
+        DONE,
+      ]),
+    );
+    expect(await collect(await openStream())).toEqual([
+      { type: 'content', text: 'end' },
+      { type: 'finish', reason: 'stop' },
+    ]);
+  });
+
+  it('an empty answer: only the finish', async () => {
+    mock.respondWith(streamed(ollamaStreamEvents([])));
+    expect(await collect(await openStream())).toEqual([{ type: 'finish', reason: 'stop' }]);
+  });
+
+  it('events split across network reads come out the same', async () => {
+    const whole = ollamaStreamEvents(['₹ 5', ' for [CARD_1]'], { usage: true }).join('');
+    const encoded = new TextEncoder().encode(whole);
+    for (const cut of [1, 7, 60, 150, 200, encoded.length - 3]) {
+      mock.respondWith(streamed([encoded.subarray(0, cut), encoded.subarray(cut)], { pauseMs: 5 }));
+      const events = await collect(await openStream({}, undefined, true));
+      const text = events.map((e) => (e.type === 'content' ? e.text : '')).join('');
+      expect(text).toBe('₹ 5 for [CARD_1]');
+      expect(events.at(-1)).toEqual({ type: 'usage', usage: STREAM_USAGE });
+    }
+  });
+
+  it('ignores anything after [DONE]', async () => {
+    mock.respondWith(streamed([...ollamaStreamEvents(['a']), 'data: not json\n\n']));
+    expect(await collect(await openStream())).toEqual([
+      { type: 'content', text: 'a' },
+      { type: 'finish', reason: 'stop' },
+    ]);
+  });
+
+  // Timings leave wide margins: a busy machine stretched a 60 ms gap past a
+  // 150 ms timeout in one full run (bug-log 20).
+  it('keeps going while every gap is shorter than the timeout (per wait, not in total)', async () => {
+    const pieces = Array.from({ length: 12 }, (_, i) => `p${i} `);
+    mock.respondWith(streamed(ollamaStreamEvents(pieces), { pauseMs: 50 }));
+    // 15 writes 50 ms apart: about 700 ms in all, over the 500 ms timeout,
+    // with every gap a tenth of it.
+    const events = await collect(await openStream({ timeoutMs: 500 }));
+    expect(events).toHaveLength(13);
+  });
+
+  it('time the consumer takes between reads does not count against the timeout', async () => {
+    mock.respondWith(streamed(ollamaStreamEvents(['a', 'b'])));
+    const stream = await openStream({ timeoutMs: 300 });
+    const events: ProviderStreamEvent[] = [];
+    for await (const event of stream.events) {
+      events.push(event);
+      await new Promise((resolve) => setTimeout(resolve, 450));
+    }
+    expect(events.map((e) => e.type)).toEqual(['content', 'content', 'finish']);
+  });
+});
+
+describe('createOllamaProvider.stream: failures before the first chunk (a rejection)', () => {
+  it.each([400, 404, 500])('status %i → http, with the status and no body', async (status) => {
+    mock.respondWith(respond(status, JSON.stringify({ error: { message: 'model "x"' } })));
+    const error = await failure(openStream());
+    expect([error.failure, error.status]).toEqual(['http', status]);
+  });
+
+  it('a well-formed stream sent as text/plain → bad_response (the content type is checked)', async () => {
+    mock.respondWith(
+      streamed(ollamaStreamEvents(['a']), { headers: { 'content-type': 'text/plain' } }),
+    );
+    expect((await failure(openStream())).failure).toBe('bad_response');
+  });
+
+  it('200 but not an event stream (a JSON error, say) → bad_response', async () => {
+    mock.respondWith(respond(200, JSON.stringify({ error: { message: 'oops' } })));
+    expect((await failure(openStream())).failure).toBe('bad_response');
+  });
+
+  it('a declared Content-Length over the cap → too_large', async () => {
+    mock.respondWith(
+      streamed(ollamaStreamEvents(['a']), { headers: { 'content-length': '5000' }, end: false }),
+    );
+    expect((await failure(openStream({ maxResponseBytes: 1_000 }))).failure).toBe('too_large');
+  });
+
+  it('no headers within the timeout → timeout', async () => {
+    mock.respondWith(() => undefined);
+    expect((await failure(openStream({ timeoutMs: 100 }))).failure).toBe('timeout');
+  });
+
+  it('headers, but no first chunk within the timeout → timeout', async () => {
+    mock.respondWith(streamed([], { end: false }));
+    expect((await failure(openStream({ timeoutMs: 100 }))).failure).toBe('timeout');
+  });
+
+  it.each([
+    ['not JSON', ['data: Sorry, [CARD_1] failed\n\n']],
+    ['the wrong shape', [sseData({ choices: [{ text: 'a' }] })]],
+    ['[DONE] and nothing else', [DONE]],
+    ['cut off before any event', ['data: {"id":']],
+  ])('a first event that is %s → bad_response', async (_name, parts) => {
+    mock.respondWith(streamed(parts));
+    expect((await failure(openStream())).failure).toBe('bad_response');
+  });
+
+  it('a first event that is an error → stream_error', async () => {
+    mock.respondWith(streamed([sseData({ error: { message: 'bad [CARD_1]' } })]));
+    expect((await failure(openStream())).failure).toBe('stream_error');
+  });
+
+  it('the connection is refused → unavailable', async () => {
+    await mock.close();
+    expect((await failure(openStream())).failure).toBe('unavailable');
+  });
+
+  it('the caller aborts before the first chunk → aborted', async () => {
+    const controller = new AbortController();
+    mock.respondWith((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      res.flushHeaders();
+      setTimeout(() => controller.abort(), 20);
+    });
+    expect((await failure(openStream({}, controller.signal))).failure).toBe('aborted');
+  });
+});
+
+describe('createOllamaProvider.stream: failures after the first chunk (thrown from the events)', () => {
+  const first = piece('Hello');
+
+  it.each([
+    // Ollama's own mid-stream failure: the error JSON goes through the chunk
+    // writer (already 200), and the stream ends without [DONE].
+    ['it ends without [DONE] (how Ollama fails)', [first, '{"error":{"message":"x"}}\n']],
+    ['it ends after the finish but before [DONE]', [first, finishChunk()]],
+    ['[DONE] arrives without a finish', [first, DONE]],
+    ['a chunk is not JSON', [first, 'data: {"choices": [Sorry\n\n']],
+    ['a chunk has the wrong shape', [first, sseData({ id: 'x' })]],
+    // Finish and [DONE] follow, so only the tool-call check can fail it.
+    [
+      'a chunk carries a tool call',
+      [first, piece('', { tool_calls: [{ id: 't' }] }), finishChunk(), DONE],
+    ],
+    ['finish_reason is tool_calls', [first, finishChunk('tool_calls'), DONE]],
+    ['content arrives after the finish', [first, finishChunk(), piece('more'), DONE]],
+    ['usage arrives before the finish', [first, usageChunk, finishChunk(), DONE]],
+    ['usage arrives twice', [first, finishChunk(), usageChunk, usageChunk, DONE]],
+    [
+      'a chunk has two choices',
+      [
+        first,
+        sseData(
+          streamChunk([
+            { index: 0, delta: { content: 'a' }, finish_reason: null },
+            { index: 1, delta: { content: 'b' }, finish_reason: null },
+          ]),
+        ),
+      ],
+    ],
+  ])('%s → bad_response', async (_name, parts) => {
+    mock.respondWith(streamed(parts));
+    const { events, error } = await midStreamFailure(await openStream());
+    expect(events[0]).toEqual({ type: 'content', text: 'Hello' });
+    expect(error.failure).toBe('bad_response');
+  });
+
+  it('an error event in the middle → stream_error', async () => {
+    mock.respondWith(streamed([first, sseData({ error: { message: 'overloaded' } })]));
+    expect((await midStreamFailure(await openStream())).error.failure).toBe('stream_error');
+  });
+
+  it('a gap longer than the timeout → timeout', async () => {
+    mock.respondWith(streamed([first], { end: false }));
+    const { events, error } = await midStreamFailure(await openStream({ timeoutMs: 300 }));
+    expect([events.length, error.failure]).toEqual([1, 'timeout']);
+  });
+
+  // Where a size cap trips depends on how the bytes arrive: if the first
+  // chunk and the rest reach one network read, the read itself is over the
+  // cap and stream() rejects; otherwise the events throw. Both are right
+  // (bug-log 20), so these two accept either and check the failure.
+  const failureAnywhere = async (opening: Promise<ProviderStream>): Promise<ProviderError> => {
+    try {
+      return (await midStreamFailure(await opening)).error;
+    } catch (error) {
+      if (error instanceof ProviderError) return error;
+      throw error;
+    }
+  };
+
+  it('more bytes than the cap in all → too_large', async () => {
+    const many = Array.from({ length: 50 }, () => piece('x'.repeat(40)));
+    mock.respondWith(streamed([first, [...many, finishChunk(), DONE].join('')], { pauseMs: 30 }));
+    const error = await failureAnywhere(openStream({ maxResponseBytes: 2_000 }));
+    expect(error.failure).toBe('too_large');
+  });
+
+  it('one event over MAX_EVENT_BYTES → too_large, though under the total cap', async () => {
+    mock.respondWith(streamed([first, piece('x'.repeat(MAX_EVENT_BYTES)), finishChunk(), DONE]));
+    const error = await failureAnywhere(openStream());
+    expect(error.failure).toBe('too_large');
+  });
+
+  it('the connection is cut → unavailable', async () => {
+    mock.respondWith(async (req, res) => {
+      await streamed([first], { end: false })(req, res);
+      setTimeout(() => res.destroy(), 150);
+    });
+    expect((await midStreamFailure(await openStream())).error.failure).toBe('unavailable');
+  });
+
+  it('the caller aborts → aborted, and the upstream request is closed', async () => {
+    const controller = new AbortController();
+    let upstreamClosed!: () => void;
+    const closed = new Promise<void>((resolve) => (upstreamClosed = resolve));
+    mock.respondWith(async (req, res) => {
+      res.on('close', () => upstreamClosed());
+      await streamed([first], { end: false })(req, res);
+    });
+    const stream = await openStream({}, controller.signal);
+    setTimeout(() => controller.abort(), 20);
+    expect((await midStreamFailure(stream)).error.failure).toBe('aborted');
+    await closed;
+  });
+
+  it('a consumer that stops early releases the upstream connection', async () => {
+    let upstreamClosed!: () => void;
+    const closed = new Promise<void>((resolve) => (upstreamClosed = resolve));
+    mock.respondWith(async (req, res) => {
+      res.on('close', () => upstreamClosed());
+      await streamed([first, piece('more')], { end: false })(req, res);
+    });
+    const stream = await openStream();
+    for await (const event of stream.events) {
+      expect(event.type).toBe('content');
+      break;
+    }
     await closed;
   });
 });

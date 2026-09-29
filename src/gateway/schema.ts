@@ -9,7 +9,7 @@
 //
 // Two passes. `unsupportedFeature` first gives a specific message for things
 // OpenAI supports and Pseudonym deliberately does not (tools, images,
-// streaming...). Then a strict Zod schema checks everything else. Neither
+// audio...). Then a strict Zod schema checks everything else. Neither
 // ever puts a received value, or an unknown key's name, into a message: a
 // key can itself be personal data (`{"priya@example.com": 1}`). Paths are
 // built from known field names and array indices only.
@@ -28,7 +28,9 @@ const message = z.strictObject({
 const requestSchema = z.strictObject({
   model: z.string().min(1),
   messages: z.array(message).min(1),
-  stream: z.literal(false).nullish(),
+  stream: z.boolean().nullish(),
+  // Only with stream: true (checked below). include_usage is the only option.
+  stream_options: z.strictObject({ include_usage: z.boolean().nullish() }).nullish(),
   temperature: z.number().min(0).max(2).nullish(),
   top_p: z.number().min(0).max(1).nullish(),
   max_tokens: z.int().positive().nullish(),
@@ -73,7 +75,6 @@ const UNSUPPORTED_FIELDS: Readonly<Record<string, string>> = {
   modalities: 'only text output is supported',
   metadata: 'stored completions (store, metadata) are not supported',
   store: 'stored completions (store, metadata) are not supported',
-  stream_options: 'stream_options needs streaming, which is not supported yet',
   top_logprobs: 'logprobs are not supported',
   logit_bias: 'logit_bias is not supported',
   prediction: 'predicted outputs are not supported',
@@ -81,9 +82,6 @@ const UNSUPPORTED_FIELDS: Readonly<Record<string, string>> = {
 };
 
 function unsupportedFeature(body: Record<string, unknown>): GatewayError | undefined {
-  if (body.stream === true) {
-    return new GatewayError(400, 'stream_not_supported', 'streaming is not supported yet');
-  }
   if (body.logprobs === true) return unsupported('logprobs are not supported');
   if (typeof body.n === 'number' && body.n !== 1) return unsupported('n must be 1');
   if (isRecord(body.response_format) && body.response_format.type === 'json_schema') {
@@ -162,6 +160,14 @@ export function parseChatRequest(body: unknown): ChatRequest {
       400,
       'invalid_request',
       'set max_tokens or max_completion_tokens, not both',
+    );
+  }
+  // OpenAI's own rule: stream_options without streaming is a 400.
+  if (result.data.stream_options != null && result.data.stream !== true) {
+    throw new GatewayError(
+      400,
+      'invalid_request',
+      'stream_options is only allowed when stream is true',
     );
   }
   return result.data;

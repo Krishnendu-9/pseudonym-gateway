@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { PlaceholderMapping } from '../../../src/redaction/mapping.js';
 import type { PlaceholderNamespace } from '../../../src/redaction/placeholder.js';
 import { restore } from '../../../src/redaction/restore.js';
-import { growthRatio, MAX_GROWTH_RATIO } from '../../support/linear-time.js';
+import { growthRatio, MAX_GROWTH_RATIO, ofLength } from '../../support/linear-time.js';
 
 function mappingWith(
   entries: readonly [namespace: PlaceholderNamespace, value: string][],
@@ -272,8 +272,8 @@ describe('restore: linear time (bug-log 17)', () => {
     ['prose', 'word word '],
   ])('%s', (_name, unit) => {
     const mapping = mappingWith([['CARD', '4111111111111111']]);
-    const make = (n: number): string => unit.repeat(n);
-    expect(growthRatio(make, 5_000, (text) => restore(text, mapping))).toBeLessThan(
+    const make = (n: number): string => ofLength(unit, n);
+    expect(growthRatio(make, 50_000, (text) => restore(text, mapping))).toBeLessThan(
       MAX_GROWTH_RATIO,
     );
   });

@@ -57,6 +57,18 @@ describe('toGatewayError', () => {
       'the provider could not be reached',
     ],
     [
+      new ProviderError('too_large'),
+      502,
+      'provider_response_too_large',
+      'the provider response was larger than the response size limit',
+    ],
+    [
+      new ProviderError('stream_error'),
+      502,
+      'provider_error',
+      'the provider reported an error during the stream',
+    ],
+    [
       new ProviderError('aborted'),
       502,
       'provider_unavailable',

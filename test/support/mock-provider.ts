@@ -88,3 +88,98 @@ export async function startMockProvider(): Promise<MockProvider> {
       }),
   };
 }
+
+// Streams, as Ollama writes them (middleware/openai.go, checked 2026-09-29;
+// a recorded fixture from a real Ollama is a follow-up): `data: <chunk>`
+// events, the first with `delta.role`, `content` left out when empty, a
+// separate finish chunk, with include_usage a `choices: []` chunk carrying
+// `usage` and `timings`, then `data: [DONE]`.
+
+export const STREAM_ID = 'chatcmpl-stream';
+export const STREAM_CREATED = 1_790_000_100;
+
+/** One `data:` event with a JSON payload (or a literal such as `[DONE]`). */
+export const sseData = (payload: unknown): string =>
+  `data: ${typeof payload === 'string' ? payload : JSON.stringify(payload)}\n\n`;
+
+/** One chunk in Ollama's shape. */
+export function streamChunk(
+  choices: Record<string, unknown>[],
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    id: STREAM_ID,
+    object: 'chat.completion.chunk',
+    created: STREAM_CREATED,
+    model: 'upstream-model',
+    system_fingerprint: 'fp_ollama',
+    choices,
+    ...extra,
+  };
+}
+
+export const STREAM_USAGE = { prompt_tokens: 12, completion_tokens: 7, total_tokens: 19 };
+
+/** Every event of a successful stream of `pieces`, in Ollama's order. */
+export function ollamaStreamEvents(
+  pieces: readonly string[],
+  options: { usage?: boolean; finishReason?: string } = {},
+): string[] {
+  const events = pieces.map((content, i) =>
+    sseData(
+      streamChunk([
+        {
+          index: 0,
+          delta: { ...(i === 0 ? { role: 'assistant' } : {}), ...(content ? { content } : {}) },
+          finish_reason: null,
+        },
+      ]),
+    ),
+  );
+  if (pieces.length === 0) {
+    events.push(
+      sseData(streamChunk([{ index: 0, delta: { role: 'assistant' }, finish_reason: null }])),
+    );
+  }
+  events.push(
+    sseData(streamChunk([{ index: 0, delta: {}, finish_reason: options.finishReason ?? 'stop' }])),
+  );
+  if (options.usage) {
+    events.push(sseData(streamChunk([], { usage: STREAM_USAGE, timings: { predicted_n: 7 } })));
+  }
+  events.push(sseData('[DONE]'));
+  return events;
+}
+
+/**
+ * Writes `parts` (strings or bytes) one write at a time with the SSE
+ * headers, then ends the response unless `end` is false. `pauseMs` waits
+ * between writes, so they reach the adapter as separate reads.
+ */
+export const streamed =
+  (
+    parts: readonly (string | Uint8Array)[],
+    options: { end?: boolean; pauseMs?: number; headers?: Record<string, string> } = {},
+  ): Responder =>
+  async (_request, response) => {
+    response.writeHead(200, { 'content-type': 'text/event-stream', ...options.headers });
+    for (const part of parts) {
+      if (response.destroyed) return;
+      response.write(part);
+      if (options.pauseMs) await new Promise((resolve) => setTimeout(resolve, options.pauseMs));
+    }
+    if (options.end !== false) response.end();
+  };
+
+/** Streams the last user message back in the pieces `split` cuts it into. */
+export const echoLastUserMessageStreamed =
+  (split: (text: string) => string[], options: { usage?: boolean } = {}): Responder =>
+  (request, response) => {
+    const body = JSON.parse(request.body) as { messages: { role: string; content: string }[] };
+    const last = body.messages.filter((m) => m.role === 'user').at(-1)?.content ?? '';
+    return streamed(ollamaStreamEvents(split(last), options))(request, response);
+  };
+
+/** One content chunk (no role), with optional extra delta fields. */
+export const streamPiece = (content: string, extra: Record<string, unknown> = {}): string =>
+  sseData(streamChunk([{ index: 0, delta: { content, ...extra }, finish_reason: null }]));

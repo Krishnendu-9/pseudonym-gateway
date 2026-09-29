@@ -4,6 +4,9 @@
 //
 // Every string the adapter may send is typed RedactedText
 // (redaction/redact.ts): an unredacted string does not type-check here.
+//
+// Two calls: `complete` returns the whole answer; `stream` returns it in
+// pieces (ADR-019). Either way every failure is a ProviderError.
 
 import type { RedactedText } from '../redaction/redact.js';
 
@@ -36,20 +39,67 @@ export interface ProviderUsage {
   readonly total_tokens: number;
 }
 
+export type FinishReason = 'stop' | 'length' | 'content_filter';
+
 /** The answer, still in placeholders; the gateway restores `content`. */
 export interface ProviderChatResult {
   readonly id: string;
   readonly created: number;
   readonly content: string;
-  readonly finishReason: 'stop' | 'length' | 'content_filter';
+  readonly finishReason: FinishReason;
   readonly usage?: ProviderUsage;
+}
+
+/** One piece of a streamed answer, still in placeholders. */
+export type ProviderStreamEvent =
+  | { readonly type: 'content'; readonly text: string }
+  | { readonly type: 'finish'; readonly reason: FinishReason }
+  | { readonly type: 'usage'; readonly usage: ProviderUsage };
+
+/**
+ * A streamed answer. `stream()` resolves once the provider has accepted the
+ * request and sent its first chunk, which is where `id` and `created` come
+ * from. Everything that can go wrong before that is a rejection, which the
+ * gateway can still answer with an HTTP error status.
+ *
+ * `events` then yields, in this order: any number of `content` events,
+ * exactly one `finish`, at most one `usage`. It ends only once the provider
+ * has said the answer is complete; anything else (a cut connection, a
+ * malformed chunk, a gap longer than the timeout) is a ProviderError thrown
+ * from the iteration.
+ */
+export interface ProviderStream {
+  readonly id: string;
+  readonly created: number;
+  readonly events: AsyncIterable<ProviderStreamEvent>;
+}
+
+export interface StreamOptions {
+  /** Ask the provider for token usage at the end of the stream. */
+  readonly includeUsage: boolean;
 }
 
 export interface ChatProvider {
   complete(request: ProviderChatRequest, signal: AbortSignal): Promise<ProviderChatResult>;
+  stream(
+    request: ProviderChatRequest,
+    signal: AbortSignal,
+    options: StreamOptions,
+  ): Promise<ProviderStream>;
 }
 
-export type ProviderFailure = 'timeout' | 'unavailable' | 'http' | 'bad_response' | 'aborted';
+/**
+ * - `timeout`: no answer, or no next chunk, within the timeout;
+ * - `unavailable`: the connection failed or was cut;
+ * - `http`: a status other than 2xx;
+ * - `bad_response`: an answer we cannot use (not JSON, the wrong shape, a
+ *   tool call, a stream that ended before the provider said it was done);
+ * - `too_large`: more bytes than the response size cap (ADR-020);
+ * - `stream_error`: the provider sent an error in the middle of a stream;
+ * - `aborted`: our caller gave up (the client disconnected).
+ */
+export type ProviderFailure =
+  'timeout' | 'unavailable' | 'http' | 'bad_response' | 'too_large' | 'stream_error' | 'aborted';
 
 /**
  * A provider call failed. Carries only what kind of failure it was and, for

@@ -23,6 +23,7 @@ export interface TestGateway {
 export async function startTestGateway(
   overrides: Partial<ServerConfig> & {
     timeoutMs?: number;
+    maxResponseBytes?: number;
     apiKey?: string;
     /** Replaces the Ollama adapter (the mock server still starts, unused). */
     chatProvider?: ChatProvider;
@@ -31,7 +32,13 @@ export async function startTestGateway(
   const provider = await startMockProvider();
   const logs: string[] = [];
   const errors: unknown[] = [];
-  const { timeoutMs = 5_000, apiKey, chatProvider, ...config } = overrides;
+  const {
+    timeoutMs = 5_000,
+    maxResponseBytes = 1_048_576,
+    apiKey,
+    chatProvider,
+    ...config
+  } = overrides;
   const app = buildServer(
     {
       model: TEST_MODEL,
@@ -43,7 +50,13 @@ export async function startTestGateway(
       ...config,
     },
     chatProvider ??
-      createOllamaProvider({ baseUrl: provider.baseUrl, model: TEST_MODEL, apiKey, timeoutMs }),
+      createOllamaProvider({
+        baseUrl: provider.baseUrl,
+        model: TEST_MODEL,
+        apiKey,
+        timeoutMs,
+        maxResponseBytes,
+      }),
   );
   app.addHook('onError', async (_request, _reply, error) => {
     errors.push(error);
@@ -80,4 +93,60 @@ export function post(
     headers: { 'content-type': 'application/json', ...headers },
     payload: typeof body === 'string' ? body : JSON.stringify(body),
   });
+}
+
+/** What a streamed (SSE) response from the gateway contained. */
+export interface StreamedResponse {
+  /** Every `data:` payload in order, parsed; `[DONE]` stays a string. */
+  readonly events: unknown[];
+  /** The `chat.completion.chunk` payloads. */
+  readonly chunks: StreamChunk[];
+  /** The `{"error": …}` event, if the stream ended with one. */
+  readonly error?: { error: Record<string, unknown> };
+  readonly done: boolean;
+  /** Every `delta.content`, joined. */
+  readonly content: string;
+}
+
+export interface StreamChunk {
+  id: string;
+  object: string;
+  created: number;
+  model: string;
+  choices: {
+    index: number;
+    delta: { role?: string; content?: string };
+    finish_reason: string | null;
+  }[];
+  usage?: unknown;
+}
+
+/**
+ * Parses the gateway's SSE body. The gateway writes exactly `data: <json>\n\n`
+ * per event, so anything else is a test failure, not a format to tolerate.
+ */
+export function readStreamed(body: string): StreamedResponse {
+  if (body !== '' && !body.endsWith('\n\n'))
+    throw new Error('stream does not end with a blank line');
+  const blocks = body === '' ? [] : body.slice(0, -2).split('\n\n');
+  const events = blocks.map((block) => {
+    if (!block.startsWith('data: ') || block.includes('\n')) {
+      throw new Error('not a single-line data event');
+    }
+    const data = block.slice('data: '.length);
+    return data === '[DONE]' ? data : (JSON.parse(data) as unknown);
+  });
+  const isError = (e: unknown): e is { error: Record<string, unknown> } =>
+    typeof e === 'object' && e !== null && 'error' in e;
+  const chunks = events.filter(
+    (e): e is StreamChunk => typeof e === 'object' && e !== null && !isError(e),
+  );
+  const error = events.find(isError);
+  return {
+    events,
+    chunks,
+    ...(error === undefined ? {} : { error }),
+    done: events.at(-1) === '[DONE]',
+    content: chunks.map((c) => c.choices[0]?.delta.content ?? '').join(''),
+  };
 }
