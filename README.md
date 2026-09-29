@@ -3,7 +3,9 @@
 **An OpenAI-compatible privacy gateway that pseudonymises personal data before it
 reaches an LLM, and restores it in the reply.**
 
-> **Status: work in progress (Phase 3 of 8 done).** Not ready for production use.
+> **Status: work in progress (Phase 3 of 8 done; Phase 4 half done: streaming
+> restoration is built and tested, the streaming endpoint is not).** Not ready
+> for production use.
 > Pseudonym now runs as a gateway: `POST /v1/chat/completions` (OpenAI format,
 > **non-streaming only**) redacts emails, phone numbers, Aadhaar, PAN, card
 > numbers and any other number of 9+ digits, forwards the request to a local
@@ -85,17 +87,22 @@ What Pseudonym is being built to do:
   exactly, since a placeholder the model rewrites ("email 1") cannot be
   restored. On by default and switchable (`PSEUDONYM_PLACEHOLDER_INSTRUCTION`);
   whether it helps will be measured, and the default will follow.
-- **Streaming-safe restoration** (planned, Phase 4). Placeholders split across
-  streamed chunks (`[PER` + `SON_1]`) will be restored correctly with minimal
-  buffering. Until then, streaming requests are rejected.
+- **Streaming-safe restoration** (engine built; endpoint planned, Phase 4b).
+  Placeholders split across streamed chunks (`[CAR` + `D_1]`) are restored
+  correctly, holding back at most 15 characters and only while the text
+  could still become a placeholder. A property test checks that any way of
+  cutting an answer gives exactly the same result as restoring it whole.
+  Until the endpoint exists, streaming requests are rejected.
 - **Injection-aware.** Values are not restored inside URLs, markdown links or
-  HTML attributes, blocking a known image-URL exfiltration trick. This covers
-  that one path, not prompt injection in general.
+  HTML attributes, or where they would become part of a hostname
+  (`CARD_1.attacker.example`), blocking a known image-URL exfiltration trick.
+  This covers that one path, not prompt injection in general.
 - **Proof.** Built: a no-leak test (737 planted values through the real gateway
   to a recording mock provider; none may arrive in any form) and a canary test
   (every error path forced; no planted value in any response, log line or
   error), each shown able to fail by switching off one detector or check at a
-  time. Planned: property-based streaming tests, and an evaluation suite with
+  time; property-based streaming restoration tests. Planned: streaming
+  no-leak and canary tests, and an evaluation suite with
   a held-out, hand-written adversarial dataset.
 
 ## Supported data types
@@ -157,7 +164,7 @@ Pseudonym handles text chat messages (system, user and assistant roles),
 non-streamed. Everything else is **rejected with a 4xx error**, never
 forwarded unredacted:
 
-- `stream: true` (streaming comes in Phase 4);
+- `stream: true` (the streaming endpoint comes in Phase 4b);
 - a message `name` (names cannot be redacted until Phase 6);
 - tool/function calls and tool messages, the `developer` role;
 - image, audio and file content parts;

@@ -9,13 +9,22 @@ import { describe, expect, it } from 'vitest';
 import { DETECTION_TYPES } from '../../../src/detection/types.js';
 import type { PlaceholderNamespace } from '../../../src/redaction/placeholder.js';
 import {
+  ALL_NAMESPACES,
   BARE_SPACE_NAMESPACES,
   barePattern,
   bracketPattern,
+  MAX_HELD_BACK,
   titleCase,
+  undecidedFrom,
 } from '../../../src/redaction/variants.js';
 
 const ALL: readonly PlaceholderNamespace[] = [...DETECTION_TYPES, 'LITERAL'];
+
+describe('ALL_NAMESPACES', () => {
+  it('is every detection type, then LITERAL', () => {
+    expect(ALL_NAMESPACES).toEqual(ALL);
+  });
+});
 
 describe('titleCase', () => {
   it('capitalises only the first letter', () => {
@@ -72,5 +81,60 @@ describe('barePattern', () => {
   it('an index over 4 digits or with a leading zero is not matched', () => {
     expect(barePattern(ALL, '_').exec('CARD_10000')).toBeNull();
     expect(barePattern(ALL, '_').exec('CARD_01')).toBeNull();
+  });
+});
+
+// Streaming restoration (ADR-018): how much of the end of a text is still
+// undecided.
+describe('undecidedFrom', () => {
+  it.each([
+    ['plain text', 'Hello there', 11],
+    ['a lone "["', 'See [', 4],
+    ['a tag prefix, any case in brackets', 'See [car', 4],
+    ['a full bracket, waiting for "."', 'See [CARD_1]', 4],
+    ['a bracket and ".", waiting for the next character', 'See [CARD_1].', 4],
+    ['a bracket and ". "', 'See [CARD_1]. ', 14],
+    ['a bare prefix', 'See Aadh', 4],
+    ['a Title Case word that is a tag', 'See Email', 4],
+    ['a lowercase word is not a bare prefix', 'See email', 9],
+    ['a bare prefix glued to a letter', 'See xAadh', 9],
+    ['a bare form, waiting for the next character', 'See CARD_1', 4],
+    ['a bare form and "-"', 'See CARD_1-', 4],
+    ['a bare space form only for AADHAAR and LITERAL', 'See Card 1', 10],
+    ['a bare space form', 'See Aadhaar 1', 4],
+    ['a 4-digit index still waits', 'See CARD_1234', 4],
+    ['a 5-digit index is decided', 'See CARD_12345', 14],
+    ['a lone high surrogate', 'See \uD835', 4],
+    ['a bare form and a high surrogate', 'See CARD_1\uD835', 4],
+  ])('%s', (_name, text, expected) => {
+    expect(undecidedFrom('', text)).toBe(expected);
+  });
+
+  it('uses the text before for the "not glued" check, but never starts inside it', () => {
+    expect(undecidedFrom('x', 'Aadh')).toBe(4); // glued to "x"
+    expect(undecidedFrom(' ', 'Aadh')).toBe(0);
+    expect(undecidedFrom('0A', 'a')).toBe(1); // bug-log 18
+  });
+
+  it('holds every proper prefix of every placeholder form, and no more than MAX_HELD_BACK', () => {
+    const forms = ALL.flatMap((namespace) => [
+      `[${namespace}_9999]`,
+      `[${namespace.toLowerCase()} 9999]`,
+      `${namespace}_9999`,
+      `${titleCase(namespace)}_9999`,
+      ...(BARE_SPACE_NAMESPACES.has(namespace) ? [`${titleCase(namespace)} 9999`] : []),
+    ]);
+    const notHeld: string[] = [];
+    for (const form of forms) {
+      for (let i = 1; i < form.length; i++) {
+        const prefix = form.slice(0, i);
+        if (undecidedFrom('', `x ${prefix}`) !== 2) notHeld.push(prefix);
+      }
+    }
+    expect(notHeld).toEqual([]);
+    expect(MAX_HELD_BACK).toBe(15);
+    expect(`x [${'AADHAAR'}_9999].`.length - undecidedFrom('', 'x [AADHAAR_9999].')).toBe(
+      MAX_HELD_BACK,
+    );
   });
 });

