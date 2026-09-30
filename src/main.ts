@@ -1,9 +1,11 @@
 // Entry point: read configuration, check production hardening, listen.
 // Kept to wiring only; everything with a decision in it lives in a module
-// with tests. Excluded from coverage (vitest.config.ts).
+// with tests, including which variable feeds which setting
+// (config/wiring.ts). Excluded from coverage (vitest.config.ts).
 
 import { readFileSync } from 'node:fs';
 import { loadEnv } from './config/env.js';
+import { ollamaConfig, serverConfig } from './config/wiring.js';
 import { safeErrorDetails } from './gateway/errors.js';
 import { buildServer } from './gateway/server.js';
 import { checkProductionHardening } from './hardening.js';
@@ -50,24 +52,6 @@ if (env.NODE_ENV === 'production') {
   }
 }
 
-const provider = createOllamaProvider({
-  baseUrl: env.PSEUDONYM_PROVIDER_BASE_URL,
-  model: env.PSEUDONYM_MODEL,
-  apiKey: env.PSEUDONYM_PROVIDER_API_KEY,
-  timeoutMs: env.PSEUDONYM_PROVIDER_TIMEOUT_MS,
-  maxResponseBytes: env.PSEUDONYM_MAX_RESPONSE_BYTES,
-  maxStreamBytes: env.PSEUDONYM_MAX_STREAM_BYTES,
-});
-
-const app = buildServer(
-  {
-    model: env.PSEUDONYM_MODEL,
-    bodyLimit: env.PSEUDONYM_MAX_BODY_BYTES,
-    restoreInUnsafeRegions: env.PSEUDONYM_RESTORE_IN_UNSAFE_REGIONS,
-    placeholderInstruction: env.PSEUDONYM_PLACEHOLDER_INSTRUCTION,
-    logLevel: env.LOG_LEVEL,
-  },
-  provider,
-);
+const app = buildServer(serverConfig(env), createOllamaProvider(ollamaConfig(env)));
 
 await app.listen({ host: env.HOST, port: env.PORT });
