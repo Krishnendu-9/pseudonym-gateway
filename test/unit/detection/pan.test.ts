@@ -6,6 +6,7 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { detect } from '../../../src/detection/detect.js';
 import { isValidPan } from '../../../src/detection/pan.js';
+import { UPI_HANDLES } from '../../../src/detection/upi.js';
 import { createRng } from '../../../src/synthetic/rng.js';
 import { pan, PAN_ENTITY_CODES } from '../../../src/synthetic/values.js';
 import { compose } from '../../support/compose.js';
@@ -96,6 +97,58 @@ describe('PAN detection', () => {
 
     it('ignores PAN-shaped pieces of longer tokens', () => {
       expect(detect('ref ABCDEF1234GH')).toEqual([]);
+    });
+
+    // Bug-log 27: a PAN glued to "@" won over the email (validated beats
+    // unvalidated, ADR-003) and the domain was sent.
+    it('a PAN glued to "@" is part of the address: the email or UPI ID is covered whole', () => {
+      const handle = [...UPI_HANDLES][0]!;
+      assertPropertyQuietly(
+        fc.property(seedArb, (seed) => {
+          const p = pan(createRng(seed));
+          return [
+            [`${p}@example.com`, 'EMAIL'],
+            [`x.${p}@example.com`, 'EMAIL'],
+            [`${p.toLowerCase()}@${handle}`, 'UPI'],
+          ].every(([text, type]) => {
+            const found = detect(`mail ${text!} now`);
+            return (
+              found.length === 1 &&
+              found[0]!.type === type &&
+              found[0]!.start === 5 &&
+              found[0]!.end === 5 + text!.length
+            );
+          });
+        }),
+      );
+    });
+
+    // Mutation P1 (the "@" before a PAN) survived the test above: every
+    // address there has the PAN before its "@". Here it comes after.
+    it('a PAN right after "@" is part of the address: a domain label or a UPI handle', () => {
+      assertPropertyQuietly(
+        fc.property(seedArb, (seed) => {
+          const p = pan(createRng(seed));
+          return [
+            [`x@${p}.example.com`, 'EMAIL', `mail x@${p}.example.com now`],
+            [`me@${p.toLowerCase()}`, 'UPI', `UPI me@${p.toLowerCase()} now`],
+          ].every(([value, type, text]) => {
+            const found = detect(text!);
+            const start = text!.indexOf(value!);
+            return (
+              found.length === 1 &&
+              found[0]!.type === type &&
+              found[0]!.start === start &&
+              found[0]!.end === start + value!.length
+            );
+          });
+        }),
+      );
+    });
+
+    it('a PAN then a dot and more before the "@" keeps only the PAN (known limit, ADR-003 containing span)', () => {
+      const { text, spans } = compose`mail ${pan(rng)}.x@example.com now`;
+      expect(detect(text)).toEqual([panAt(spans[0]!)]);
     });
   });
 

@@ -13,8 +13,10 @@ import type { Candidate } from './types.js';
 const HOLDER_TYPES = new Set(['P', 'C', 'H', 'F', 'A', 'T', 'B', 'L', 'J', 'G']);
 
 // Not glued to other letters, digits, marks or underscores: a PAN-shaped
-// stretch inside a longer token (an API key, a hash) is not a PAN.
-const PAN_PATTERN = /(?<![\p{L}\p{N}\p{M}_])[A-Za-z]{5}[0-9]{4}[A-Za-z](?![\p{L}\p{N}\p{M}_])/gu;
+// stretch inside a longer token (an API key, a hash) is not a PAN. Nor to
+// "@": there it is part of an email address or a UPI ID, which their
+// detectors own, as for digits (digit-runs.ts; bug-log 27).
+const PAN_PATTERN = /(?<![\p{L}\p{N}\p{M}_@])[A-Za-z]{5}[0-9]{4}[A-Za-z](?![\p{L}\p{N}\p{M}_@])/gu;
 
 export function isValidPan(pan: string): boolean {
   return /^[A-Z]{5}[0-9]{4}[A-Z]$/i.test(pan) && HOLDER_TYPES.has(pan[3]!.toUpperCase());
