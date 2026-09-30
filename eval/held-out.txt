@@ -1,0 +1,6 @@
+%% The held-out adversarial set. Format and rules: eval/HELD-OUT-FORMAT.md
+%% Check it with: npm run eval:lint
+%%
+%% Written by hand, by someone who did not write the detectors, and never
+%% used to tune them. Every personal value is a slot; nothing typed here may
+%% be a real value.

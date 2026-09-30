@@ -4,3 +4,4 @@ coverage/
 dev_docs/
 .claude/
 CLAUDE.md
+eval/baseline.json

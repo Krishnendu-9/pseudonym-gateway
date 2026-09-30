@@ -3,18 +3,20 @@
 **An OpenAI-compatible privacy gateway that pseudonymises personal data before it
 reaches an LLM, and restores it in the reply.**
 
-> **Status: work in progress (Phase 4 of 8 done).** Not ready for production
-> use.
+> **Status: work in progress (Phase 4 of 8 done; Phase 5, evaluation, under
+> way).** Not ready for production use.
 > Pseudonym runs as a gateway: `POST /v1/chat/completions` (OpenAI format,
 > streaming and non-streaming) redacts emails, phone numbers, Aadhaar, PAN,
 > card numbers and any other number of 9+ digits, forwards the request to a
 > local [Ollama](https://ollama.com) model, and restores the values in the
 > answer, including when it arrives as a stream. No-leak tests send planted
 > values through both paths and check none reaches the provider. **Person
-> names and API keys are not detected yet** (they are sent as written), and
-> detection accuracy has not been measured yet. It has been tested against
-> a mock of Ollama built from Ollama's documentation and source, not yet
-> against a running Ollama.
+> names, API keys, UPI IDs and IFSC codes are not detected yet** (they are
+> sent as written). Detection is measured on a generated dataset (see
+> [Measured results](#measured-results)); the hand-written held-out dataset
+> is still being written, so there are no numbers from it yet. Pseudonym has
+> been tested against a mock of Ollama built from Ollama's documentation and
+> source, not yet against a running Ollama.
 
 ---
 
@@ -107,16 +109,18 @@ What Pseudonym is being built to do:
   path forced, before and during a stream; no planted value in any
   response, log line or error), each shown able to fail by switching off
   one detector or check at a time; property-based streaming restoration
-  tests. Planned: an evaluation suite with a held-out, hand-written
-  adversarial dataset.
+  tests; an evaluation (`npm run eval`) that scores the detectors on a
+  seeded, generated dataset and fails if any count differs from the recorded
+  baseline. Being written: a held-out adversarial dataset, by hand, by
+  someone who did not write the detectors.
 
 ## Supported data types
 
 The types marked "redacted" below are replaced before a request leaves
 Pseudonym, in every message and in `stop`. Everything else in a message is
 sent as written: a person's name or an API key typed into a message **goes to
-the provider today**. Accuracy has not been measured yet (Phase 5), so do not
-rely on Pseudonym to protect real data.
+the provider today**. The measurements below are from a generated dataset
+only, so do not rely on Pseudonym to protect real data.
 
 | Type                               | Validation                                                                            | Status   |
 | ---------------------------------- | ------------------------------------------------------------------------------------- | -------- |
@@ -160,8 +164,69 @@ for the safety net; a number with a **line break** between its digit groups
 short for the safety net; nor are emails written as "name at example dot com",
 quoted or IP-literal addresses, or the 16-digit Aadhaar Virtual ID.
 
-Measured precision and recall will be published here once the evaluation suite
-exists. Until then, no accuracy numbers are claimed.
+## Measured results
+
+Two datasets, reported separately. Every number below is produced by
+`npm run eval` and nothing else.
+
+How to read a row:
+
+- **Redacted (any type)** is the number the promise is about: the share of
+  labelled personal values of which every character was inside a detection,
+  whatever type the detection had. A value with even one character left out
+  counts as **partly redacted**, not as redacted.
+- **Recall, precision and F1 (right type)** ask the stricter question of
+  whether the value was recognised as what it is. An Aadhaar caught only by
+  the generic-number safety net is redacted, but not with the right type.
+- **Over-redactions** are detections that covered nothing personal (an order
+  number, a timestamp). They cost no privacy; they replace text that was
+  fine to send. The user still sees the original in the reply.
+- Percentages are cut to one decimal, never rounded up.
+
+IFSC, UPI, IP, SECRET and PERSON have no detector yet. They are labelled and
+measured from the start so that the "before" is on record; what is redacted
+in those rows today is digits the existing detectors happened to catch,
+mostly the generic-number safety net.
+
+<!-- eval:start -->
+
+_Measured on 2026-09-30 by `npm run eval`. This block is generated, and the run fails if it is out of date._
+
+**Generated dataset** (seed 20260930; 600 messages in 500 cases, 1683 labelled personal values). Its generator and the detectors share an author, so it mostly shows regressions.
+
+| Type    | Values | Redacted (any type) | Partly redacted | Recall (right type) | Precision (right type) | F1     | Over-redactions |
+| ------- | ------ | ------------------- | --------------- | ------------------- | ---------------------- | ------ | --------------- |
+| AADHAAR | 153    | 151/153 (98.6%)     | 0               | 151/153 (98.6%)     | 151/166 (90.9%)        | 94.6%  | 3               |
+| CARD    | 153    | 149/153 (97.3%)     | 0               | 145/153 (94.7%)     | 145/150 (96.6%)        | 95.7%  | 0               |
+| PAN     | 153    | 139/153 (90.8%)     | 0               | 139/153 (90.8%)     | 139/156 (89.1%)        | 89.9%  | 17              |
+| PHONE   | 153    | 153/153 (100.0%)    | 0               | 153/153 (100.0%)    | 153/276 (55.4%)        | 71.3%  | 86              |
+| EMAIL   | 153    | 153/153 (100.0%)    | 0               | 153/153 (100.0%)    | 153/153 (100.0%)       | 100.0% | 0               |
+| NUMBER  | 153    | 128/153 (83.6%)     | 0               | 104/153 (67.9%)     | 104/310 (33.5%)        | 44.9%  | 112             |
+| IFSC    | 153    | 0/153 (0.0%)        | 0               | 0/153 (0.0%)        | -                      | -      | 0               |
+| UPI     | 153    | 0/153 (0.0%)        | 38              | 0/153 (0.0%)        | -                      | -      | 0               |
+| IP      | 153    | 71/153 (46.4%)      | 0               | 0/153 (0.0%)        | -                      | -      | 0               |
+| SECRET  | 153    | 0/153 (0.0%)        | 11              | 0/153 (0.0%)        | -                      | -      | 0               |
+| PERSON  | 153    | 0/153 (0.0%)        | 0               | 0/153 (0.0%)        | -                      | -      | 0               |
+
+**Held-out adversarial dataset:** not measured yet. It is being written by hand, before the Phase 5 detectors exist.
+
+<!-- eval:end -->
+
+The PHONE and NUMBER rows over-redact on purpose: a 10-digit tracking number
+or timestamp is a valid phone number as far as any check can tell, and the
+safety net takes every number of 9 or more digits. `npm run eval` also
+prints which kinds of lookalike were redacted.
+
+The counts are recorded in `eval/baseline.json` and act as thresholds: both
+datasets are deterministic, so `npm run eval` fails if any count is worse
+than recorded, and also if one is better until the record is updated. A
+worse count can only be accepted with a written reason, which is kept in
+that file.
+
+The held-out set is described in
+[eval/HELD-OUT-FORMAT.md](eval/HELD-OUT-FORMAT.md): hand-written, by someone
+who did not write the detectors, committed before the detectors it tests,
+and never used to tune them.
 
 ## Unsupported input
 

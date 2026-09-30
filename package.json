@@ -20,6 +20,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "eval": "tsx eval/run.ts",
+    "eval:lint": "tsx eval/check-held-out.ts",
     "gen:digits": "tsx scripts/generate-decimal-digit-zeros.ts && prettier --write src/detection/decimal-digit-zeros.ts"
   },
   "dependencies": {

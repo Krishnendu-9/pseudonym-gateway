@@ -15,10 +15,12 @@ export default defineConfig({
     hookTimeout: 30_000,
     coverage: {
       provider: 'v8',
-      include: ['src/**/*.ts'],
-      // Wiring only (read env, check hardening, listen); every decision it
-      // makes is in a tested module. Testing it would mean spawning a process.
-      exclude: ['src/main.ts'],
+      // The evaluation's code decides what the published numbers are, so it
+      // is held to the same coverage as the gateway.
+      include: ['src/**/*.ts', 'eval/**/*.ts'],
+      // Wiring only (read env or files, print, exit); every decision they
+      // make is in a tested module. Testing them would mean spawning a process.
+      exclude: ['src/main.ts', 'eval/run.ts', 'eval/check-held-out.ts'],
       reporter: ['text', 'html'],
     },
   },

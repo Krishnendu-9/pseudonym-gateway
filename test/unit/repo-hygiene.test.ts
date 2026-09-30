@@ -2,7 +2,8 @@
 // Aadhaar-shaped number that passes the Aadhaar checks, or a card number that
 // passes the card checks unless it is a published test card. Such numbers
 // could belong to a real person. Guards bug-log entry 4, where one slipped
-// into a source comment.
+// into a source comment. `eval/` is scanned too: the hand-written held-out
+// set lives there, behind its own stricter lint (eval/lint.ts).
 //
 // Failures report file and line only, never the number.
 
@@ -14,8 +15,8 @@ import { isValidCard } from '../../src/detection/card.js';
 import { PUBLISHED_TEST_CARDS } from '../fixtures/published-test-cards.js';
 
 const ROOT = join(import.meta.dirname, '..', '..');
-const SCANNED = ['src', 'test', 'scripts', 'README.md'];
-const TEXT_FILE = /\.(ts|js|mjs|cjs|json|md)$/;
+const SCANNED = ['src', 'test', 'scripts', 'eval', 'README.md'];
+const TEXT_FILE = /\.(ts|js|mjs|cjs|json|md|txt)$/;
 
 function* files(path: string): Generator<string> {
   const entries = readdirSync(path, { withFileTypes: true });
