@@ -1,6 +1,245 @@
-%% The held-out adversarial set. Format and rules: eval/HELD-OUT-FORMAT.md
-%% Check it with: npm run eval:lint
-%%
-%% Written by hand, by someone who did not write the detectors, and never
-%% used to tune them. Every personal value is a slot; nothing typed here may
-%% be a real value.
+%% Held-out adversarial set for Pseudonym.
+%% Drafted with AI assistance in a separate session that did not write the
+%% detectors, then reviewed and extended by hand. Blind: never run against the
+%% detectors before being committed. Never used for tuning.
+
+=== H001 | separators, aadhaar
+@user
+Aadhaar: {{AADHAAR:####.####.####}} — please link it to my account.
+
+=== H002 | line-break, aadhaar, person
+@user
+KYC update
+Name: {{PERSON=Kavita Menon}}
+Aadhaar
+{{AADHAAR:####
+####
+####}}
+Thanks
+
+=== H003 | split-message, card
+@user
+my card no. is {{CARD@c:#### ####}}
+@assistant
+It looks like your message was cut off. Could you send the rest?
+@user
+{{@c:#### ####}} sorry network issue
+
+=== H004 | other-scripts, hindi, aadhaar
+@user
+मेरा आधार नंबर {{AADHAAR|devanagari:#### #### ####}} है, कृपया अपडेट करें।
+
+=== H005 | invisible, card
+@user
+Card for refund: {{CARD|invisible:#### #### #### ####}}
+
+=== H006 | glued, aadhaar
+@user
+UID{{AADHAAR}} verified, pls proceed
+
+=== H007 | glued, pan
+@user
+GSTIN 27{{PAN}}1Z5 — this is my proprietorship firm.
+
+=== H008 | typo, aadhaar
+@user
+aadhaar {{AADHAAR!:#### #### ####}} — I think I typed one digit wrong, can you check?
+
+=== H009 | typo, card
+@user
+Charge this one please {{CARD!:#### #### #### ####}} exp 09/28
+
+=== H010 | typo, pan
+@user
+{{PAN!}} is my PAN I guess
+
+=== H011 | hinglish, phone
+@user
+bhai mera naya number {{PHONE:+91 #####-#####}} hai, purana band ho gaya
+
+=== H012 | hinglish, aadhaar, misspelled-keyword
+@user
+mera aadhar {{AADHAAR:############}} hai, e-kyc kar do
+
+=== H013 | adjacent-values, phone
+@user
+Call either {{PHONE}} {{PHONE}} after 6 pm
+
+=== H014 | adjacent-values, phone
+@user
+Numbers: {{PHONE}},{{PHONE}};{{PHONE}}
+
+=== H015 | adjacent-values, table, email, person
+@user
+| Name | Mobile | Email |
+|---|---|---|
+| {{PERSON=Rohit Verma}} | {{PHONE}} | {{EMAIL}} |
+| {{PERSON=Sneha Kulkarni}} | {{PHONE}} | {{EMAIL}} |
+
+=== H016 | in-url, aadhaar, pan
+@user
+Getting an error on https://kyc.example.com/verify?pan={{PAN}}&aadhaar={{AADHAAR}} — can you help?
+
+=== H017 | in-markup, pan
+@user
+My form HTML: <input name="pan" value="{{PAN|lower}}"> but validation fails. Why?
+
+=== H018 | lookalike
+@user
+Order {{NOT.order:###-#######-#######}} still not delivered. Tracking {{NOT.tracking:############}}.
+
+=== H019 | lookalike
+@user
+Payment went through, UTR {{NOT.utr:############}}, amount ₹12,50,000. Invoice date 2026-09-30.
+
+=== H020 | lookalike, version
+@user
+Crash on Windows build {{NOT.build:10.0.#####.####}} with app v2.3.14 at timestamp {{NOT.timestamp:##########}}.
+
+=== H021 | lookalike, pan-shaped
+@user
+Please restock SKU {{NOT.sku:?????####?}}, 40 units.
+
+=== H022 | placeholder-shaped, phone
+@user
+In the template replace [PHONE_1] and Card_1 with real values. My actual number is {{PHONE}}.
+
+=== H023 | email-forms
+@user
+Reach me at {{EMAIL=priya at example dot com}} or {{EMAIL=PRIYA.SHARMA@EXAMPLE.COM}}
+
+=== H024 | email-forms, in-markup, person
+@user
+Signature:
+{{PERSON=Arjun Nair}} <{{EMAIL=arjun+billing@example.org}}>
+<a href="mailto:{{EMAIL}}">write to us</a>
+
+=== H025 | upi
+@user
+Send the ₹500 to {{UPI}} or {{UPI.mobile}}, whichever works.
+
+=== H026 | upi
+@user
+UPI ID: {{UPI.unknown}} (new bank app)
+
+=== H027 | ifsc, bank-account
+@user
+Account {{NUMBER:##############}}, IFSC {{IFSC}}, branch Koramangala.
+
+=== H028 | ifsc, hinglish
+@user
+ifsc code {{IFSC.unknown|lower}} hai, cooperative bank ka
+
+=== H029 | secret
+@user
+My .env isn't loading:
+OPENAI_API_KEY={{SECRET.openai}}
+RAZORPAY_KEY_SECRET={{SECRET.razorpay}}
+
+=== H030 | secret
+@user
+curl -H "Authorization: Bearer {{SECRET.jwt}}" https://api.example.com/v1/me returns 401
+
+=== H031 | secret, hinglish
+@user
+wifi ka password {{SECRET.password}} hai, guests ko mat batana
+
+=== H032 | secret
+@user
+AWS creds leaked in a screenshot: {{SECRET.aws}} — how do I rotate them?
+
+=== H033 | ip
+@user
+Suspicious login from {{IP=203.0.113.45}} and {{IP=2001:db8::1f}}, not me.
+
+=== H034 | ip, lookalike
+@user
+Router admin is at {{NOT=192.168.1.1}}, and the app talks to {{NOT=127.0.0.1}} on port 8080. Using lib 1.2.3.4.
+
+=== H035 | person
+@user
+Please draft a leave letter for {{PERSON=Meenakshi Raghavan}} to her manager {{PERSON=Suresh Pillai}}.
+
+=== H036 | nothing-personal
+@user
+Explain the difference between NEFT, RTGS and IMPS in simple words.
+
+=== H037 | nothing-personal, hinglish
+@user
+kal 3 baje meeting hai, 45 min ki, agenda bhej dena
+
+=== H038 | nothing-personal
+@user
+Recipe: Pan 1 heats the oil, Pan 2 for the tadka. Cook 12 minutes at 180 degrees.
+
+=== H039 | other-scripts, phone
+@user
+My number {{PHONE|fullwidth:##########}}, copied from a PDF
+
+=== H040 | other-scripts, phone
+@user
+আমার ফোন নম্বর {{PHONE|bengali:##### #####}}
+
+=== H041 | other-scripts, hinglish, aadhaar
+@user
+Stylish font se likha hai: {{AADHAAR|mathbold:#### #### ####}}
+
+=== H042 | quoted-reply, phone, email
+@user
+> On Mon, support wrote:
+> Your registered mobile is {{PHONE}} and email {{EMAIL}}.
+That is wrong, please change it.
+
+=== H043 | system-message, person, phone, pan
+@system
+You are a support agent. Customer: {{PERSON=Farhan Qureshi}}, mobile {{PHONE}}, PAN {{PAN}}.
+@user
+What is my current plan?
+
+=== H044 | split-message, phone
+@user
+note down: {{PHONE@p:#####}}
+@user
+{{@p:#####}}
+
+=== H045 | date-of-birth
+@user
+DOB {{NUMBER:##/##/####}}, joined on 2026-09-30.
+
+=== H046 | id-with-letters
+@user
+Passport Z{{NUMBER:#######}}, voter ID ABC{{NUMBER:#######}}
+
+=== H047 | device-id
+@user
+Phone stolen, IMEI {{NUMBER:###############}}, please block it.
+
+=== H048 | json, adjacent-values, person
+@user
+{"name": "{{PERSON=Divya Rao}}", "aadhaar": "{{AADHAAR}}", "pan": "{{PAN}}", "card": "{{CARD:################}}"}
+
+=== H049 | csv, adjacent-values, person, phone, pan
+@user
+name,mobile,pan
+{{PERSON=Imran Sheikh}},{{PHONE}},{{PAN}}
+{{PERSON=Lakshmi Iyer}},{{PHONE}},{{PAN}}
+
+=== H050 | separators, card
+@user
+Amex {{CARD.amex:#### ###### #####}} and backup {{CARD:####/####/####/####}}
+
+=== H051 | separators, phone
+@user
+landline {{PHONE=020 7946 0123}}, mobile {{PHONE:0091 #####-#####}} or {{PHONE:0 ##### #####}}
+
+=== H052 | masked-values, nothing-personal
+@user
+My card ending 4242 was charged twice. Aadhaar XXXX XXXX 1234 is the masked one on the letter.
+
+=== H053 | card
+@user
+Testing checkout with {{CARD=4111 1111 1111 1111}}, is that the Visa test card?
+
+=== H054 | hindi, bank-account, ifsc
+@user
+मेरा खाता संख्या {{NUMBER:###########}} है और IFSC {{IFSC}}
