@@ -8,7 +8,7 @@ import type { Span } from './normalise.js';
 
 /**
  * Data types detected so far, in overlap priority order (ADR-003), highest
- * first: the most constrained formats first, the loosest last. NUMBER is
+ * first (UPI sits below PHONE and above EMAIL, ADR-024): the most constrained formats first, the loosest last. NUMBER is
  * the safety net for long numbers nothing else claimed (ADR-011), so it
  * always comes last.
  */
@@ -17,6 +17,7 @@ export const DETECTION_TYPES = [
   'CARD',
   'PAN',
   'PHONE',
+  'UPI',
   'EMAIL',
   'SECRET',
   'NUMBER',

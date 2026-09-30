@@ -65,9 +65,9 @@
         "typed": 104,
         "partial": 0,
         "missed": 25,
-        "detections": 301,
+        "detections": 263,
         "rightType": 104,
-        "otherPersonal": 86,
+        "otherPersonal": 48,
         "notPersonal": 111
       },
       "IFSC": {
@@ -83,12 +83,12 @@
       },
       "UPI": {
         "values": 153,
-        "redacted": 0,
-        "typed": 0,
-        "partial": 38,
-        "missed": 115,
-        "detections": 0,
-        "rightType": 0,
+        "redacted": 149,
+        "typed": 149,
+        "partial": 0,
+        "missed": 4,
+        "detections": 149,
+        "rightType": 149,
         "otherPersonal": 0,
         "notPersonal": 0
       },
@@ -193,9 +193,9 @@
         "typed": 3,
         "partial": 0,
         "missed": 3,
-        "detections": 10,
+        "detections": 9,
         "rightType": 3,
-        "otherPersonal": 3,
+        "otherPersonal": 2,
         "notPersonal": 4
       },
       "IFSC": {
@@ -211,12 +211,12 @@
       },
       "UPI": {
         "values": 3,
-        "redacted": 0,
-        "typed": 0,
-        "partial": 1,
-        "missed": 2,
-        "detections": 0,
-        "rightType": 0,
+        "redacted": 3,
+        "typed": 3,
+        "partial": 0,
+        "missed": 0,
+        "detections": 3,
+        "rightType": 3,
         "otherPersonal": 0,
         "notPersonal": 0
       },

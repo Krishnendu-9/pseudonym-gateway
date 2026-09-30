@@ -51,6 +51,9 @@ const KEYWORDS: Readonly<Partial<Record<DetectionType, readonly string[]>>> = {
     'फोन',
     'मोबाइल',
   ],
+  // Words that name a UPI ID or the apps that use one. Not "phone pe": in
+  // Hinglish it also means "on the phone".
+  UPI: ['upi', 'vpa', 'bhim', 'gpay', 'google pay', 'phonepe', 'paytm', 'amazon pay', 'यूपीआई'],
 };
 
 const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

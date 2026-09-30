@@ -19,7 +19,7 @@
 // checks the streamed answer restores exactly what the user wrote.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { secret, type SecretKind } from '../../src/synthetic/identifiers.js';
+import { secret, upiId, type SecretKind } from '../../src/synthetic/identifiers.js';
 import { obfuscate } from '../../src/synthetic/obfuscate.js';
 import { createRng, type Rng } from '../../src/synthetic/rng.js';
 import {
@@ -42,7 +42,7 @@ import { echoLastUserMessage, echoLastUserMessageStreamed } from '../support/moc
 import { expandCaptured, leakedForm } from '../support/leak-check.js';
 import { assertTextEqualQuietly } from '../support/quiet-text.js';
 
-type PlantedType = 'AADHAAR' | 'CARD' | 'PAN' | 'EMAIL' | 'PHONE' | 'NUMBER' | 'SECRET';
+type PlantedType = 'AADHAAR' | 'CARD' | 'PAN' | 'EMAIL' | 'PHONE' | 'NUMBER' | 'SECRET' | 'UPI';
 
 interface Planted {
   readonly type: PlantedType;
@@ -57,6 +57,7 @@ const PLANTED_TYPES: readonly PlantedType[] = [
   'PHONE',
   'NUMBER',
   'SECRET',
+  'UPI',
 ];
 
 // Secrets in a known format: the ones found without a keyword, which the
@@ -106,6 +107,11 @@ function plantValue(rng: Rng, type: PlantedType): string {
       return disguise(String(rng.int(1, 9)) + rng.digits(rng.int(8, 15)));
     case 'SECRET':
       return disguise(secret(rng, rng.pick(SECRET_KINDS)));
+    case 'UPI': {
+      // At a known handle: the sentences below have no UPI keyword.
+      const v = upiId(rng, rng.pick(['name', 'mobile'] as const));
+      return disguise(rng.chance(0.2) ? v.toUpperCase() : v);
+    }
   }
 }
 

@@ -16,6 +16,7 @@ import { resolveOverlaps } from './overlap.js';
 import { panCandidates } from './pan.js';
 import { phoneCandidates } from './phone.js';
 import { secretCandidates } from './secret.js';
+import { upiCandidates } from './upi.js';
 import type { Candidate, Detection, DetectionType } from './types.js';
 
 const DETECTORS: readonly ((text: string) => Iterable<Candidate>)[] = [
@@ -23,6 +24,7 @@ const DETECTORS: readonly ((text: string) => Iterable<Candidate>)[] = [
   cardCandidates,
   panCandidates,
   phoneCandidates,
+  upiCandidates,
   emailCandidates,
   secretCandidates,
 ];

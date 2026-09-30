@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { redactMessage } from '../../../src/redaction/redact.js';
 import { PlaceholderMapping } from '../../../src/redaction/mapping.js';
 import { restore } from '../../../src/redaction/restore.js';
-import { secret } from '../../../src/synthetic/identifiers.js';
+import { secret, upiId } from '../../../src/synthetic/identifiers.js';
 import { createRng } from '../../../src/synthetic/rng.js';
 import { aadhaar, email, groupDigits, indianMobile, pan } from '../../../src/synthetic/values.js';
 import { assertTextEqualQuietly } from '../../support/quiet-text.js';
@@ -106,6 +106,15 @@ describe('redactMessage: value keys dedupe the same value (ADR-013)', () => {
       restore(redacted, mapping),
       `My password is ${password}. Mera password ${password} hai.`,
     );
+  });
+
+  it('a UPI ID is [UPI_1], one value in any case, restored as first written', () => {
+    const mapping = new PlaceholderMapping();
+    const id = upiId(rng, 'name');
+    const text = `Pay ${id} or ${id.toUpperCase()}, not ${upiId(rng, 'mobile')}.`;
+    const redacted = redactMessage(text, mapping);
+    assertTextEqualQuietly(redacted, 'Pay [UPI_1] or [UPI_1], not [UPI_2].');
+    assertTextEqualQuietly(restore(redacted, mapping), text.replace(id.toUpperCase(), id));
   });
 });
 

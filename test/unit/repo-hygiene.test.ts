@@ -3,7 +3,9 @@
 // passes the card checks unless it is a published test card. Such numbers
 // could belong to a real person. Guards bug-log entry 4, where one slipped
 // into a source comment. `eval/` is scanned too: the held-out set lives
-// there as a file, behind its own stricter lint (eval/lint.ts).
+// there as a file, behind its own stricter lint (eval/lint.ts). Nor may a
+// file hold a UPI ID at a known handle (ADR-021, ADR-024): typed, it could
+// be somebody's; tests put theirs together at run time.
 //
 // Failures report file and line only, never the number.
 
@@ -12,6 +14,9 @@ import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { isValidAadhaar } from '../../src/detection/aadhaar.js';
 import { isValidCard } from '../../src/detection/card.js';
+import { upiCandidates } from '../../src/detection/upi.js';
+import { upiId } from '../../src/synthetic/identifiers.js';
+import { createRng } from '../../src/synthetic/rng.js';
 import { PUBLISHED_TEST_CARDS } from '../fixtures/published-test-cards.js';
 
 const ROOT = join(import.meta.dirname, '..', '..');
@@ -39,6 +44,9 @@ const numbersIn = (line: string, digits: number): string[] =>
 const PUBLISHED = PUBLISHED_TEST_CARDS.map((c) => c.number);
 const isPublishedOrPartOfOne = (digits: string): boolean =>
   PUBLISHED.some((card) => card.includes(digits));
+
+const hasKnownUpiId = (line: string): boolean =>
+  [...upiCandidates(line)].some((candidate) => candidate.validated);
 
 function findings(check: (line: string) => boolean): string[] {
   const out: string[] = [];
@@ -71,5 +79,14 @@ describe('repo hygiene: no real-looking personal values in files', () => {
       ),
     );
     expect(found).toEqual([]);
+  });
+
+  it('contains no UPI ID at a known handle', () => {
+    expect(findings(hasKnownUpiId)).toEqual([]);
+  });
+
+  it('the UPI check flags an ID put together at run time', () => {
+    expect(hasKnownUpiId(`pay ${upiId(createRng(1), 'name')} now`)).toBe(true);
+    expect(hasKnownUpiId(`pay ${upiId(createRng(1), 'mobile')} now`)).toBe(true);
   });
 });

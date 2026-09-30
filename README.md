@@ -7,16 +7,17 @@ reaches an LLM, and restores it in the reply.**
 > way).** Not ready for production use.
 > Pseudonym runs as a gateway: `POST /v1/chat/completions` (OpenAI format,
 > streaming and non-streaming) redacts emails, phone numbers, Aadhaar, PAN,
-> card numbers, API keys in known formats, secrets written after a keyword
-> (`password: …`) and any other number of 9+ digits, forwards the request to
-> a local [Ollama](https://ollama.com) model, and restores the values in the
-> answer, including when it arrives as a stream. No-leak tests send planted
-> values through both paths and check none reaches the provider. **Person
-> names, UPI IDs, IFSC codes and IP addresses are not detected yet** (they
-> are sent as written), and neither is a password or token with no keyword
-> before it and no known format. Detection is measured on two datasets, a
-> generated one and a small held-out adversarial one (see
-> [Measured results](#measured-results)). Pseudonym has been tested against
+> card numbers, UPI IDs, API keys in known formats, secrets written after a
+> keyword (`password: …`) and any other number of 9+ digits, forwards the
+> request to a local [Ollama](https://ollama.com) model, and restores the
+> values in the answer, including when it arrives as a stream. No-leak tests
+> send planted values through both paths and check none reaches the
+> provider. **Person names, IFSC codes and IP addresses are not detected
+> yet** (they are sent as written), and neither is a password or token with
+> no keyword before it and no known format, nor a UPI ID at an app or bank
+> handle Pseudonym does not know with no word such as "UPI" near it.
+> Detection is measured on two datasets, a generated one and a small
+> held-out adversarial one (see [Measured results](#measured-results)). Pseudonym has been tested against
 > a mock of Ollama built from Ollama's documentation and source, not yet
 > against a running Ollama.
 
@@ -80,8 +81,9 @@ What Pseudonym is being built to do:
 - **Stateless by design.** Chat APIs resend the full history on every request, so
   Pseudonym re-pseudonymises it deterministically each time. The same person is
   always `[PERSON_1]`, without storing anything between requests.
-- **India-aware detection.** Aadhaar (Verhoeff check digit), PAN, IFSC and UPI IDs
-  alongside emails, phone numbers and card numbers (Luhn check).
+- **India-aware detection.** Aadhaar (Verhoeff check digit), PAN and UPI IDs
+  (known app and bank handles) alongside emails, phone numbers and card numbers
+  (Luhn check). IFSC codes are planned.
 - **Unicode-hardened.** Digits in any script (full-width, mathematical,
   Devanagari, Bengali, Tamil and every other Unicode decimal digit) are
   normalised, and invisible characters that can hide data (zero-width spaces,
@@ -119,8 +121,8 @@ What Pseudonym is being built to do:
 
 The types marked "redacted" below are replaced before a request leaves
 Pseudonym, in every message and in `stop`. Everything else in a message is
-sent as written: a person's name, a UPI ID or an IFSC code typed into a
-message **goes to the provider today**. The measurements below come from
+sent as written: a person's name or an IFSC code typed into a message
+**goes to the provider today**. The measurements below come from
 synthetic datasets, one of them small, so do not rely on Pseudonym to
 protect real data.
 
@@ -134,7 +136,8 @@ protect real data.
 | API keys, tokens, private keys      | a known format: prefix, alphabet and length (OpenAI, Anthropic, GitHub, GitLab, AWS, Stripe, Razorpay, Slack, Google, npm, Hugging Face), JSON Web Tokens, PEM private key blocks | redacted |
 | Passwords and codes after a keyword | none possible: the value directly after "password", "api key", "token", "secret", "OTP", "PIN", "CVV" and similar, in English and Hindi                                           | redacted |
 | Any other number of 9+ digits       | none: a safety net for numbers no detector claimed (bank accounts, odd layouts)                                                                                                   | redacted |
-| IFSC, UPI ID, IP address            | pattern + context                                                                                                                                                                 | planned  |
+| UPI ID                              | a handle on Pseudonym's list of 54 app and bank handles (Google Pay, PhonePe, Paytm, BHIM, banks' own…); any other handle only near a keyword                                     | redacted |
+| IFSC, IP address                    | pattern + context                                                                                                                                                                 | planned  |
 | Person names                        | local NER model                                                                                                                                                                   | planned  |
 
 Which detected matches count:
@@ -144,6 +147,11 @@ Which detected matches count:
   check digit): only if a keyword for that type is nearby ("Aadhaar", "UID",
   "card", "PAN", "call", "mobile", and Hindi आधार, कार्ड, पैन, फ़ोन, मोबाइल).
 - **Email:** on the pattern alone.
+- **UPI ID** (`<name>@<handle>`, `<mobile>@<handle>`): always when the
+  handle is on the list; with any other handle only if "UPI", "VPA",
+  "BHIM", "GPay", "Google Pay", "PhonePe", "Paytm", "Amazon Pay" or
+  यूपीआई is nearby. If what follows the `@` is an email domain
+  (`<name>@paytm.com`), it is an email, not a UPI ID.
 - **A secret after a keyword** (`password: …`, `api_key=…`, `Mera password …
 hai`): when the way it is written says it is a value. That is: after `=`;
   in quotes; after `:` when it is the last thing on its line; or when it
@@ -212,14 +220,17 @@ How to read a row:
   fine to send. The user still sees the original in the reply.
 - Percentages are cut to one decimal, never rounded up.
 
-IFSC, UPI, IP and PERSON have no detector yet. They are labelled and
+IFSC, IP and PERSON have no detector yet. They are labelled and
 measured from the start so that the "before" is on record; what is redacted
 in those rows today is digits the existing detectors happened to catch,
 mostly the generic-number safety net. The SECRET row counts eleven kinds
 of secret in equal shares: nine known key formats, passwords and bare
 40-character tokens. The last two are found only after a keyword, and some
 of the generated sentences deliberately have none ("I pasted … into the
-chat by mistake"): those are the misses in that row.
+chat by mistake"): those are the misses in that row. The same holds for
+UPI: the four misses are IDs at a handle on no list, in sentences with no
+UPI keyword. Every handle the generator uses is on the detector's list, so
+the UPI row does not measure how complete that list is.
 
 <!-- eval:start -->
 
@@ -234,9 +245,9 @@ _Measured on 2026-09-30 by `npm run eval`. This block is generated, and the run 
 | PAN     | 153    | 139/153 (90.8%)     | 0               | 139/153 (90.8%)     | 139/156 (89.1%)        | 89.9%  | 17              |
 | PHONE   | 153    | 153/153 (100.0%)    | 0               | 153/153 (100.0%)    | 153/276 (55.4%)        | 71.3%  | 86              |
 | EMAIL   | 153    | 153/153 (100.0%)    | 0               | 153/153 (100.0%)    | 153/153 (100.0%)       | 100.0% | 0               |
-| NUMBER  | 153    | 128/153 (83.6%)     | 0               | 104/153 (67.9%)     | 104/301 (34.5%)        | 45.8%  | 111             |
+| NUMBER  | 153    | 128/153 (83.6%)     | 0               | 104/153 (67.9%)     | 104/263 (39.5%)        | 50.0%  | 111             |
 | IFSC    | 153    | 0/153 (0.0%)        | 0               | 0/153 (0.0%)        | -                      | -      | 0               |
-| UPI     | 153    | 0/153 (0.0%)        | 38              | 0/153 (0.0%)        | -                      | -      | 0               |
+| UPI     | 153    | 149/153 (97.3%)     | 0               | 149/153 (97.3%)     | 149/149 (100.0%)       | 98.6%  | 0               |
 | IP      | 153    | 71/153 (46.4%)      | 0               | 0/153 (0.0%)        | -                      | -      | 0               |
 | SECRET  | 153    | 144/153 (94.1%)     | 0               | 143/153 (93.4%)     | 143/143 (100.0%)       | 96.6%  | 0               |
 | PERSON  | 153    | 0/153 (0.0%)        | 0               | 0/153 (0.0%)        | -                      | -      | 0               |
@@ -250,9 +261,9 @@ _Measured on 2026-09-30 by `npm run eval`. This block is generated, and the run 
 | PAN     | 8      | 7/8 (87.5%)         | 0               | 7/8 (87.5%)         | 7/7 (100.0%)           | 93.3%  | 0               |
 | PHONE   | 19     | 18/19 (94.7%)       | 0               | 18/19 (94.7%)       | 17/18 (94.4%)          | 94.5%  | 1               |
 | EMAIL   | 7      | 6/7 (85.7%)         | 0               | 6/7 (85.7%)         | 6/6 (100.0%)           | 92.3%  | 0               |
-| NUMBER  | 6      | 3/6 (50.0%)         | 0               | 3/6 (50.0%)         | 3/10 (30.0%)           | 37.4%  | 4               |
+| NUMBER  | 6      | 3/6 (50.0%)         | 0               | 3/6 (50.0%)         | 3/9 (33.3%)            | 40.0%  | 4               |
 | IFSC    | 3      | 0/3 (0.0%)          | 0               | 0/3 (0.0%)          | -                      | -      | 0               |
-| UPI     | 3      | 0/3 (0.0%)          | 1               | 0/3 (0.0%)          | -                      | -      | 0               |
+| UPI     | 3      | 3/3 (100.0%)        | 0               | 3/3 (100.0%)        | 3/3 (100.0%)           | 100.0% | 0               |
 | IP      | 2      | 1/2 (50.0%)         | 0               | 0/2 (0.0%)          | -                      | -      | 0               |
 | SECRET  | 5      | 5/5 (100.0%)        | 0               | 5/5 (100.0%)        | 5/5 (100.0%)           | 100.0% | 0               |
 | PERSON  | 10     | 0/10 (0.0%)         | 0               | 0/10 (0.0%)         | -                      | -      | 0               |
@@ -321,8 +332,9 @@ recorded from a running Ollama.
 provider-side logging or training on them.
 
 **Does not protect against:** values the detectors miss (today that includes
-every person's name, UPI ID and IFSC code, and any secret with neither a
-known format nor a keyword directly before it); anything your application
+every person's name and IFSC code, any secret with neither a known format
+nor a keyword directly before it, and a UPI ID at an unknown handle with no
+keyword nearby); anything your application
 logs before
 calling Pseudonym; a compromised Pseudonym host; prompt injection that
 manipulates answers (only the URL-exfiltration path is mitigated).
