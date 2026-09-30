@@ -208,7 +208,21 @@ _Measured on 2026-09-30 by `npm run eval`. This block is generated, and the run 
 | SECRET  | 153    | 0/153 (0.0%)        | 11              | 0/153 (0.0%)        | -                      | -      | 0               |
 | PERSON  | 153    | 0/153 (0.0%)        | 0               | 0/153 (0.0%)        | -                      | -      | 0               |
 
-**Held-out adversarial dataset:** not measured yet. It is being written by hand, before the Phase 5 detectors exist.
+**Held-out adversarial dataset** (hand-written by someone else, never used for tuning; 58 messages in 54 cases, 79 labelled personal values).
+
+| Type    | Values | Redacted (any type) | Partly redacted | Recall (right type) | Precision (right type) | F1    | Over-redactions |
+| ------- | ------ | ------------------- | --------------- | ------------------- | ---------------------- | ----- | --------------- |
+| AADHAAR | 9      | 8/9 (88.8%)         | 0               | 7/9 (77.7%)         | 7/7 (100.0%)           | 87.5% | 0               |
+| CARD    | 7      | 4/7 (57.1%)         | 0               | 4/7 (57.1%)         | 4/4 (100.0%)           | 72.7% | 0               |
+| PAN     | 8      | 7/8 (87.5%)         | 0               | 7/8 (87.5%)         | 7/7 (100.0%)           | 93.3% | 0               |
+| PHONE   | 19     | 18/19 (94.7%)       | 0               | 18/19 (94.7%)       | 17/18 (94.4%)          | 94.5% | 1               |
+| EMAIL   | 7      | 6/7 (85.7%)         | 0               | 6/7 (85.7%)         | 6/6 (100.0%)           | 92.3% | 0               |
+| NUMBER  | 6      | 3/6 (50.0%)         | 0               | 3/6 (50.0%)         | 3/10 (30.0%)           | 37.4% | 4               |
+| IFSC    | 3      | 0/3 (0.0%)          | 0               | 0/3 (0.0%)          | -                      | -     | 0               |
+| UPI     | 3      | 0/3 (0.0%)          | 1               | 0/3 (0.0%)          | -                      | -     | 0               |
+| IP      | 2      | 1/2 (50.0%)         | 0               | 0/2 (0.0%)          | -                      | -     | 0               |
+| SECRET  | 5      | 0/5 (0.0%)          | 0               | 0/5 (0.0%)          | -                      | -     | 0               |
+| PERSON  | 10     | 0/10 (0.0%)         | 0               | 0/10 (0.0%)         | -                      | -     | 0               |
 
 <!-- eval:end -->
 

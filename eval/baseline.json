@@ -128,6 +128,132 @@
     },
     "seed": 20260930
   },
-  "heldOut": null,
+  "heldOut": {
+    "cases": 54,
+    "messages": 58,
+    "types": {
+      "AADHAAR": {
+        "values": 9,
+        "redacted": 8,
+        "typed": 7,
+        "partial": 0,
+        "missed": 1,
+        "detections": 7,
+        "rightType": 7,
+        "otherPersonal": 0,
+        "notPersonal": 0
+      },
+      "CARD": {
+        "values": 7,
+        "redacted": 4,
+        "typed": 4,
+        "partial": 0,
+        "missed": 3,
+        "detections": 4,
+        "rightType": 4,
+        "otherPersonal": 0,
+        "notPersonal": 0
+      },
+      "PAN": {
+        "values": 8,
+        "redacted": 7,
+        "typed": 7,
+        "partial": 0,
+        "missed": 1,
+        "detections": 7,
+        "rightType": 7,
+        "otherPersonal": 0,
+        "notPersonal": 0
+      },
+      "PHONE": {
+        "values": 19,
+        "redacted": 18,
+        "typed": 18,
+        "partial": 0,
+        "missed": 1,
+        "detections": 18,
+        "rightType": 17,
+        "otherPersonal": 0,
+        "notPersonal": 1
+      },
+      "EMAIL": {
+        "values": 7,
+        "redacted": 6,
+        "typed": 6,
+        "partial": 0,
+        "missed": 1,
+        "detections": 6,
+        "rightType": 6,
+        "otherPersonal": 0,
+        "notPersonal": 0
+      },
+      "NUMBER": {
+        "values": 6,
+        "redacted": 3,
+        "typed": 3,
+        "partial": 0,
+        "missed": 3,
+        "detections": 10,
+        "rightType": 3,
+        "otherPersonal": 3,
+        "notPersonal": 4
+      },
+      "IFSC": {
+        "values": 3,
+        "redacted": 0,
+        "typed": 0,
+        "partial": 0,
+        "missed": 3,
+        "detections": 0,
+        "rightType": 0,
+        "otherPersonal": 0,
+        "notPersonal": 0
+      },
+      "UPI": {
+        "values": 3,
+        "redacted": 0,
+        "typed": 0,
+        "partial": 1,
+        "missed": 2,
+        "detections": 0,
+        "rightType": 0,
+        "otherPersonal": 0,
+        "notPersonal": 0
+      },
+      "IP": {
+        "values": 2,
+        "redacted": 1,
+        "typed": 0,
+        "partial": 0,
+        "missed": 1,
+        "detections": 0,
+        "rightType": 0,
+        "otherPersonal": 0,
+        "notPersonal": 0
+      },
+      "SECRET": {
+        "values": 5,
+        "redacted": 0,
+        "typed": 0,
+        "partial": 0,
+        "missed": 5,
+        "detections": 0,
+        "rightType": 0,
+        "otherPersonal": 0,
+        "notPersonal": 0
+      },
+      "PERSON": {
+        "values": 10,
+        "redacted": 0,
+        "typed": 0,
+        "partial": 0,
+        "missed": 10,
+        "detections": 0,
+        "rightType": 0,
+        "otherPersonal": 0,
+        "notPersonal": 0
+      }
+    }
+  },
   "history": []
 }
