@@ -463,46 +463,45 @@ describe('canary: streaming (ADR-019)', () => {
   const first = piece('Working on it. ');
 
   // Failures before the first chunk: an ordinary HTTP error.
-  const before: [string, number, Responder, { timeoutMs?: number; maxResponseBytes?: number }?][] =
+  const before: [string, number, Responder, { timeoutMs?: number; maxStreamBytes?: number }?][] = [
     [
-      [
-        'provider 400 echoing the request and canaries',
-        502,
-        (req, res) => {
-          res.writeHead(400, { 'content-type': 'application/json' });
-          res.end(JSON.stringify({ error: { message: echo(req) } }));
-        },
-      ],
-      [
-        'provider 200 that is JSON, not a stream, containing canaries',
-        502,
-        (req, res) => {
-          res.writeHead(200, { 'content-type': 'application/json' });
-          res.end(JSON.stringify({ error: { message: echo(req) } }));
-        },
-      ],
-      [
-        'a first event that is not JSON and contains canaries',
-        502,
-        (req, res) => streamed([`data: ${echo(req)}\n\n`])(req, res),
-      ],
-      [
-        'a first event that is an error echoing canaries',
-        502,
-        (req, res) => streamed([sseData({ error: { message: echo(req) } })])(req, res),
-      ],
-      [
-        'a declared Content-Length over the limit',
-        502,
-        (req, res) =>
-          streamed([sseData(echo(req))], { headers: { 'content-length': '999999' }, end: false })(
-            req,
-            res,
-          ),
-        { maxResponseBytes: 1_000 },
-      ],
-      ['no first chunk in time', 504, streamed([], { end: false }), { timeoutMs: 200 }],
-    ];
+      'provider 400 echoing the request and canaries',
+      502,
+      (req, res) => {
+        res.writeHead(400, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: { message: echo(req) } }));
+      },
+    ],
+    [
+      'provider 200 that is JSON, not a stream, containing canaries',
+      502,
+      (req, res) => {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: { message: echo(req) } }));
+      },
+    ],
+    [
+      'a first event that is not JSON and contains canaries',
+      502,
+      (req, res) => streamed([`data: ${echo(req)}\n\n`])(req, res),
+    ],
+    [
+      'a first event that is an error echoing canaries',
+      502,
+      (req, res) => streamed([sseData({ error: { message: echo(req) } })])(req, res),
+    ],
+    [
+      'a declared Content-Length over the limit',
+      502,
+      (req, res) =>
+        streamed([sseData(echo(req))], { headers: { 'content-length': '999999' }, end: false })(
+          req,
+          res,
+        ),
+      { maxStreamBytes: 1_000 },
+    ],
+    ['no first chunk in time', 504, streamed([], { end: false }), { timeoutMs: 200 }],
+  ];
 
   it.each(before)('before the first chunk: %s → %i', async (scenario, status, responder, opts) => {
     gateway = await startTestGateway(opts ?? {});
@@ -513,7 +512,7 @@ describe('canary: streaming (ADR-019)', () => {
   });
 
   // Failures after the first chunk: 200, then an error event.
-  const after: [string, Responder, string, { timeoutMs?: number; maxResponseBytes?: number }?][] = [
+  const after: [string, Responder, string, { timeoutMs?: number; maxStreamBytes?: number }?][] = [
     [
       'an error event echoing the request and canaries',
       (req, res) => streamed([first, sseData({ error: { message: echo(req) } })])(req, res),
@@ -558,7 +557,7 @@ describe('canary: streaming (ADR-019)', () => {
   // Where a size cap trips depends on how the bytes arrive (bug-log 20):
   // before the first chunk (a 502) or after it (an error event). Either way,
   // the right code and no canary.
-  const tooLarge: [string, Responder, { maxResponseBytes?: number }?][] = [
+  const tooLarge: [string, Responder, { maxStreamBytes?: number }?][] = [
     [
       'one event over the per-event limit, full of canaries',
       (req, res) =>
@@ -567,12 +566,12 @@ describe('canary: streaming (ADR-019)', () => {
         })(req, res),
     ],
     [
-      'more than the response size limit in all',
+      'more than the stream size limit in all',
       (req, res) =>
         streamed([first, Array.from({ length: 40 }, () => piece(ALL)).join('')], {
           pauseMs: 30,
         })(req, res),
-      { maxResponseBytes: 4_000 },
+      { maxStreamBytes: 4_000 },
     ],
   ];
 

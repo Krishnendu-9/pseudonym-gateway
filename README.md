@@ -184,11 +184,16 @@ The `user` and `safety_identifier` fields are accepted and dropped: they
 exist to identify the end user to the provider. Error messages never repeat
 what was sent, and a provider's own error message is never passed on (it can
 echo the prompt): the client gets a 502 with the provider's status code.
-Pseudonym reads at most 1 MiB of a provider's response
-(`PSEUDONYM_MAX_RESPONSE_BYTES`), streamed or not; beyond that the answer
-fails with `provider_response_too_large`. Counted on the wire, 1 MiB is
-about 5,000 streamed tokens (each token arrives in its own ~210-byte
-chunk), so a long streamed answer can hit it; raise the limit if yours do.
+Pseudonym reads at most 1 MiB of a provider's response when not streaming
+(`PSEUDONYM_MAX_RESPONSE_BYTES`) and at most 32 MiB of a streamed one
+(`PSEUDONYM_MAX_STREAM_BYTES`); beyond that the answer fails with
+`provider_response_too_large`. The stream limit is larger because it counts
+bytes on the wire, and every streamed token, a thinking model's reasoning
+tokens included, arrives in its own chunk of about 200 to 250 bytes. 32 MiB
+is about 130,000 to 160,000 tokens: room for a 32,768-token answer after as
+many reasoning tokens (13.4 to 16.3 MiB, depending on the model name and
+the script). These figures are computed from Ollama's chunk format, not
+recorded from a running Ollama.
 
 ## Threat model (summary)
 

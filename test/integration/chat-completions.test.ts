@@ -704,8 +704,8 @@ describe('streaming (ADR-019)', () => {
     expect(result.error?.error.code).toBe('provider_timeout');
   });
 
-  it('a stream larger than the response size limit → provider_response_too_large error event', async () => {
-    gateway = await startTestGateway({ maxResponseBytes: 4_000 });
+  it('a stream larger than the stream size limit → provider_response_too_large error event', async () => {
+    gateway = await startTestGateway({ maxStreamBytes: 4_000 });
     const events = ollamaStreamEvents(Array.from({ length: 40 }, () => 'word '));
     gateway.provider.respondWith(streamed([events[0]!, events.slice(1).join('')], { pauseMs: 30 }));
     const response = await post(gateway, streamBody('hi'));
@@ -726,6 +726,23 @@ describe('streaming (ADR-019)', () => {
       expect(response.statusCode).toBe(200);
       expect(readStreamed(response.body).error).toEqual(expected);
     }
+  });
+
+  it('a stream larger than the non-streaming limit is not cut off (separate caps, ADR-020)', async () => {
+    gateway = await startTestGateway({ maxResponseBytes: 1_000 });
+    const words = Array.from({ length: 40 }, () => 'word ');
+    gateway.provider.respondWith(streamed(ollamaStreamEvents(words)));
+    const response = await post(gateway, streamBody('hi'));
+    expect(response.statusCode).toBe(200);
+    const result = readStreamed(response.body);
+    expect([result.content, result.done, result.error]).toEqual([words.join(''), true, undefined]);
+  });
+
+  it('a non-streamed answer larger than the stream limit is read (separate caps, ADR-020)', async () => {
+    gateway = await startTestGateway({ maxStreamBytes: 1_000 });
+    gateway.provider.respondWith(okCompletion('x'.repeat(2_000)));
+    const response = await post(gateway, chatBody('hi'));
+    expect(response.statusCode).toBe(200);
   });
 
   it('a non-streamed answer larger than the response size limit → 502 provider_response_too_large', async () => {

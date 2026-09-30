@@ -24,6 +24,7 @@ export async function startTestGateway(
   overrides: Partial<ServerConfig> & {
     timeoutMs?: number;
     maxResponseBytes?: number;
+    maxStreamBytes?: number;
     apiKey?: string;
     /** Replaces the Ollama adapter (the mock server still starts, unused). */
     chatProvider?: ChatProvider;
@@ -35,6 +36,7 @@ export async function startTestGateway(
   const {
     timeoutMs = 5_000,
     maxResponseBytes = 1_048_576,
+    maxStreamBytes = 33_554_432,
     apiKey,
     chatProvider,
     ...config
@@ -56,6 +58,7 @@ export async function startTestGateway(
         apiKey,
         timeoutMs,
         maxResponseBytes,
+        maxStreamBytes,
       }),
   );
   app.addHook('onError', async (_request, _reply, error) => {

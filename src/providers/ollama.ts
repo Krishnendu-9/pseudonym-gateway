@@ -9,7 +9,8 @@
 // forwarded. The response is read into our own shape; everything else Ollama
 // adds (`reasoning` from thinking models, `timings`, `_debug_info`) is
 // dropped (ADR-014). Every failure becomes a ProviderError that names the
-// kind of failure only. Both calls read at most `maxResponseBytes`
+// kind of failure only. Each call reads at most its own size cap:
+// `maxResponseBytes` for `complete`, `maxStreamBytes` for `stream`
 // (ADR-020).
 //
 // Timeouts (ADR-019): `complete` has one deadline for the whole call.
@@ -20,7 +21,8 @@
 // clock only runs while a read from the provider is pending.
 //
 // What a stream looks like (Ollama's source): `data: <chunk>` events, the
-// first with `delta.role`; `delta.content` is left out when empty; a
+// first with `delta.role`; `delta.content` is empty or left out in a chunk
+// that carries only `reasoning` (`"content":""` on main, 2026-09-30); a
 // separate chunk carries `finish_reason`; with `include_usage`, a chunk with
 // `choices: []` and `usage` follows; then `data: [DONE]`. An error in the
 // middle of a stream is not an event: Ollama has already sent 200, writes
@@ -49,12 +51,19 @@ export interface OllamaConfig {
   /** Local Ollama ignores it; ollama.com needs one. Sent only when set. */
   readonly apiKey?: string | undefined;
   readonly timeoutMs: number;
-  /** The response size cap in bytes, for both calls (ADR-020). */
+  /** The size cap in bytes for a non-streamed response (ADR-020). */
   readonly maxResponseBytes: number;
+  /**
+   * The size cap in bytes for a streamed response, counted on the wire
+   * (ADR-020). Separate, and much larger: every streamed token is its own
+   * chunk of about 200 bytes, and reasoning tokens are chunks too.
+   */
+  readonly maxStreamBytes: number;
 }
 
 /** No single streamed event may be larger than this (ADR-020). Ollama's
- * chunks are a few hundred bytes. */
+ * chunks are a few hundred bytes. This, not `maxStreamBytes`, is what bounds
+ * the memory a stream can take. */
 export const MAX_EVENT_BYTES = 65_536;
 
 const finishReason = z.enum(['stop', 'length', 'content_filter']);
@@ -203,7 +212,7 @@ export function createOllamaProvider(config: OllamaConfig): ChatProvider {
     config.baseUrl.endsWith('/') ? config.baseUrl : `${config.baseUrl}/`,
   );
 
-  async function post(body: string, signal: AbortSignal): Promise<Response> {
+  async function post(body: string, signal: AbortSignal, maxBytes: number): Promise<Response> {
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -218,7 +227,7 @@ export function createOllamaProvider(config: OllamaConfig): ChatProvider {
       await response.body?.cancel();
       throw new ProviderError('http', response.status);
     }
-    await rejectDeclaredTooLarge(response, config.maxResponseBytes);
+    await rejectDeclaredTooLarge(response, maxBytes);
     return response;
   }
 
@@ -234,6 +243,7 @@ export function createOllamaProvider(config: OllamaConfig): ChatProvider {
         const response = await post(
           requestBody(config.model, request, undefined),
           AbortSignal.any([signal, timeout]),
+          config.maxResponseBytes,
         );
         reader = new CappedReader(response.body, config.maxResponseBytes);
         text = await reader.text();
@@ -288,6 +298,7 @@ export function createOllamaProvider(config: OllamaConfig): ChatProvider {
         post(
           requestBody(config.model, request, options),
           AbortSignal.any([signal, timedOut.signal]),
+          config.maxStreamBytes,
         ),
       );
       if (!/^text\/event-stream\b/i.test(response.headers.get('content-type') ?? '')) {
@@ -295,7 +306,7 @@ export function createOllamaProvider(config: OllamaConfig): ChatProvider {
         throw new ProviderError('bad_response');
       }
 
-      const reader = new CappedReader(response.body, config.maxResponseBytes);
+      const reader = new CappedReader(response.body, config.maxStreamBytes);
       const chunks = readChunks(reader, () => wait(() => reader.next()));
       const first = await chunks.next();
       if (first.done) throw new ProviderError('bad_response');

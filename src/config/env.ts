@@ -28,11 +28,16 @@ const envSchema = z.object({
   // 0.25 s for prose and about 1.1 s for digit-heavy text, during which the
   // event loop serves nothing else.
   PSEUDONYM_MAX_BODY_BYTES: z.coerce.number().int().positive().default(262_144),
-  // 1 MiB (ADR-020): the most of a provider response the gateway will read,
-  // streaming or not. Counted on the wire: a 4,000-token English answer is
-  // about 16 KB non-streamed, but streamed each token is its own ~210-byte
-  // chunk, so 1 MiB is about 5,000 streamed tokens (ADR-020, open issue).
+  // 1 MiB (ADR-020): the most of a non-streamed provider response the
+  // gateway will read, all of which it holds in memory. About 250,000
+  // English tokens.
   PSEUDONYM_MAX_RESPONSE_BYTES: z.coerce.number().int().positive().default(1_048_576),
+  // 32 MiB (ADR-020): the most of a streamed response, counted on the wire.
+  // Every streamed token is its own chunk of 205 to 255 bytes, and reasoning
+  // tokens are chunks too, so a 32,768-token answer after as much reasoning
+  // is 13.4 to 16.3 MiB. Not a memory bound: a stream is never held whole
+  // (one event, at most 64 KiB, at a time).
+  PSEUDONYM_MAX_STREAM_BYTES: z.coerce.number().int().positive().default(33_554_432),
   PSEUDONYM_RESTORE_IN_UNSAFE_REGIONS: booleanFlag('false'),
   // Provisional default until Phase 5 measures it (ADR-017).
   PSEUDONYM_PLACEHOLDER_INSTRUCTION: booleanFlag('true'),

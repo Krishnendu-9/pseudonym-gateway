@@ -1,10 +1,11 @@
 // The Ollama adapter against a real HTTP mock of Ollama's OpenAI-compatible
 // endpoint: the exact bytes it sends, what it keeps from the answer, and
 // that every failure becomes a ProviderError naming the kind only. Both
-// calls, `complete` and `stream` (ADR-019), and the response size cap on
-// each (ADR-020).
+// calls, `complete` and `stream` (ADR-019), and the size cap of each
+// (ADR-020): two separate caps, neither applied to the other call.
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { loadEnv } from '../../../src/config/env.js';
 import {
   createOllamaProvider,
   MAX_EVENT_BYTES,
@@ -56,6 +57,7 @@ const provider = (config: Partial<OllamaConfig> = {}): ChatProvider =>
     model: 'qwen3:8b',
     timeoutMs: 2_000,
     maxResponseBytes: 1_048_576,
+    maxStreamBytes: 33_554_432,
     ...config,
   });
 
@@ -274,6 +276,15 @@ describe('createOllamaProvider: the response size cap on complete (ADR-020)', ()
     );
     expect(result.content).toBe('ok');
   });
+
+  it('the stream cap does not apply: a body over maxStreamBytes is read', async () => {
+    mock.respondWith(respond(200, completionBody('x'.repeat(2_000))));
+    const result = await provider({ maxStreamBytes: 1_000 }).complete(
+      REQUEST,
+      new AbortController().signal,
+    );
+    expect(result.content).toHaveLength(2_000);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -445,7 +456,7 @@ describe('createOllamaProvider.stream: failures before the first chunk (a reject
     mock.respondWith(
       streamed(ollamaStreamEvents(['a']), { headers: { 'content-length': '5000' }, end: false }),
     );
-    expect((await failure(openStream({ maxResponseBytes: 1_000 }))).failure).toBe('too_large');
+    expect((await failure(openStream({ maxStreamBytes: 1_000 }))).failure).toBe('too_large');
   });
 
   it('no headers within the timeout → timeout', async () => {
@@ -555,8 +566,27 @@ describe('createOllamaProvider.stream: failures after the first chunk (thrown fr
   it('more bytes than the cap in all → too_large', async () => {
     const many = Array.from({ length: 50 }, () => piece('x'.repeat(40)));
     mock.respondWith(streamed([first, [...many, finishChunk(), DONE].join('')], { pauseMs: 30 }));
-    const error = await failureAnywhere(openStream({ maxResponseBytes: 2_000 }));
+    const error = await failureAnywhere(openStream({ maxStreamBytes: 2_000 }));
     expect(error.failure).toBe('too_large');
+  });
+
+  it('the non-streaming cap does not apply: a stream over maxResponseBytes is read whole', async () => {
+    const pieces = Array.from({ length: 50 }, (_, i) => `p${i} `);
+    const events = ollamaStreamEvents(pieces);
+    expect(Buffer.byteLength(events.join(''))).toBeGreaterThan(2_000);
+    mock.respondWith(streamed(events));
+    const read = await collect(await openStream({ maxResponseBytes: 1_000 }));
+    expect(read).toHaveLength(51);
+  });
+
+  it('nor to the declared length: over maxResponseBytes, under maxStreamBytes, is read', async () => {
+    const body = ollamaStreamEvents(['a', 'b']).join('');
+    const length = Buffer.byteLength(body);
+    mock.respondWith(streamed([body], { headers: { 'content-length': String(length) } }));
+    const read = await collect(
+      await openStream({ maxResponseBytes: length - 1, maxStreamBytes: length }),
+    );
+    expect(read.map((e) => e.type)).toEqual(['content', 'content', 'finish']);
   });
 
   it('one event over MAX_EVENT_BYTES → too_large, though under the total cap', async () => {
@@ -600,5 +630,41 @@ describe('createOllamaProvider.stream: failures after the first chunk (thrown fr
       break;
     }
     await closed;
+  });
+});
+
+// The sizing behind the default (ADR-020): one chunk per token, reasoning
+// tokens included, in Ollama's chunk shape. The mock's id and model name make
+// each chunk 9 bytes longer than Ollama's for an 8-character model name.
+describe('the default stream cap (ADR-020)', () => {
+  const TOKENS = 32_768;
+  const { PSEUDONYM_MAX_STREAM_BYTES, PSEUDONYM_MAX_RESPONSE_BYTES } = loadEnv({
+    PSEUDONYM_MODEL: 'qwen3:8b',
+  });
+  const parts = [
+    sseData(
+      streamChunk([{ index: 0, delta: { role: 'assistant', content: '' }, finish_reason: null }]),
+    ),
+    piece('', { reasoning: ' word' }).repeat(TOKENS),
+    piece(' word').repeat(TOKENS),
+    finishChunk(),
+    DONE,
+  ];
+  const bytes = parts.reduce((sum, part) => sum + Buffer.byteLength(part), 0);
+
+  it('holds a 32,768-token answer that follows 32,768 reasoning tokens', async () => {
+    expect(bytes).toBeGreaterThan(13 * 1_048_576);
+    mock.respondWith(streamed(parts));
+    const events = await collect(await openStream({ maxStreamBytes: PSEUDONYM_MAX_STREAM_BYTES }));
+    expect(events).toHaveLength(TOKENS + 1);
+    expect(events.at(-1)).toEqual({ type: 'finish', reason: 'stop' });
+  });
+
+  it('which the non-streaming default would cut off before the answer starts', async () => {
+    mock.respondWith(streamed(parts));
+    const stream = await openStream({ maxStreamBytes: PSEUDONYM_MAX_RESPONSE_BYTES });
+    const { events, error } = await midStreamFailure(stream);
+    // Reasoning is dropped, and 1 MiB is about 4,500 of these chunks.
+    expect([events, error.failure]).toEqual([[], 'too_large']);
   });
 });
