@@ -20,8 +20,21 @@
 // only push a ratio up, so the smallest measurement is the truest one, and
 // the extra measurements cost nothing unless the first one looks bad.
 //
-// Pick `n` so that one run on the small input takes several milliseconds.
-// Below about 2 ms, timer resolution and noise decide the ratio.
+// It must also fail fast (bug-log 24). `n` is sized for correct code: at
+// 1,000,000 characters a quadratic mutant needs hours for one run, a
+// synchronous call no test timeout can interrupt, so a regression hung the
+// run instead of failing a test. So the ratio is found by climbing: from a
+// small size, each size is compared with the next one up (n / 64 with
+// n / 16, …, n with GROWTH * n). A step is judged once its small input
+// takes at least MEASURABLE_MS, the level below which noise decides the
+// ratio; if it stays at or over the limit, the climb stops there and
+// returns it. Quadratic code crosses MEASURABLE_MS early, and at the first
+// step it does, its small run is under 16 times MEASURABLE_MS, so a failing
+// test takes seconds whatever `n` is. Linear code is too fast to judge
+// until near `n`, and the climb below `n` costs about a third more work.
+// The last step, `n` against GROWTH * n, is always judged, as before.
+//
+// Pick `n` so that one run on it takes several milliseconds.
 
 /** How many times larger the second input is. */
 export const GROWTH = 4;
@@ -32,11 +45,19 @@ export const MAX_GROWTH_RATIO = 8;
 /** How many times a ratio at or over the limit is measured before it counts. */
 export const MEASUREMENTS = 3;
 
+/** A step below `n` is judged only once its small input takes this long. */
+export const MEASURABLE_MS = 2;
+
+/** The climb starts at the smallest n / GROWTH^k that is at least this. */
+export const SMALLEST_SIZE = 100;
+
 /**
  * How much longer `work` takes when its input grows GROWTH times: the
- * fastest run on `make(GROWTH * n)` divided by the fastest on `make(n)`,
+ * fastest run on the larger input divided by the fastest on the smaller,
  * measured again (up to MEASUREMENTS times, smallest kept) while it is at
- * or over MAX_GROWTH_RATIO.
+ * or over MAX_GROWTH_RATIO. Sizes climb to `n` and GROWTH * n, and the
+ * first measurable step at or over the limit is returned without going
+ * further. Sizes are in whatever unit `make` takes.
  */
 export function growthRatio(
   make: (n: number) => string,
@@ -44,20 +65,54 @@ export function growthRatio(
   work: (input: string) => unknown,
   repeats = 5,
 ): number {
-  const small = make(n);
-  const large = make(GROWTH * n);
+  const sizes = [n];
+  while (Math.round(sizes[0]! / GROWTH) >= SMALLEST_SIZE) {
+    sizes.unshift(Math.round(sizes[0]! / GROWTH));
+  }
+  let small = make(sizes[0]!);
   work(small); // warm up the JIT before timing
-  let best = Infinity;
-  for (let m = 0; m < MEASUREMENTS && best >= MAX_GROWTH_RATIO; m++) {
-    let bestSmall = Infinity;
-    let bestLarge = Infinity;
-    for (let i = 0; i < repeats; i++) {
-      bestSmall = Math.min(bestSmall, time(work, small));
-      bestLarge = Math.min(bestLarge, time(work, large));
+  for (const next of sizes.slice(1)) {
+    const large = make(next);
+    const first = measure(work, small, large, repeats);
+    if (first.smallMs >= MEASURABLE_MS) {
+      const ratio = confirm(work, small, large, repeats, first.ratio);
+      if (ratio >= MAX_GROWTH_RATIO) return ratio;
     }
-    best = Math.min(best, bestLarge / bestSmall);
+    small = large;
+  }
+  const large = make(GROWTH * n);
+  return confirm(work, small, large, repeats, measure(work, small, large, repeats).ratio);
+}
+
+/** `ratio`, measured again while it is at or over the limit; smallest kept. */
+function confirm(
+  work: (input: string) => unknown,
+  small: string,
+  large: string,
+  repeats: number,
+  ratio: number,
+): number {
+  let best = ratio;
+  for (let m = 1; m < MEASUREMENTS && best >= MAX_GROWTH_RATIO; m++) {
+    best = Math.min(best, measure(work, small, large, repeats).ratio);
   }
   return best;
+}
+
+/** Fastest run of each input, alternating the two, and their ratio. */
+function measure(
+  work: (input: string) => unknown,
+  small: string,
+  large: string,
+  repeats: number,
+): { ratio: number; smallMs: number } {
+  let bestSmall = Infinity;
+  let bestLarge = Infinity;
+  for (let i = 0; i < repeats; i++) {
+    bestSmall = Math.min(bestSmall, time(work, small));
+    bestLarge = Math.min(bestLarge, time(work, large));
+  }
+  return { ratio: bestLarge / bestSmall, smallMs: bestSmall };
 }
 
 function time(work: (input: string) => unknown, input: string): number {
