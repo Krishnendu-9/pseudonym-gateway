@@ -66,9 +66,10 @@ const overlapsAny = (spans: readonly Span[], start: number, end: number): boolea
   spans.some((span) => span.start < end && start < span.end);
 
 // The identity a value is deduplicated by (ADR-013): the same person, card,
-// PAN, email, UPI ID or phone written two different ways in one request
-// still gets one placeholder. UPI IDs, like emails, ignore case: payment
-// apps treat <NAME>@OKAXIS and <name>@okaxis as one ID. `surface` is a
+// PAN, IFSC, email, UPI ID or phone written two different ways in one
+// request still gets one placeholder. UPI IDs, like emails, ignore case:
+// payment apps treat <NAME>@OKAXIS and <name>@okaxis as one ID; so do PANs
+// and IFSCs, which are defined in capitals. `surface` is a
 // detection's original-text slice.
 function valueKey(type: DetectionType, surface: string): string {
   const normalised = normalise(surface).text;
@@ -78,6 +79,7 @@ function valueKey(type: DetectionType, surface: string): string {
     case 'NUMBER':
       return normalised.replace(/[^0-9]/g, '');
     case 'PAN':
+    case 'IFSC':
       return normalised.toUpperCase();
     case 'EMAIL':
     case 'UPI':

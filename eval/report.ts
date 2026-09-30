@@ -124,7 +124,7 @@ export function readmeBlock(input: ReportInput): string {
   const lines = [
     README_START,
     '',
-    `_Measured on ${input.measuredOn} by \`npm run eval\`. This block is generated, and the run fails if it is out of date._`,
+    `_Measured on ${input.measuredOn} (UTC date) by \`npm run eval\`. This block is generated, and the run fails if it is out of date._`,
     '',
     `**Generated dataset** (seed ${input.generated.seed}; ${size(input.generated)}). Its generator and the detectors share an author, so it mostly shows regressions.`,
     '',

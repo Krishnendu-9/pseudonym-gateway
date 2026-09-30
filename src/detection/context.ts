@@ -35,6 +35,8 @@ const KEYWORDS: Readonly<Partial<Record<DetectionType, readonly string[]>>> = {
     'कार्ड',
   ],
   PAN: ['pan', 'permanent account number', 'पैन'],
+  // The code's name, and the transfers that need one. शाखा is "branch".
+  IFSC: ['ifsc', 'ifs code', 'neft', 'rtgs', 'imps', 'branch', 'आईएफएससी', 'शाखा'],
   PHONE: [
     'phone',
     'ph',

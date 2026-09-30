@@ -10,6 +10,7 @@ import { cardCandidates } from './card.js';
 import { digitRuns, widenToRuns } from './digit-runs.js';
 import { hasContext } from './context.js';
 import { emailCandidates } from './email.js';
+import { ifscCandidates } from './ifsc.js';
 import { normalise } from './normalise.js';
 import { unclaimedNumbers } from './number.js';
 import { resolveOverlaps } from './overlap.js';
@@ -23,6 +24,7 @@ const DETECTORS: readonly ((text: string) => Iterable<Candidate>)[] = [
   aadhaarCandidates,
   cardCandidates,
   panCandidates,
+  ifscCandidates,
   phoneCandidates,
   upiCandidates,
   emailCandidates,

@@ -6,36 +6,36 @@
     "types": {
       "AADHAAR": {
         "values": 153,
-        "redacted": 151,
-        "typed": 151,
+        "redacted": 152,
+        "typed": 152,
         "partial": 0,
-        "missed": 2,
-        "detections": 165,
-        "rightType": 151,
+        "missed": 1,
+        "detections": 166,
+        "rightType": 152,
         "otherPersonal": 11,
         "notPersonal": 3
       },
       "CARD": {
         "values": 153,
-        "redacted": 149,
-        "typed": 145,
+        "redacted": 151,
+        "typed": 148,
         "partial": 0,
-        "missed": 4,
-        "detections": 149,
-        "rightType": 145,
-        "otherPersonal": 4,
-        "notPersonal": 0
+        "missed": 2,
+        "detections": 157,
+        "rightType": 148,
+        "otherPersonal": 7,
+        "notPersonal": 2
       },
       "PAN": {
         "values": 153,
-        "redacted": 139,
-        "typed": 139,
+        "redacted": 141,
+        "typed": 141,
         "partial": 0,
-        "missed": 14,
-        "detections": 156,
-        "rightType": 139,
+        "missed": 12,
+        "detections": 152,
+        "rightType": 141,
         "otherPersonal": 0,
-        "notPersonal": 17
+        "notPersonal": 11
       },
       "PHONE": {
         "values": 153,
@@ -43,10 +43,10 @@
         "typed": 153,
         "partial": 0,
         "missed": 0,
-        "detections": 276,
+        "detections": 267,
         "rightType": 153,
-        "otherPersonal": 37,
-        "notPersonal": 86
+        "otherPersonal": 39,
+        "notPersonal": 75
       },
       "EMAIL": {
         "values": 153,
@@ -61,43 +61,43 @@
       },
       "NUMBER": {
         "values": 153,
-        "redacted": 128,
-        "typed": 104,
+        "redacted": 130,
+        "typed": 97,
         "partial": 0,
-        "missed": 25,
-        "detections": 263,
-        "rightType": 104,
-        "otherPersonal": 48,
-        "notPersonal": 111
+        "missed": 23,
+        "detections": 252,
+        "rightType": 97,
+        "otherPersonal": 61,
+        "notPersonal": 94
       },
       "IFSC": {
         "values": 153,
-        "redacted": 0,
-        "typed": 0,
+        "redacted": 153,
+        "typed": 153,
         "partial": 0,
-        "missed": 153,
-        "detections": 0,
-        "rightType": 0,
+        "missed": 0,
+        "detections": 159,
+        "rightType": 153,
         "otherPersonal": 0,
-        "notPersonal": 0
+        "notPersonal": 6
       },
       "UPI": {
         "values": 153,
-        "redacted": 149,
-        "typed": 149,
+        "redacted": 151,
+        "typed": 151,
         "partial": 0,
-        "missed": 4,
-        "detections": 149,
-        "rightType": 149,
+        "missed": 2,
+        "detections": 151,
+        "rightType": 151,
         "otherPersonal": 0,
         "notPersonal": 0
       },
       "IP": {
         "values": 153,
-        "redacted": 71,
+        "redacted": 81,
         "typed": 0,
         "partial": 0,
-        "missed": 82,
+        "missed": 72,
         "detections": 0,
         "rightType": 0,
         "otherPersonal": 0,
@@ -105,12 +105,12 @@
       },
       "SECRET": {
         "values": 153,
-        "redacted": 144,
-        "typed": 143,
+        "redacted": 147,
+        "typed": 146,
         "partial": 0,
-        "missed": 9,
-        "detections": 143,
-        "rightType": 143,
+        "missed": 6,
+        "detections": 146,
+        "rightType": 146,
         "otherPersonal": 0,
         "notPersonal": 0
       },
@@ -200,12 +200,12 @@
       },
       "IFSC": {
         "values": 3,
-        "redacted": 0,
-        "typed": 0,
+        "redacted": 3,
+        "typed": 3,
         "partial": 0,
-        "missed": 3,
-        "detections": 0,
-        "rightType": 0,
+        "missed": 0,
+        "detections": 3,
+        "rightType": 3,
         "otherPersonal": 0,
         "notPersonal": 0
       },
@@ -255,5 +255,21 @@
       }
     }
   },
-  "history": []
+  "history": [
+    {
+      "date": "2026-09-30",
+      "note": "ADR-025: the generated set gains three 11-character lookalikes (an IFSC's shape, two near misses); cases that picked them re-render, so other counts move; no detector changed",
+      "changes": [
+        "generated CARD: over-redactions 0 -> 2",
+        "generated NUMBER: redacted with the right type 104 -> 97"
+      ]
+    },
+    {
+      "date": "2026-09-30",
+      "note": "ADR-025: IFSC detector; its 6 over-redactions are IFSC-shaped product codes within 40 characters of an IFSC keyword, the cost ADR-010 accepts for an unvalidated shape",
+      "changes": [
+        "generated IFSC: over-redactions 0 -> 6"
+      ]
+    }
+  ]
 }

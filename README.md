@@ -7,15 +7,17 @@ reaches an LLM, and restores it in the reply.**
 > way).** Not ready for production use.
 > Pseudonym runs as a gateway: `POST /v1/chat/completions` (OpenAI format,
 > streaming and non-streaming) redacts emails, phone numbers, Aadhaar, PAN,
-> card numbers, UPI IDs, API keys in known formats, secrets written after a
+> card numbers, UPI IDs, IFSC codes, API keys in known formats, secrets written after a
 > keyword (`password: …`) and any other number of 9+ digits, forwards the
 > request to a local [Ollama](https://ollama.com) model, and restores the
 > values in the answer, including when it arrives as a stream. No-leak tests
 > send planted values through both paths and check none reaches the
-> provider. **Person names, IFSC codes and IP addresses are not detected
-> yet** (they are sent as written), and neither is a password or token with
-> no keyword before it and no known format, nor a UPI ID at an app or bank
-> handle Pseudonym does not know with no word such as "UPI" near it.
+> provider. **Person names and IP addresses are not detected yet** (they
+> are sent as written), and neither is a password or token with no keyword
+> before it and no known format, nor a UPI ID at an app or bank handle
+> Pseudonym does not know with no word such as "UPI" near it, nor an IFSC
+> code whose bank code is not on Pseudonym's list with no word such as
+> "IFSC" near it.
 > Detection is measured on two datasets, a generated one and a small
 > held-out adversarial one (see [Measured results](#measured-results)). Pseudonym has been tested against
 > a mock of Ollama built from Ollama's documentation and source, not yet
@@ -81,9 +83,9 @@ What Pseudonym is being built to do:
 - **Stateless by design.** Chat APIs resend the full history on every request, so
   Pseudonym re-pseudonymises it deterministically each time. The same person is
   always `[PERSON_1]`, without storing anything between requests.
-- **India-aware detection.** Aadhaar (Verhoeff check digit), PAN and UPI IDs
-  (known app and bank handles) alongside emails, phone numbers and card numbers
-  (Luhn check). IFSC codes are planned.
+- **India-aware detection.** Aadhaar (Verhoeff check digit), PAN, UPI IDs
+  (known app and bank handles) and IFSC codes (bank codes from RBI's list)
+  alongside emails, phone numbers and card numbers (Luhn check).
 - **Unicode-hardened.** Digits in any script (full-width, mathematical,
   Devanagari, Bengali, Tamil and every other Unicode decimal digit) are
   normalised, and invisible characters that can hide data (zero-width spaces,
@@ -121,24 +123,25 @@ What Pseudonym is being built to do:
 
 The types marked "redacted" below are replaced before a request leaves
 Pseudonym, in every message and in `stop`. Everything else in a message is
-sent as written: a person's name or an IFSC code typed into a message
+sent as written: a person's name or an IP address typed into a message
 **goes to the provider today**. The measurements below come from
 synthetic datasets, one of them small, so do not rely on Pseudonym to
 protect real data.
 
-| Type                                | Validation                                                                                                                                                                        | Status   |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| Email                               | pattern (Unicode addresses included)                                                                                                                                              | redacted |
-| Phone (India + international)       | libphonenumber-js, full metadata                                                                                                                                                  | redacted |
-| Aadhaar                             | Verhoeff check digit, first digit 2–9                                                                                                                                             | redacted |
-| PAN                                 | format + holder-type letter                                                                                                                                                       | redacted |
-| Card number                         | Luhn + issuer prefix (Visa, Mastercard, Amex, Discover, RuPay, Diners, JCB, UnionPay)                                                                                             | redacted |
-| API keys, tokens, private keys      | a known format: prefix, alphabet and length (OpenAI, Anthropic, GitHub, GitLab, AWS, Stripe, Razorpay, Slack, Google, npm, Hugging Face), JSON Web Tokens, PEM private key blocks | redacted |
-| Passwords and codes after a keyword | none possible: the value directly after "password", "api key", "token", "secret", "OTP", "PIN", "CVV" and similar, in English and Hindi                                           | redacted |
-| Any other number of 9+ digits       | none: a safety net for numbers no detector claimed (bank accounts, odd layouts)                                                                                                   | redacted |
-| UPI ID                              | a handle on Pseudonym's list of 54 app and bank handles (Google Pay, PhonePe, Paytm, BHIM, banks' own…); any other handle only near a keyword                                     | redacted |
-| IFSC, IP address                    | pattern + context                                                                                                                                                                 | planned  |
-| Person names                        | local NER model                                                                                                                                                                   | planned  |
+| Type                                | Validation                                                                                                                                                                                    | Status   |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| Email                               | pattern (Unicode addresses included)                                                                                                                                                          | redacted |
+| Phone (India + international)       | libphonenumber-js, full metadata                                                                                                                                                              | redacted |
+| Aadhaar                             | Verhoeff check digit, first digit 2–9                                                                                                                                                         | redacted |
+| PAN                                 | format + holder-type letter                                                                                                                                                                   | redacted |
+| Card number                         | Luhn + issuer prefix (Visa, Mastercard, Amex, Discover, RuPay, Diners, JCB, UnionPay)                                                                                                         | redacted |
+| API keys, tokens, private keys      | a known format: prefix, alphabet and length (OpenAI, Anthropic, GitHub, GitLab, AWS, Stripe, Razorpay, Slack, Google, npm, Hugging Face), JSON Web Tokens, PEM private key blocks             | redacted |
+| Passwords and codes after a keyword | none possible: the value directly after "password", "api key", "token", "secret", "OTP", "PIN", "CVV" and similar, in English and Hindi                                                       | redacted |
+| Any other number of 9+ digits       | none: a safety net for numbers no detector claimed (bank accounts, odd layouts)                                                                                                               | redacted |
+| UPI ID                              | a handle on Pseudonym's list of 54 app and bank handles (Google Pay, PhonePe, Paytm, BHIM, banks' own…), compiled from public sources, not NPCI's list; any other handle only near a keyword  | redacted |
+| IFSC code                           | a bank code on Pseudonym's list of 260 (every bank with branches in RBI's list of NEFT-enabled branches, taken from a published copy of RBI's files); any other bank code only near a keyword | redacted |
+| IP address                          | pattern + context                                                                                                                                                                             | planned  |
+| Person names                        | local NER model                                                                                                                                                                               | planned  |
 
 Which detected matches count:
 
@@ -151,7 +154,21 @@ Which detected matches count:
   handle is on the list; with any other handle only if "UPI", "VPA",
   "BHIM", "GPay", "Google Pay", "PhonePe", "Paytm", "Amazon Pay" or
   यूपीआई is nearby. If what follows the `@` is an email domain
-  (`<name>@paytm.com`), it is an email, not a UPI ID.
+  (`<name>@paytm.com`), it is an email, not a UPI ID. The list of handles
+  is compiled from public sources (Wikipedia's list of UPI apps, payment
+  companies' guides, banks' own handles), **not from NPCI's official
+  list**, which could not be read. How complete it is has not been
+  measured.
+- **IFSC code** (four letters, a zero, six letters or digits): always when
+  the four letters are a bank code on the list; with any other four letters
+  only if "IFSC", "IFS code", "NEFT", "RTGS", "IMPS", "branch", आईएफएससी
+  or शाखा is nearby ("bank" alone is not enough). Any case
+  (`sbin0001234` is the same code). An IFSC touching `@` is part of an
+  email address or UPI ID. The list is every bank with branches in RBI's
+  list of NEFT-enabled branches (updated 2026-09-15); RBI's own files could
+  not be downloaded, so the codes come from Razorpay's open-source copy of
+  them, checked against the bank names on RBI's page. A bank added after
+  that is found only with a keyword.
 - **A secret after a keyword** (`password: …`, `api_key=…`, `Mera password …
 hai`): when the way it is written says it is a value. That is: after `=`;
   in quotes; after `:` when it is the last thing on its line; or when it
@@ -199,7 +216,13 @@ short for the safety net; nor are emails written as "name at example dot com",
 quoted or IP-literal addresses, or the 16-digit Aadhaar Virtual ID. **Short
 personal identifiers are not caught either:** a passport or voter ID number
 with 7 digits, or a date of birth, has no detector of its own and is below
-the 9 digits the safety net needs (the held-out NUMBER row shows it).
+the 9 digits the safety net needs (the held-out NUMBER row shows it). An
+IFSC written with the letter O for its zero (`SBINO001234`) or with a space
+or hyphen after the bank code is not caught. **A value inside a longer
+address or secret** can leave the rest visible: in `<PAN>.x@example.com`,
+`<IFSC>.x@example.com` or `api_key=<IFSC>-x7` only the PAN or IFSC is
+replaced, because a checked value wins over a longer unchecked one (an
+open question for the next part of Phase 5).
 
 ## Measured results
 
@@ -220,7 +243,7 @@ How to read a row:
   fine to send. The user still sees the original in the reply.
 - Percentages are cut to one decimal, never rounded up.
 
-IFSC, IP and PERSON have no detector yet. They are labelled and
+IP and PERSON have no detector yet. They are labelled and
 measured from the start so that the "before" is on record; what is redacted
 in those rows today is digits the existing detectors happened to catch,
 mostly the generic-number safety net. The SECRET row counts eleven kinds
@@ -228,28 +251,36 @@ of secret in equal shares: nine known key formats, passwords and bare
 40-character tokens. The last two are found only after a keyword, and some
 of the generated sentences deliberately have none ("I pasted … into the
 chat by mistake"): those are the misses in that row. The same holds for
-UPI: the four misses are IDs at a handle on no list, in sentences with no
+UPI: the two misses are IDs at a handle on no list, in sentences with no
 UPI keyword. Every handle the generator uses is on the detector's list, so
-the UPI row does not measure how complete that list is.
+the UPI row does not measure how complete that list is, and nothing else
+does yet: the list is compiled from public sources, not NPCI's official
+list. The IFSC row has the same limit: every generated IFSC sentence or
+field has a keyword, so the 26 IFSCs with an unknown bank code are all
+found, and an unknown one with no keyword (missed by design) is not
+tested there. Its 6 over-redactions are IFSC-shaped product codes (four
+letters, a zero, six digits) near an IFSC keyword: 6 of the 30 in the set.
+None of the 55 codes that are one character off (a fifth character other
+than zero, three letters instead of four) was touched.
 
 <!-- eval:start -->
 
-_Measured on 2026-09-30 by `npm run eval`. This block is generated, and the run fails if it is out of date._
+_Measured on 2026-09-30 (UTC date) by `npm run eval`. This block is generated, and the run fails if it is out of date._
 
 **Generated dataset** (seed 20260930; 600 messages in 500 cases, 1683 labelled personal values). Its generator and the detectors share an author, so it mostly shows regressions.
 
 | Type    | Values | Redacted (any type) | Partly redacted | Recall (right type) | Precision (right type) | F1     | Over-redactions |
 | ------- | ------ | ------------------- | --------------- | ------------------- | ---------------------- | ------ | --------------- |
-| AADHAAR | 153    | 151/153 (98.6%)     | 0               | 151/153 (98.6%)     | 151/165 (91.5%)        | 94.9%  | 3               |
-| CARD    | 153    | 149/153 (97.3%)     | 0               | 145/153 (94.7%)     | 145/149 (97.3%)        | 96.0%  | 0               |
-| PAN     | 153    | 139/153 (90.8%)     | 0               | 139/153 (90.8%)     | 139/156 (89.1%)        | 89.9%  | 17              |
-| PHONE   | 153    | 153/153 (100.0%)    | 0               | 153/153 (100.0%)    | 153/276 (55.4%)        | 71.3%  | 86              |
+| AADHAAR | 153    | 152/153 (99.3%)     | 0               | 152/153 (99.3%)     | 152/166 (91.5%)        | 95.2%  | 3               |
+| CARD    | 153    | 151/153 (98.6%)     | 0               | 148/153 (96.7%)     | 148/157 (94.2%)        | 95.4%  | 2               |
+| PAN     | 153    | 141/153 (92.1%)     | 0               | 141/153 (92.1%)     | 141/152 (92.7%)        | 92.4%  | 11              |
+| PHONE   | 153    | 153/153 (100.0%)    | 0               | 153/153 (100.0%)    | 153/267 (57.3%)        | 72.8%  | 75              |
 | EMAIL   | 153    | 153/153 (100.0%)    | 0               | 153/153 (100.0%)    | 153/153 (100.0%)       | 100.0% | 0               |
-| NUMBER  | 153    | 128/153 (83.6%)     | 0               | 104/153 (67.9%)     | 104/263 (39.5%)        | 50.0%  | 111             |
-| IFSC    | 153    | 0/153 (0.0%)        | 0               | 0/153 (0.0%)        | -                      | -      | 0               |
-| UPI     | 153    | 149/153 (97.3%)     | 0               | 149/153 (97.3%)     | 149/149 (100.0%)       | 98.6%  | 0               |
-| IP      | 153    | 71/153 (46.4%)      | 0               | 0/153 (0.0%)        | -                      | -      | 0               |
-| SECRET  | 153    | 144/153 (94.1%)     | 0               | 143/153 (93.4%)     | 143/143 (100.0%)       | 96.6%  | 0               |
+| NUMBER  | 153    | 130/153 (84.9%)     | 0               | 97/153 (63.3%)      | 97/252 (38.4%)         | 47.9%  | 94              |
+| IFSC    | 153    | 153/153 (100.0%)    | 0               | 153/153 (100.0%)    | 153/159 (96.2%)        | 98.0%  | 6               |
+| UPI     | 153    | 151/153 (98.6%)     | 0               | 151/153 (98.6%)     | 151/151 (100.0%)       | 99.3%  | 0               |
+| IP      | 153    | 81/153 (52.9%)      | 0               | 0/153 (0.0%)        | -                      | -      | 0               |
+| SECRET  | 153    | 147/153 (96.0%)     | 0               | 146/153 (95.4%)     | 146/146 (100.0%)       | 97.6%  | 0               |
 | PERSON  | 153    | 0/153 (0.0%)        | 0               | 0/153 (0.0%)        | -                      | -      | 0               |
 
 **Held-out adversarial dataset** (drafted with AI assistance in a separate session that did not write the detectors, then reviewed by the author; never run against the detectors before it was committed, and never used for tuning; 58 messages in 54 cases, 79 labelled personal values).
@@ -262,7 +293,7 @@ _Measured on 2026-09-30 by `npm run eval`. This block is generated, and the run 
 | PHONE   | 19     | 18/19 (94.7%)       | 0               | 18/19 (94.7%)       | 17/18 (94.4%)          | 94.5%  | 1               |
 | EMAIL   | 7      | 6/7 (85.7%)         | 0               | 6/7 (85.7%)         | 6/6 (100.0%)           | 92.3%  | 0               |
 | NUMBER  | 6      | 3/6 (50.0%)         | 0               | 3/6 (50.0%)         | 3/9 (33.3%)            | 40.0%  | 4               |
-| IFSC    | 3      | 0/3 (0.0%)          | 0               | 0/3 (0.0%)          | -                      | -      | 0               |
+| IFSC    | 3      | 3/3 (100.0%)        | 0               | 3/3 (100.0%)        | 3/3 (100.0%)           | 100.0% | 0               |
 | UPI     | 3      | 3/3 (100.0%)        | 0               | 3/3 (100.0%)        | 3/3 (100.0%)           | 100.0% | 0               |
 | IP      | 2      | 1/2 (50.0%)         | 0               | 0/2 (0.0%)          | -                      | -      | 0               |
 | SECRET  | 5      | 5/5 (100.0%)        | 0               | 5/5 (100.0%)        | 5/5 (100.0%)           | 100.0% | 0               |
@@ -332,7 +363,7 @@ recorded from a running Ollama.
 provider-side logging or training on them.
 
 **Does not protect against:** values the detectors miss (today that includes
-every person's name and IFSC code, any secret with neither a known format
+every person's name, an IFSC code with an unknown bank code and no keyword nearby, any secret with neither a known format
 nor a keyword directly before it, and a UPI ID at an unknown handle with no
 keyword nearby); anything your application
 logs before

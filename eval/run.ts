@@ -101,6 +101,8 @@ if (!measured) {
 }
 
 const now: Measurement = {
+  // The UTC date, and the README says so: a run before 05:30 in India
+  // records the day before.
   date: new Date().toISOString().slice(0, 10),
   generated: { score: generated, seed: GENERATED_SEED },
   heldOut,

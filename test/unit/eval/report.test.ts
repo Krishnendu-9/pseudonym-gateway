@@ -114,7 +114,7 @@ describe('readmeBlock', () => {
     const block = readmeBlock(input);
     expect(block.startsWith(`${README_START}\n`)).toBe(true);
     expect(block.endsWith(`\n${README_END}`)).toBe(true);
-    expect(block).toContain('_Measured on 2026-09-30 by `npm run eval`.');
+    expect(block).toContain('_Measured on 2026-09-30 (UTC date) by `npm run eval`.');
     expect(block).toContain(
       '**Generated dataset** (seed 42; 6 messages in 5 cases, 12 labelled personal values). Its generator and the detectors share an author',
     );

@@ -352,6 +352,13 @@ const LOOKALIKES: readonly ((rng: Rng) => string)[] = [
   () => '{{NOT.sku:?????####?}}',
   () => '{{NOT.version:#.#.##.#}}',
   () => '{{NOT.datetime:2026-0#-1# 1#:4#}}',
+  // 11-character codes (ADR-025): the first has an IFSC's exact shape (four
+  // letters, a zero, six digits) with letters that are almost never a bank
+  // code; the other two miss it by one character (the fifth is not a zero;
+  // three letters, not four).
+  () => '{{NOT.product-code:????0######}}',
+  () => '{{NOT.batch:????#######}}',
+  () => '{{NOT.invoice-no:INV000#####}}',
   (rng) => `{{NOT.private-ip=${ipAddress(rng, 'private')}}}`,
   (rng) => `{{NOT.loopback=${ipAddress(rng, 'loopback')}}}`,
 ];

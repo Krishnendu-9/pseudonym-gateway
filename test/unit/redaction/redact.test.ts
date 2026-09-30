@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { redactMessage } from '../../../src/redaction/redact.js';
 import { PlaceholderMapping } from '../../../src/redaction/mapping.js';
 import { restore } from '../../../src/redaction/restore.js';
-import { secret, upiId } from '../../../src/synthetic/identifiers.js';
+import { ifsc, secret, upiId } from '../../../src/synthetic/identifiers.js';
 import { createRng } from '../../../src/synthetic/rng.js';
 import { aadhaar, email, groupDigits, indianMobile, pan } from '../../../src/synthetic/values.js';
 import { assertTextEqualQuietly } from '../../support/quiet-text.js';
@@ -115,6 +115,16 @@ describe('redactMessage: value keys dedupe the same value (ADR-013)', () => {
     const redacted = redactMessage(text, mapping);
     assertTextEqualQuietly(redacted, 'Pay [UPI_1] or [UPI_1], not [UPI_2].');
     assertTextEqualQuietly(restore(redacted, mapping), text.replace(id.toUpperCase(), id));
+  });
+
+  it('an IFSC is [IFSC_1], one value in any case, restored as first written', () => {
+    const mapping = new PlaceholderMapping();
+    const code = ifsc(rng);
+    const other = ifsc(rng, false);
+    const text = `NEFT to ${code} (${code.toLowerCase()}), not IFSC ${other}.`;
+    const redacted = redactMessage(text, mapping);
+    assertTextEqualQuietly(redacted, 'NEFT to [IFSC_1] ([IFSC_1]), not IFSC [IFSC_2].');
+    assertTextEqualQuietly(restore(redacted, mapping), text.replace(code.toLowerCase(), code));
   });
 });
 
