@@ -10,9 +10,9 @@
         "typed": 151,
         "partial": 0,
         "missed": 2,
-        "detections": 166,
+        "detections": 165,
         "rightType": 151,
-        "otherPersonal": 12,
+        "otherPersonal": 11,
         "notPersonal": 3
       },
       "CARD": {
@@ -21,9 +21,9 @@
         "typed": 145,
         "partial": 0,
         "missed": 4,
-        "detections": 150,
+        "detections": 149,
         "rightType": 145,
-        "otherPersonal": 5,
+        "otherPersonal": 4,
         "notPersonal": 0
       },
       "PAN": {
@@ -65,10 +65,10 @@
         "typed": 104,
         "partial": 0,
         "missed": 25,
-        "detections": 310,
+        "detections": 301,
         "rightType": 104,
-        "otherPersonal": 94,
-        "notPersonal": 112
+        "otherPersonal": 86,
+        "notPersonal": 111
       },
       "IFSC": {
         "values": 153,
@@ -105,12 +105,12 @@
       },
       "SECRET": {
         "values": 153,
-        "redacted": 0,
-        "typed": 0,
-        "partial": 11,
-        "missed": 142,
-        "detections": 0,
-        "rightType": 0,
+        "redacted": 144,
+        "typed": 143,
+        "partial": 0,
+        "missed": 9,
+        "detections": 143,
+        "rightType": 143,
         "otherPersonal": 0,
         "notPersonal": 0
       },
@@ -233,12 +233,12 @@
       },
       "SECRET": {
         "values": 5,
-        "redacted": 0,
-        "typed": 0,
+        "redacted": 5,
+        "typed": 5,
         "partial": 0,
-        "missed": 5,
-        "detections": 0,
-        "rightType": 0,
+        "missed": 0,
+        "detections": 5,
+        "rightType": 5,
         "otherPersonal": 0,
         "notPersonal": 0
       },

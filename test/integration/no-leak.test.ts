@@ -19,6 +19,7 @@
 // checks the streamed answer restores exactly what the user wrote.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { secret, type SecretKind } from '../../src/synthetic/identifiers.js';
 import { obfuscate } from '../../src/synthetic/obfuscate.js';
 import { createRng, type Rng } from '../../src/synthetic/rng.js';
 import {
@@ -41,7 +42,7 @@ import { echoLastUserMessage, echoLastUserMessageStreamed } from '../support/moc
 import { expandCaptured, leakedForm } from '../support/leak-check.js';
 import { assertTextEqualQuietly } from '../support/quiet-text.js';
 
-type PlantedType = 'AADHAAR' | 'CARD' | 'PAN' | 'EMAIL' | 'PHONE' | 'NUMBER';
+type PlantedType = 'AADHAAR' | 'CARD' | 'PAN' | 'EMAIL' | 'PHONE' | 'NUMBER' | 'SECRET';
 
 interface Planted {
   readonly type: PlantedType;
@@ -55,6 +56,21 @@ const PLANTED_TYPES: readonly PlantedType[] = [
   'EMAIL',
   'PHONE',
   'NUMBER',
+  'SECRET',
+];
+
+// Secrets in a known format: the ones found without a keyword, which the
+// sentences below do not have.
+const SECRET_KINDS: readonly SecretKind[] = [
+  'openai',
+  'anthropic',
+  'github',
+  'aws',
+  'stripe',
+  'razorpay',
+  'slack',
+  'google',
+  'jwt',
 ];
 
 // A value in one of the ways real text writes it. Every form here is one the
@@ -88,6 +104,8 @@ function plantValue(rng: Rng, type: PlantedType): string {
     case 'NUMBER':
       // A bank-account-like number, 9-16 digits, no checks to pass.
       return disguise(String(rng.int(1, 9)) + rng.digits(rng.int(8, 15)));
+    case 'SECRET':
+      return disguise(secret(rng, rng.pick(SECRET_KINDS)));
   }
 }
 

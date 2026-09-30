@@ -210,8 +210,9 @@ describe('card detection', () => {
     });
 
     it('a card number glued to letters', () => {
-      onlyNumber('sk_live_4111111111111111', '4111111111111111');
-      onlyNumber('abc4111111111111111def', '4111111111111111');
+      // The safety net takes the whole token the digits are glued into.
+      onlyNumber('see order_4111111111111111 now', 'order_4111111111111111');
+      onlyNumber('see abc4111111111111111def now', 'abc4111111111111111def');
     });
 
     it('a millisecond timestamp (13 digits, no issuer starts with 1)', () => {

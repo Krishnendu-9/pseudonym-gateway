@@ -6,9 +6,9 @@
 // are written with the same slots as the held-out set and rendered by the
 // same code, so nothing here contains a value either.
 //
-// Honest limits, stated in the README too: the person who wrote these
-// templates wrote the detectors, so this set mostly measures regressions.
-// The held-out set is the one written by somebody else.
+// Honest limits, stated in the README too: these templates and the
+// detectors share an author, so this set mostly measures regressions. The
+// held-out set is the one written apart from the detectors.
 
 import {
   ipAddress,

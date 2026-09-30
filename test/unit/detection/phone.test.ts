@@ -93,8 +93,8 @@ describe('phone detection', () => {
   });
 
   describe('tricky negatives', () => {
-    it('is not a phone when glued to letters (the safety net takes it, ADR-011)', () => {
-      const { text, spans } = compose`id=ab${indianMobile(rng)}cd`;
+    it('is not a phone when glued to letters (the safety net takes the whole token, ADR-011)', () => {
+      const { text, spans } = compose`id=${`ab${indianMobile(rng)}cd`}`;
       expect(detect(text)).toEqual([numberAt(spans[0]!)]);
     });
 

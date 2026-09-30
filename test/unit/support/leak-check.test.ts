@@ -50,6 +50,22 @@ describe('leakedForm', () => {
     expect(leakedForm('nothing here', CARD)).toBeUndefined();
   });
 
+  // The forms of the last captured text are remembered between calls
+  // (bug-log 23). A different text must never be judged by them.
+  it('judges each captured text on its own, in any order of calls', () => {
+    const leaking = 'sent: 4111111111111111.';
+    const clean = 'sent: [CARD_1].';
+    const devanagari = CARD.replace(/[0-9]/g, (d) => String.fromCharCode(0x0966 + Number(d)));
+    for (let round = 0; round < 2; round++) {
+      expect(leakedForm(leaking, CARD)).toBe('squashed');
+      expect(leakedForm(clean, CARD)).toBeUndefined();
+      expect(leakedForm(`sent: ${CARD}.`, devanagari)).toBe('normalised');
+      expect(leakedForm(clean, devanagari)).toBeUndefined();
+      expect(leakedForm('pan abcpe1234f here', 'ABCPE1234F')).toBe('lowercased');
+      expect(leakedForm(clean, 'ABCPE1234F')).toBeUndefined();
+    }
+  });
+
   it('an empty value matches trivially; a separators-only one squashes to nothing and never does', () => {
     expect(leakedForm('anything', '')).toBe('raw');
     expect(leakedForm('anything', ' - ')).toBeUndefined();

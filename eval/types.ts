@@ -2,7 +2,7 @@
 // every personal value is known, so detect()'s output can be scored.
 //
 // Both datasets end up in this shape: the generated one (generate.ts) and
-// the hand-written held-out one (held-out.txt, through format.ts, lint.ts and
+// the held-out one kept in a file (held-out.txt, through format.ts, lint.ts and
 // render.ts). Like a Detection, a label says where a value is, never what it
 // is (ADR-009): scoring and reports work on offsets and counts only.
 

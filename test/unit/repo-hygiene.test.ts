@@ -2,8 +2,8 @@
 // Aadhaar-shaped number that passes the Aadhaar checks, or a card number that
 // passes the card checks unless it is a published test card. Such numbers
 // could belong to a real person. Guards bug-log entry 4, where one slipped
-// into a source comment. `eval/` is scanned too: the hand-written held-out
-// set lives there, behind its own stricter lint (eval/lint.ts).
+// into a source comment. `eval/` is scanned too: the held-out set lives
+// there as a file, behind its own stricter lint (eval/lint.ts).
 //
 // Failures report file and line only, never the number.
 

@@ -83,6 +83,27 @@ describe('overRedactionTable', () => {
 
   it('says so when there are none', () => {
     expect(overRedactionTable(withOver({}))).toBe('No over-redactions.');
+    expect(overRedactionTable(withOver({}), 'hidden')).toBe('No over-redactions.');
+  });
+
+  // A label is text the set's author typed; the held-out report never shows it.
+  it('with labels hidden, every lookalike is one row and no label is printed', () => {
+    const text = overRedactionTable(
+      withOver({
+        'plain text': { PHONE: 2 },
+        'NOT.order': { NUMBER: 5, PHONE: 1 },
+        'NOT.tracking': { PHONE: 3 },
+        'NOT.unlabelled': { NUMBER: 1 },
+      }),
+      'hidden',
+    );
+    expect(text.split('\n')).toEqual([
+      '| Redacted though not personal | PHONE | NUMBER | Total |',
+      '| ---------------------------- | ----- | ------ | ----- |',
+      '| lookalike                    | 4     | 6      | 10    |',
+      '| plain text                   | 2     |        | 2     |',
+    ]);
+    expect(text).not.toMatch(/order|tracking|NOT\./);
   });
 });
 
@@ -108,8 +129,10 @@ describe('readmeBlock', () => {
     const heldOut = dataset({ PAN: { values: 2, redacted: 1, typed: 1, missed: 1 } });
     const block = readmeBlock({ ...input, heldOut });
     expect(block).toContain(
-      '**Held-out adversarial dataset** (hand-written by someone else, never used for tuning; 6 messages in 5 cases, 2 labelled personal values).',
+      '**Held-out adversarial dataset** (drafted with AI assistance in a separate session that did not write the detectors, then reviewed by the author; never run against the detectors before it was committed, and never used for tuning; 6 messages in 5 cases, 2 labelled personal values).',
     );
+    // What the set is not, and must not be called.
+    expect(block).not.toMatch(/hand-written|by hand|someone else/);
     expect(block).toContain(scoreTable(heldOut));
     expect(block).not.toContain('not measured yet');
   });

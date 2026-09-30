@@ -62,17 +62,39 @@ export function scoreTable(score: StoredDataset): string {
   );
 }
 
-/** What was redacted though it is not personal, by kind and by detection type. */
-export function overRedactionTable(score: DatasetScore): string {
-  const kinds = Object.keys(score.overRedactions).sort();
+/** Every lookalike row (`NOT.order`, `NOT.tracking`…) added up into one, `lookalike`. */
+function foldLabels(
+  overRedactions: DatasetScore['overRedactions'],
+): Record<string, Record<string, number>> {
+  const folded: Record<string, Record<string, number>> = {};
+  for (const [kind, byType] of Object.entries(overRedactions)) {
+    const row = (folded[kind.startsWith('NOT.') ? 'lookalike' : kind] ??= {});
+    for (const [type, count] of Object.entries(byType)) row[type] = (row[type] ?? 0) + count;
+  }
+  return folded;
+}
+
+/**
+ * What was redacted though it is not personal, by kind and by detection
+ * type. A lookalike's label is text its author typed: for the held-out set
+ * it is `hidden` (one `lookalike` row), so that the report never shows what
+ * that file says.
+ */
+export function overRedactionTable(
+  score: DatasetScore,
+  labels: 'shown' | 'hidden' = 'shown',
+): string {
+  const overRedactions =
+    labels === 'shown' ? score.overRedactions : foldLabels(score.overRedactions);
+  const kinds = Object.keys(overRedactions).sort();
   if (kinds.length === 0) return 'No over-redactions.';
   const types = PERSONAL_TYPES.filter((type) =>
-    kinds.some((kind) => score.overRedactions[kind]![type] !== undefined),
+    kinds.some((kind) => overRedactions[kind]![type] !== undefined),
   );
   return table(
     ['Redacted though not personal', ...types, 'Total'],
     kinds.map((kind) => {
-      const counts = types.map((type) => score.overRedactions[kind]![type] ?? 0);
+      const counts = types.map((type) => overRedactions[kind]![type] ?? 0);
       return [
         kind,
         ...counts.map((n) => (n === 0 ? '' : String(n))),
@@ -111,14 +133,12 @@ export function readmeBlock(input: ReportInput): string {
   ];
   if (input.heldOut) {
     lines.push(
-      `**Held-out adversarial dataset** (hand-written by someone else, never used for tuning; ${size(input.heldOut)}).`,
+      `**Held-out adversarial dataset** (drafted with AI assistance in a separate session that did not write the detectors, then reviewed by the author; never run against the detectors before it was committed, and never used for tuning; ${size(input.heldOut)}).`,
       '',
       scoreTable(input.heldOut),
     );
   } else {
-    lines.push(
-      '**Held-out adversarial dataset:** not measured yet. It is being written by hand, before the Phase 5 detectors exist.',
-    );
+    lines.push('**Held-out adversarial dataset:** not measured yet.');
   }
   lines.push('', README_END);
   return lines.join('\n');

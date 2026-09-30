@@ -79,6 +79,10 @@ function valueKey(type: DetectionType, surface: string): string {
       return normalised.toUpperCase();
     case 'EMAIL':
       return normalised.toLowerCase();
+    case 'SECRET':
+      // Exactly as written: two passwords that differ only in case are two
+      // passwords.
+      return normalised;
     case 'PHONE': {
       const parsed = parsePhoneNumberFromString(normalised, { defaultCountry: 'IN' });
       return parsed ? parsed.number : normalised;

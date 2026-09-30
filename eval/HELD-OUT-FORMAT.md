@@ -1,13 +1,15 @@
 # Writing the held-out set
 
-`eval/held-out.txt` is a set of hand-written messages that try to catch
-Pseudonym's detectors out: awkward formats, near-misses and traps. It is the
-second of the two datasets the evaluation reports.
+`eval/held-out.txt` is a set of messages written to catch Pseudonym's
+detectors out: awkward formats, near-misses and traps. It is the second of
+the two datasets the evaluation reports.
 
 Three rules make its numbers worth publishing:
 
-1. **It is written by someone who did not write the detectors,** and that
-   person does not run the detectors on a case while writing it.
+1. **It is written apart from the detectors, and blind.** The set was
+   drafted with AI assistance in a separate session that did not write the
+   detectors, then reviewed by the project's author. No case was run
+   against the detectors before the set was committed.
 2. **It is written before the detectors it will test,** and committed first.
 3. **It is never used for tuning.** The detectors' author does not read this
    file; the tools print case ids, line numbers, rule names and counts only.
@@ -133,7 +135,10 @@ Written after the type (and after `!` or `@name`), before the mask:
 
 `NOT` may carry a label of your choice after a dot: `{{NOT.order:…}}`,
 `{{NOT.tracking:…}}`. It changes nothing in the text; it lets the report say
-which kinds of lookalike were over-redacted.
+which kinds of lookalike were over-redacted. For this file the report only
+does so when you ask (`npx tsx eval/run.ts --by-tag`, which also gives
+results per tag): labels and tags are your words, and the ordinary run
+prints none of them.
 
 ## What you may type
 
@@ -167,12 +172,16 @@ what is expected.
 ## Checking your work
 
 ```powershell
-npm run eval:lint                  # problems by case, line and rule; then counts
-npm run eval:lint -- --show H001   # how one case renders, values shown as •
+npm run eval:lint                          # problems by case, line and rule; then counts
+npx tsx eval/check-held-out.ts --tags      # the same, plus how many cases carry each tag
+npx tsx eval/check-held-out.ts --show H001 # how one case renders, values shown as •
 ```
 
-`--show` prints your own text, so it is for you: the detectors' author does
-not run it.
+`--tags` and `--show` print what you wrote (tag names, a case's text), so
+they are for you: whoever works on the detectors does not run them. The
+flags are given to `tsx` directly because PowerShell drops the `--` that
+`npm run eval:lint -- --show H001` needs, and npm then keeps the flag for
+itself.
 
 ## Suggested tags
 

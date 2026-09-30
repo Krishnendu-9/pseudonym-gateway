@@ -15,6 +15,7 @@ import { unclaimedNumbers } from './number.js';
 import { resolveOverlaps } from './overlap.js';
 import { panCandidates } from './pan.js';
 import { phoneCandidates } from './phone.js';
+import { secretCandidates } from './secret.js';
 import type { Candidate, Detection, DetectionType } from './types.js';
 
 const DETECTORS: readonly ((text: string) => Iterable<Candidate>)[] = [
@@ -23,6 +24,7 @@ const DETECTORS: readonly ((text: string) => Iterable<Candidate>)[] = [
   panCandidates,
   phoneCandidates,
   emailCandidates,
+  secretCandidates,
 ];
 
 // Types whose pattern alone is enough evidence (ADR-010).
@@ -36,7 +38,7 @@ export function detect(original: string): Detection[] {
   const accepted: Detection[] = [];
   for (const detector of DETECTORS) {
     for (const candidate of detector(text)) {
-      const context = hasContext(text, candidate, candidate.type);
+      const context = candidate.context ?? hasContext(text, candidate, candidate.type);
       if (candidate.validated || context || PATTERN_ONLY.has(candidate.type)) {
         accepted.push({ ...candidate, context });
       }

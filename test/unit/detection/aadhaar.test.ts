@@ -134,10 +134,10 @@ describe('Aadhaar detection', () => {
       expect(detect(before.text)).toEqual([numberAt(before.spans[0]!)]);
     });
 
-    it('is not an Aadhaar glued to letters or an underscore (the safety net takes it)', () => {
-      const letters = compose`token=ab${valid()}cd`;
+    it('is not an Aadhaar glued to letters or an underscore (the safety net takes the whole token)', () => {
+      const letters = compose`ref: ${`ab${valid()}cd`}`;
       expect(detect(letters.text)).toEqual([numberAt(letters.spans[0]!)]);
-      const underscore = compose`key_${valid()}`;
+      const underscore = compose`${`key_${valid()}`}`;
       expect(detect(underscore.text)).toEqual([numberAt(underscore.spans[0]!)]);
     });
 

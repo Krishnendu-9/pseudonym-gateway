@@ -3,19 +3,25 @@
 //
 //   npm run eval                          fails if any count differs from the
 //                                         baseline, or the README block is stale
-//   npm run eval -- --update              accepts better counts: rewrites the
+//   npx tsx eval/run.ts --update          accepts better counts: rewrites the
 //                                         baseline and the README block
-//   npm run eval -- --update --accept "ADR-0xx: why"
+//   npx tsx eval/run.ts --update --accept "ADR-0xx: why"
 //                                         accepts worse counts or a changed
 //                                         dataset, and records the note
-//   npm run eval -- --update --with-held-out
+//   npx tsx eval/run.ts --update --with-held-out
 //                                         takes the first measurement of the
 //                                         held-out set; from then on it is
 //                                         part of every run
-//   npm run eval -- --by-tag              also: held-out results per tag
+//   npx tsx eval/run.ts --by-tag          for the held-out set's author only:
+//                                         results per tag, and lookalikes by
+//                                         the labels the file gives them
+//
+// Flags go to tsx directly: PowerShell drops the "--" in
+// "npm run eval -- --update", and npm then keeps the flag for itself.
 //
 // Wiring only (files in, text out); every decision is in a tested module.
-// For the held-out set it prints counts, never text.
+// For the held-out set it prints counts per data type and nothing the file
+// says: no text, no tag, no label (unless --by-tag asks for the last two).
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -60,23 +66,29 @@ if (!measured) {
   write(
     `## Held-out dataset: ${held.cases.length} cases, ${held.problems.length} lint problem(s); not measured yet`,
   );
-  write('   (first measurement, once it is complete: npm run eval -- --update --with-held-out)');
+  write(
+    '   (first measurement, once it is complete: npx tsx eval/run.ts --update --with-held-out)',
+  );
   write();
 } else if (held.problems.length > 0) {
-  write(`eval/held-out.txt has ${held.problems.length} problem(s); run "npm run eval:lint".`);
+  write(
+    `eval/held-out.txt has ${held.problems.length} problem(s): "npm run eval:lint" lists them.`,
+  );
   process.exit(1);
 } else {
   const cases = loadHeldOut();
   heldOut = cases.length > 0 ? score(cases) : undefined;
+  // Tags and lookalike labels are text from the file: shown only on request.
+  const authorView = args.includes('--by-tag');
   write(`## Held-out dataset (${cases.length} cases)`);
   write();
   if (heldOut) {
     write(scoreTable(heldOut));
     write();
-    write(overRedactionTable(heldOut));
+    write(overRedactionTable(heldOut, authorView ? 'shown' : 'hidden'));
     write();
   }
-  if (args.includes('--by-tag')) {
+  if (authorView) {
     for (const [tag, tagScore] of scoreByTag(cases)) {
       const values = PERSONAL_TYPES.reduce((n, type) => n + tagScore.types[type].values, 0);
       const redacted = PERSONAL_TYPES.reduce((n, type) => n + tagScore.types[type].redacted, 0);
@@ -122,15 +134,15 @@ if (update) {
   const state = verdict(comparison);
   if (state === 'needs-note') {
     write('FAIL: worse than the baseline, or the dataset changed. If that is a decision,');
-    write('      record it: npm run eval -- --update --accept "ADR-0xx: why"');
+    write('      record it: npx tsx eval/run.ts --update --accept "ADR-0xx: why"');
     process.exit(1);
   }
   if (state === 'better') {
-    write('FAIL: better than the baseline. Make it the new floor: npm run eval -- --update');
+    write('FAIL: better than the baseline. Make it the new floor: npx tsx eval/run.ts --update');
     process.exit(1);
   }
   if (withReadmeBlock(readme, readmeBlock(previous!)) !== readme) {
-    write('FAIL: the README evaluation block is out of date: npm run eval -- --update');
+    write('FAIL: the README evaluation block is out of date: npx tsx eval/run.ts --update');
     process.exit(1);
   }
   write('OK: every count matches the baseline, and the README block is current.');

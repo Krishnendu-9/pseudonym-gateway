@@ -41,9 +41,66 @@ describe('unclaimedNumbers', () => {
     expect(spansOf(`x 12345${separator}6789 y`)).toEqual([]);
   });
 
-  it('ignores what the digits are glued to', () => {
-    expect(spansOf('UID123456789x')).toEqual([{ start: 3, end: 12 }]);
-    expect(spansOf('a_123456789_b')).toEqual([{ start: 2, end: 11 }]);
+  // ADR-011 amendment (Phase 5b): nine digits cut out of a 40-character
+  // token would send the other 31 characters, so the token goes whole.
+  describe('takes the whole token the digits are glued into', () => {
+    const whole = (text: string, token: string): void => {
+      const start = text.indexOf(token);
+      expect(spansOf(text)).toEqual([{ start, end: start + token.length }]);
+    };
+
+    it.each([
+      ['letters before', 'see UID123456789 now', 'UID123456789'],
+      ['letters after', 'see 123456789x now', '123456789x'],
+      ['letters on both sides', 'UID123456789x', 'UID123456789x'],
+      ['underscores', 'a_123456789_b', 'a_123456789_b'],
+      ['a hexadecimal token', 'id 0a1b2c3d4e5f607182934a5b ok', '0a1b2c3d4e5f607182934a5b'],
+      ['letters of another script', 'देखें नंबर123456789है अब', 'नंबर123456789है'],
+      ['a combining mark right before the digits', 'x é123456789 y', 'é123456789'],
+      ['a combining mark right after the digits', 'x 123456789́ y', '123456789́'],
+      ['letters outside the BMP (two code units each)', 'x 𐐀𐐁123456789𐐂 y', '𐐀𐐁123456789𐐂'],
+    ])('%s', (_name, text, token) => {
+      whole(text, token);
+    });
+
+    it.each([' ', ',', ':', '/', '@', '=', '"', '#', '*'])(
+      'stops at %j: what is beyond it is not part of the token',
+      (stop) => {
+        const text = `left${stop}ab123456789cd${stop}right`;
+        expect(spansOf(text)).toEqual([{ start: 5, end: 18 }]);
+      },
+    );
+
+    it('a joiner is not a token character: words joined to a number by a hyphen stay', () => {
+      expect(spansOf('order-123456789-delivered')).toEqual([{ start: 6, end: 15 }]);
+      expect(spansOf('(123456789).Then')).toEqual([{ start: 1, end: 10 }]);
+    });
+
+    it('two long stretches in one token are one detection', () => {
+      expect(spansOf('x 123456789abc987654321 y')).toEqual([{ start: 2, end: 23 }]);
+      // The second stretch reaches past the token the first was widened over.
+      expect(spansOf('x 123456789abc12-345678901z y')).toEqual([{ start: 2, end: 27 }]);
+    });
+
+    it('a short stretch later in the same token is inside the detection already', () => {
+      expect(spansOf('x 123456789abc1234 y')).toEqual([{ start: 2, end: 18 }]);
+    });
+
+    it('never widens into a claimed span, on either side', () => {
+      // "ab" and "cd" are claimed (say, by a detector that found them first).
+      const text = 'ab123456789cd';
+      expect(
+        spansOf(text, [
+          { start: 0, end: 2 },
+          { start: 11, end: 13 },
+        ]),
+      ).toEqual([{ start: 2, end: 11 }]);
+      // A claim in the middle of a token: each side is widened up to it.
+      expect(spansOf('xx123456789yy987654321zz', [{ start: 11, end: 13 }])).toEqual([
+        { start: 0, end: 11 },
+        { start: 13, end: 24 },
+      ]);
+    });
   });
 
   it('takes only the digits a claimed span leaves, trimmed of joiners', () => {
@@ -79,6 +136,18 @@ describe('unclaimedNumbers', () => {
         end: i * 20 + 4,
       }));
     expect(growthRatio(joined, 250_000, (t) => unclaimedNumbers(t, claims(t)))).toBeLessThan(
+      MAX_GROWTH_RATIO,
+    );
+  });
+
+  it('runs in linear time on one long token full of long numbers', () => {
+    // Every stretch would widen over the whole token if it were walked again.
+    const token = (n: number): string => '123456789a'.repeat(n / 10);
+    expect(growthRatio(token, 250_000, (t) => unclaimedNumbers(t, []))).toBeLessThan(
+      MAX_GROWTH_RATIO,
+    );
+    const lettersThenNumber = (n: number): string => `${'a'.repeat(n)}123456789`;
+    expect(growthRatio(lettersThenNumber, 250_000, (t) => unclaimedNumbers(t, []))).toBeLessThan(
       MAX_GROWTH_RATIO,
     );
   });
@@ -157,7 +226,11 @@ describe('detect: what the safety net does catch that is not personal (the accep
     ['an IPv4 address with 9 or more digits', 'Host 192.168.100.200 down', '192.168.100.200'],
     ['an ISBN', 'ISBN 978-3-16-148410-0 ok', '978-3-16-148410-0'],
     ['a millisecond timestamp', 'at 1727500000000 ms', '1727500000000'],
-    ['a digit stretch inside a hash', 'commit 0a1b2c3d4e5f607182934a5b', '607182934'],
+    [
+      'a hash with a long digit stretch in it',
+      'commit 0a1b2c3d4e5f607182934a5b',
+      '0a1b2c3d4e5f607182934a5b',
+    ],
   ])('catches %s', (_name, text, value) => {
     const start = text.indexOf(value);
     expect(detect(text)).toEqual([numberAt({ start, end: start + value.length })]);

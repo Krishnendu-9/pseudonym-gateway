@@ -53,15 +53,33 @@ export function expandCaptured(text: string): string {
   return parts.join('\n');
 }
 
+// The forms of the captured text last asked about. A test checks many
+// planted values against one captured text, and normalising that text twice
+// per value was most of the no-leak test's running time (bug-log 23).
+let last: { captured: string; lower: string; normalised: string; squashed: string } | undefined;
+
+function formsOf(captured: string): NonNullable<typeof last> {
+  if (last?.captured !== captured) {
+    last = {
+      captured,
+      lower: captured.toLowerCase(),
+      normalised: normalise(captured).text,
+      squashed: squash(captured),
+    };
+  }
+  return last;
+}
+
 /**
  * The first form in which `value` appears in `captured`, or undefined if it
  * appears in none. `captured` should already be expanded (expandCaptured).
  */
 export function leakedForm(captured: string, value: string): LeakForm | undefined {
   if (captured.includes(value)) return 'raw';
-  if (captured.toLowerCase().includes(value.toLowerCase())) return 'lowercased';
-  if (normalise(captured).text.includes(normalise(value).text)) return 'normalised';
+  const forms = formsOf(captured);
+  if (forms.lower.includes(value.toLowerCase())) return 'lowercased';
+  if (forms.normalised.includes(normalise(value).text)) return 'normalised';
   const squashedValue = squash(value);
-  if (squashedValue.length > 0 && squash(captured).includes(squashedValue)) return 'squashed';
+  if (squashedValue.length > 0 && forms.squashed.includes(squashedValue)) return 'squashed';
   return undefined;
 }

@@ -1,11 +1,15 @@
 // The held-out adversarial set: where it lives, how it is loaded, and what
 // may be said about it.
 //
-// eval/held-out.txt is written by hand by someone who did not write the
-// detectors, before the Phase 5 detectors exist, and is never used for
-// tuning (ADR-021). This code reads it; the detectors' author does not. So
-// everything here reports counts, case ids, line numbers and rule names,
-// and never a line of the file.
+// eval/held-out.txt was drafted with AI assistance in a separate session
+// that did not write the detectors, then reviewed by the project's author.
+// It was committed before the Phase 5 detectors existed, was never run
+// against the detectors before that, and is never used for tuning
+// (ADR-021). This code reads it; whoever works on the detectors does not.
+// So everything here reports counts, case ids, line numbers and rule names,
+// and never a line of the file. Tag names and lookalike labels are also
+// text from the file: summarise() and scoreByTag() return them, and only
+// the author's flags (--tags, --by-tag, --show) print them.
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';

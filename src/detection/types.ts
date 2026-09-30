@@ -8,10 +8,19 @@ import type { Span } from './normalise.js';
 
 /**
  * Data types detected so far, in overlap priority order (ADR-003), highest
- * first. NUMBER is the safety net for long numbers nothing else claimed
- * (ADR-011), so it always comes last.
+ * first: the most constrained formats first, the loosest last. NUMBER is
+ * the safety net for long numbers nothing else claimed (ADR-011), so it
+ * always comes last.
  */
-export const DETECTION_TYPES = ['AADHAAR', 'CARD', 'PAN', 'PHONE', 'EMAIL', 'NUMBER'] as const;
+export const DETECTION_TYPES = [
+  'AADHAAR',
+  'CARD',
+  'PAN',
+  'PHONE',
+  'EMAIL',
+  'SECRET',
+  'NUMBER',
+] as const;
 
 export type DetectionType = (typeof DETECTION_TYPES)[number];
 
@@ -22,6 +31,12 @@ export type DetectionType = (typeof DETECTION_TYPES)[number];
 export interface Candidate extends Span {
   readonly type: DetectionType;
   readonly validated: boolean;
+  /**
+   * Set by a detector whose pattern includes the keyword itself (a secret
+   * found as `password: …`). Left out by the others: the pipeline then
+   * looks for a keyword near the value (context.ts).
+   */
+  readonly context?: boolean;
 }
 
 /** A candidate that was accepted, with its span mapped back to the original text. */

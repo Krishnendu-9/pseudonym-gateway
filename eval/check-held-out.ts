@@ -1,9 +1,16 @@
 // `npm run eval:lint`: checks eval/held-out.txt and prints what is wrong
 // with it, by case id, line and rule, then a summary in counts. It never
-// prints a line of the file.
+// prints a line of the file, a tag or a label.
 //
-// `npm run eval:lint -- --show H012` is for the file's author: it prints how
-// that one case renders, with every character of a value shown as "•".
+// Two flags are for the file's author, who may see what the file says:
+//
+//   npx tsx eval/check-held-out.ts --tags        how many cases carry each tag
+//   npx tsx eval/check-held-out.ts --show H012   how that one case renders,
+//                                                every character of a value
+//                                                shown as "•"
+//
+// (Flags go to tsx directly: PowerShell drops the "--" in
+// "npm run eval:lint -- --show H012".)
 
 import { checkHeldOut, HELD_OUT_PATH, loadHeldOut, maskedText, summarise } from './held-out.js';
 
@@ -22,7 +29,11 @@ write('');
 write(HELD_OUT_PATH);
 write(`cases: ${summary.cases}   messages: ${summary.messages}`);
 write(`values by type: ${counts(summary.values)}`);
-write(`cases by tag: ${counts(summary.tags)}`);
+write(
+  process.argv.includes('--tags')
+    ? `cases by tag: ${counts(summary.tags)}`
+    : `tags: ${Object.keys(summary.tags).length}`,
+);
 write(problems.length === 0 ? 'no problems' : `${problems.length} problem(s)`);
 
 const show = process.argv.indexOf('--show');

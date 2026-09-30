@@ -9,6 +9,8 @@
 import { describe, expect, it } from 'vitest';
 import { redactMessage } from '../../../src/redaction/redact.js';
 import { PlaceholderMapping } from '../../../src/redaction/mapping.js';
+import { restore } from '../../../src/redaction/restore.js';
+import { secret } from '../../../src/synthetic/identifiers.js';
 import { createRng } from '../../../src/synthetic/rng.js';
 import { aadhaar, email, groupDigits, indianMobile, pan } from '../../../src/synthetic/values.js';
 import { assertTextEqualQuietly } from '../../support/quiet-text.js';
@@ -81,6 +83,28 @@ describe('redactMessage: value keys dedupe the same value (ADR-013)', () => {
     assertTextEqualQuietly(
       redactMessage('call 0 0287369447 again', mapping),
       'call [PHONE_1] again',
+    );
+  });
+
+  it('a secret is one value exactly as written: the same key twice, but not in another case', () => {
+    const mapping = new PlaceholderMapping();
+    const key = secret(rng, 'github');
+    const redacted = redactMessage(`key ${key}, again ${key}, not ${key.toLowerCase()}`, mapping);
+    assertTextEqualQuietly(redacted, 'key [SECRET_1], again [SECRET_1], not [SECRET_2]');
+    expect(mapping.lookup('SECRET', 1)?.value === key).toBe(true);
+  });
+
+  it('a password found by its keyword is replaced and restores to what was typed', () => {
+    const mapping = new PlaceholderMapping();
+    const password = secret(rng, 'password');
+    const redacted = redactMessage(
+      `My password is ${password}. Mera password ${password} hai.`,
+      mapping,
+    );
+    assertTextEqualQuietly(redacted, 'My password is [SECRET_1]. Mera password [SECRET_1] hai.');
+    assertTextEqualQuietly(
+      restore(redacted, mapping),
+      `My password is ${password}. Mera password ${password} hai.`,
     );
   });
 });
