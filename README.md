@@ -250,7 +250,11 @@ recognised; an address with a prefix length whose digits also read as a
 valid phone number (some `203.x.x.x/24`) is replaced as a phone number,
 prefix and all; two addresses joined only by a space or hyphen share one
 placeholder; and because private addresses are replaced too, the model
-cannot tell whether two of them are on the same network. A 10-digit mobile
+cannot tell whether two of them are on the same network. **MAC addresses**
+(a device identifier) have no detector: written with colons
+(`00:1A:2B:3C:4D:5E`) they are always sent as written, and in other forms
+they are replaced only when their decimal digits happen to reach the 9 the
+safety net needs. A 10-digit mobile
 written in two groups of five straight after a lone digit and a space
 (`Room 3 <mobile>`, or after an address such as `127.0.0.1`) is not
 detected unless a word such as "mobile" or "call" is nearby.
