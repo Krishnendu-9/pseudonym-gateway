@@ -28,7 +28,11 @@
 // newlines of the same length: offsets stay the same, and a newline ends a
 // number. Extensions are lost; they are not personal data. The labels are
 // libphonenumber's own (createExtensionPattern.js), in the NFKC form the
-// detectors see.
+// detectors see. A label counts when it stands alone or right after a digit
+// ("…1234X", the last letter of a PAN or a key): libphonenumber reads the
+// latter as an extension too, and then reports nothing for a spaced number
+// after it (bug-log 36). One glued to a letter, or followed by a letter or
+// digit ("24x7", "6789x123"), is left alone.
 //
 // libphonenumber does not look inside a stretch of spaced digit groups that
 // is not a valid number as a whole, so a mobile written 5 + 5 with another
@@ -42,7 +46,7 @@ import type { Candidate } from './types.js';
 const DEFAULT_COUNTRY = 'IN';
 const GLUED = /[\p{L}\p{M}_@]/u;
 const EXTENSION_MARKER =
-  /[,;#~]|(?<![\p{L}\p{N}\p{M}_])(?:e?xt(?:ensi[oó])?n?|x|int|доб|anexo)(?![\p{L}\p{N}\p{M}_])/giu;
+  /[,;#~]|(?<![\p{L}\p{M}_])(?:e?xt(?:ensi[oó])?n?|x|int|доб|anexo)(?![\p{L}\p{N}\p{M}_])/giu;
 
 /** `text` with every extension marker blanked out, for libphonenumber only. */
 export const hideExtensionMarkers = (text: string): string =>

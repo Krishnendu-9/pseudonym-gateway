@@ -238,13 +238,33 @@ describe('phone detection', () => {
       expect(detect(text)).toEqual([phoneAt(spans[0]!), phoneAt(spans[1]!)]);
     });
 
-    it('hides only standalone extension markers, keeping every offset', () => {
+    it('hides standalone extension markers and ones right after a digit, keeping every offset', () => {
       const text = 'Text Alex next, mixture; x #1 ~ Ext. extn int доб anexo xt6 3x';
       const hidden = hideExtensionMarkers(text);
       expect(hidden).toHaveLength(text.length);
       expect(hidden).toBe(
-        'Text Alex next\n mixture\n \n \n1 \n \n\n\n. \n\n\n\n \n\n\n \n\n\n \n\n\n\n\n xt6 3x',
+        'Text Alex next\n mixture\n \n \n1 \n \n\n\n. \n\n\n\n \n\n\n \n\n\n \n\n\n\n\n xt6 3\n',
       );
+      // After a digit (bug-log 36): blanked unless a letter or digit follows.
+      expect(hideExtensionMarkers('1234X 9xt 5ext 7X- R2x 24x7 6789x123 3x_ 77xyz')).toBe(
+        '1234\n 9\n\n 5\n\n\n 7\n- R2\n 24x7 6789x123 3x_ 77xyz',
+      );
+    });
+
+    it('finds a spaced number after a word ending in a digit and "x" (bug-log 36)', () => {
+      const formats: (() => string)[] = [
+        () => groupDigits(indianMobile(rng), [5, 5], ' '),
+        () => groupDigits(indianMobile(rng), [3, 3, 4], ' '),
+        () => `022 ${rng.int(2, 6)}${rng.digits(3)} ${rng.digits(4)}`,
+      ];
+      for (const ending of ['1234X', '1234x', 'R2x', '9xt', '5ext', '7X-']) {
+        for (const [i, format] of formats.entries()) {
+          const { text, spans } = compose`Ref ${ending} ${format()} ok`;
+          const found = detect(text).filter((d) => d.type === 'PHONE');
+          const whole = found.some((d) => d.start <= spans[1]!.start && spans[1]!.end <= d.end);
+          expect([ending, i, whole]).toEqual([ending, i, true]);
+        }
+      }
     });
   });
 

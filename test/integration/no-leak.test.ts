@@ -160,9 +160,8 @@ interface History {
 
 // Neighbours (bug-log 34): a digit, a digit group or a digit-led token right
 // before or after a value; or two numbers with only a separator between.
-// Pairs are numbers only: other types side by side still leak (bug-log 35,
-// Phase 5c items 2 and 3), and so does a spaced mobile after a token ending
-// in a digit and "x" (bug-log 36).
+// Pairs are numbers only until Phase 5c item 3: other types side by side
+// joined by a hyphen still leak (bug-log 35).
 const BESIDE: readonly ((v: string, rng: Rng) => string)[] = [
   (v, rng) => `${rng.int(1, 9)} ${v}`,
   (v, rng) => `${v} ${rng.int(1, 9)}`,

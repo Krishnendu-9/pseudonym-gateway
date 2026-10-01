@@ -175,8 +175,9 @@ describe('tables (ADR-027)', () => {
     expect(detect(text)).toEqual([]);
   });
 
-  it('known limit (bug-log 36): a mobile after a token ending in a digit and "x" is missed', () => {
-    expect(detect(`Ref Room1X ${mobile()} please.`)).toEqual([]);
+  it('is found after a token ending in a digit and "x" (bug-log 36)', () => {
+    const { text, spans } = compose`Ref Room1X ${mobile()} please.`;
+    expect(inPhone(text, [spans[0]!])).toEqual([true]);
   });
 });
 

@@ -270,10 +270,7 @@ cannot tell whether two of them are on the same network. **MAC addresses**
 (a device identifier) have no detector: written with colons
 (`00:1A:2B:3C:4D:5E`) they are always sent as written, and in other forms
 they are replaced only when their decimal digits happen to reach the 9 the
-safety net needs. A mobile written in two
-groups of five right after a word that ends in a digit and an "x"
-(`…1234X <mobile>`, which includes every PAN ending in X) is not
-detected: the phone library reads the "x" as the start of an extension.
+safety net needs.
 **Two values side by side joined by a hyphen** can leave one of them
 visible: an email address or UPI ID right after another value and a hyphen
 is sent (`<Aadhaar>-name@example.com`), as is a JWT, an IP address after
@@ -455,8 +452,7 @@ provider-side logging or training on them.
 **Does not protect against:** values the detectors miss (today that includes
 every person's name, an IFSC code with an unknown bank code and no keyword nearby, any secret with neither a known format
 nor a keyword directly before it, a UPI ID at an unknown handle with no
-keyword nearby, an IP address inside a host name, a spaced mobile number
-right after a word ending in a digit and an "x", and some values of other
+keyword nearby, an IP address inside a host name, and some values of other
 types written side by side with another value); anything your application
 logs before
 calling Pseudonym; a compromised Pseudonym host; prompt injection that
