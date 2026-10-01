@@ -121,7 +121,11 @@ describe('IPv4 addresses', () => {
     // "::1". If the kept address won the overlap among the claimed spans, the
     // safety net would take the digits joined by "(" and replace the phone.
     expect(found('mobile,::1 12345678(12345')).toEqual(found('mobile,1 12345678(12345'));
-    expect(found('mobile,1 12345678(12345')).toEqual([['PHONE', '1 12345678']]);
+    // The digits joined by "(" are taken too, however few (ADR-029).
+    expect(found('mobile,1 12345678(12345')).toEqual([
+      ['PHONE', '1 12345678'],
+      ['NUMBER', '12345'],
+    ]);
   });
 
   it.each([
@@ -427,8 +431,8 @@ describe('IP next to the other types', () => {
     expect(found('token: a::b')).toEqual([['SECRET', 'a::b']]);
   });
 
-  it('SECRET: a secret made of an address, a hyphen and more keeps only the address (known limit, ADR-003 containing span)', () => {
-    expect(found('api_key=10.1.2.3-x7')).toEqual([['IP', '10.1.2.3']]);
+  it('SECRET: a secret made of an address, a hyphen and more is one secret (ADR-029 containing span)', () => {
+    expect(found('api_key=10.1.2.3-x7')).toEqual([['SECRET', '10.1.2.3-x7']]);
   });
 
   it("EMAIL: an address in an email is the email's; an IP-literal domain in brackets is an IP", () => {

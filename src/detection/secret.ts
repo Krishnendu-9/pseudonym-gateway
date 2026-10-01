@@ -33,7 +33,8 @@
 // This runs on normalised text. Lists here are the detector's own, from the
 // providers' documentation; the generator keeps its own (ADR-008).
 
-import { normalise } from './normalise.js';
+import { charBefore } from './digit-runs.js';
+import { normalise, type Span } from './normalise.js';
 import type { Candidate } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -71,12 +72,6 @@ const PREFIXED = [
   `hf_[${ALNUM}]{30,}`,
 ].join('|');
 
-// A JSON Web Token: two base64url parts that each start with `{"` encoded
-// ("eyJ"), and a signature that may be empty. Its alphabet includes "-",
-// so it may not start after one either: otherwise a long dotless chain of
-// "eyJ…-eyJ…" would be scanned again from every hyphen.
-const JWT = `eyJ[${ALNUM}_-]{8,}\\.eyJ[${ALNUM}_-]{8,}(?:\\.[${ALNUM}_-]*)?`;
-
 // A PEM private key block, to its END line; with no END line, to the end of
 // the text (fail closed: a key cut off by a length limit is still a key).
 const PEM_LABEL = '[A-Z0-9 ]{0,100}PRIVATE KEY(?: BLOCK)?-----';
@@ -84,17 +79,82 @@ const PEM = `-----BEGIN${PEM_LABEL}[\\s\\S]*?(?:-----END${PEM_LABEL}|$)`;
 
 // Not glued to a letter, digit, mark or underscore: "ask-…" and
 // "Xghp_…" are parts of other tokens.
-const KNOWN_FORMAT = new RegExp(
-  `(?<![\\p{L}\\p{N}\\p{M}_])(?:${PREFIXED})|(?<![\\p{L}\\p{N}\\p{M}_.-])${JWT}|${PEM}`,
-  'gu',
-);
+const KNOWN_FORMAT = new RegExp(`(?<![\\p{L}\\p{N}\\p{M}_])(?:${PREFIXED})|${PEM}`, 'gu');
+
+// A key takes the rest of the token it is glued to (ADR-029, like the safety
+// net's whole-token rule, ADR-011): letters, digits, marks, "_" and "-", and
+// parts joined by single dots. A key whose alphabet has "-" can run into the
+// next key's prefix ("sk-…-ghp_…"), and that key is then never matched; the
+// two become one secret rather than half of the second being sent.
+const REST_OF_TOKEN = /[\p{L}\p{N}\p{M}_-]*(?:\.[\p{L}\p{N}\p{M}_-]+)*/uy;
+
+function restOfToken(text: string, at: number): number {
+  REST_OF_TOKEN.lastIndex = at;
+  REST_OF_TOKEN.exec(text);
+  return REST_OF_TOKEN.lastIndex;
+}
 
 function* knownFormats(text: string): Generator<Candidate> {
-  for (const m of text.matchAll(KNOWN_FORMAT)) {
+  KNOWN_FORMAT.lastIndex = 0;
+  for (let m = KNOWN_FORMAT.exec(text); m; m = KNOWN_FORMAT.exec(text)) {
     if (m.groups!.sk !== undefined && !/[0-9A-Z]/.test(m[0])) continue;
-    yield { type: 'SECRET', start: m.index, end: m.index + m[0].length, validated: true };
+    const end = restOfToken(text, m.index + m[0].length);
+    yield { type: 'SECRET', start: m.index, end, validated: true };
+    // Whatever the token held is covered: go on after it, so a long chain
+    // of keys is read once.
+    KNOWN_FORMAT.lastIndex = end;
+  }
+  yield* jsonWebTokens(text);
+}
+
+// A JSON Web Token: two base64url parts that each start with `{"` encoded
+// ("eyJ") and have at least 8 more characters, then an optional signature.
+// It starts where no letter, digit, mark or "_" precedes it, or right after
+// a "-" (ADR-029: `<value>-eyJ…`), never after a dot. Its alphabet includes
+// "-", so a pattern search would start again at every hyphen of a long
+// dotless "eyJ…-eyJ…" chain; instead each run of base64url characters and
+// dots is split at its dots once, and a header start is looked for in each
+// part, left to right.
+const JWT_RUN = /[A-Za-z0-9_.-]+/g;
+const JWT_PART_MIN = 11; // "eyJ" and 8 more
+const GLUED_BEFORE = /[\p{L}\p{N}\p{M}_]/u;
+
+function* jsonWebTokens(text: string): Generator<Candidate> {
+  for (const run of text.matchAll(JWT_RUN)) {
+    const parts: Span[] = [];
+    let at = run.index;
+    for (const piece of run[0].split('.')) {
+      parts.push({ start: at, end: at + piece.length });
+      at += piece.length + 1;
+    }
+    const runGlued = GLUED_BEFORE.test(charBefore(text, run.index));
+    let coveredTo = run.index;
+    for (let k = 0; k + 1 < parts.length; k++) {
+      const header = parts[k]!;
+      if (header.start < coveredTo) continue;
+      const start = headerStart(text, header, k === 0 && !runGlued);
+      const payload = parts[k + 1]!;
+      if (start < 0 || !isJwtPart(text, payload.start, payload.end)) continue;
+      // A signature, even an empty one ("header.payload."), then the rest.
+      const end = restOfToken(text, parts[k + 2]?.end ?? payload.end);
+      yield { type: 'SECRET', start, end, validated: true };
+      coveredTo = end;
+    }
   }
 }
+
+/** The first allowed header start in `part`, or -1. */
+function headerStart(text: string, part: Span, mayStartAtPart: boolean): number {
+  if (mayStartAtPart && isJwtPart(text, part.start, part.end)) return part.start;
+  // Searched within the part only, so every part is read once. The earliest
+  // start is the longest; if it is too short, so is every later one.
+  const hyphen = text.slice(part.start, part.end).indexOf('-eyJ');
+  const start = part.start + hyphen + 1;
+  return hyphen >= 0 && isJwtPart(text, start, part.end) ? start : -1;
+}
+
+const isJwtPart = (text: string, start: number, end: number): boolean =>
+  end - start >= JWT_PART_MIN && text.startsWith('eyJ', start);
 
 // ---------------------------------------------------------------------------
 // 2. Keyword assignment

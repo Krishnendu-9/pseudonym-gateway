@@ -127,8 +127,9 @@ describe('secrets: known formats', () => {
       expect(detect(`jwt eyJab.eyJcd end`)).toEqual([]);
     });
 
-    it('does not start after a hyphen or a dot (its own alphabet)', () => {
-      expect(detect(`jwt x-${header}.${payload} end`)).toEqual([]);
+    it('starts after a hyphen (ADR-029: <value>-eyJ…), never after a dot', () => {
+      const { text, spans } = compose`jwt x-${`${header}.${payload}`} end`;
+      expect(detect(text)).toEqual([known(spans[0]!)]);
       expect(detect(`jwt x.${header}.${payload} end`)).toEqual([]);
     });
   });
@@ -539,6 +540,67 @@ describe('secrets: linear time', () => {
     ['PEM BEGIN lines with no END', (n: number) => `${PEM_BEGIN}\n`.repeat(n / 32)],
     ['BEGIN with no label', (n: number) => '-----BEGIN A '.repeat(n / 13)],
   ])('scans %s in linear time', (_name, make) => {
+    expect(growthRatio(make, 25_000, detect)).toBeLessThan(MAX_GROWTH_RATIO);
+  });
+});
+
+// ADR-029: a key takes the rest of its token; a JWT may start after "-".
+describe('secrets glued to other text', () => {
+  const r = createRng(2029);
+
+  it('a key takes the rest of the token it is glued to', () => {
+    const key = secret(r, 'github');
+    const { text, spans } = compose`key ${`${key}-abc.def`} ok`;
+    expect(detect(text)).toEqual([known(spans[0]!)]);
+  });
+
+  it('two keys joined by a hyphen are one secret, wholly covered', () => {
+    for (const [a, b] of [
+      ['openai', 'jwt'],
+      ['slack', 'github'],
+      ['google', 'jwt'],
+      ['jwt', 'jwt'],
+    ] as const) {
+      const { text, spans } = compose`keys ${`${secret(r, a)}-${secret(r, b)}`} ok`;
+      expect([a, b, detect(text)]).toEqual([a, b, [known(spans[0]!)]]);
+    }
+  });
+
+  it('the secret detector alone reads a chain of keys whose alphabet has no hyphen in linear time', () => {
+    // Each key takes the rest of the token, the whole chain; the search must
+    // then go on after it, not find every next key again. Timed on the
+    // detector alone (the other detectors would hide a quadratic one), ten
+    // scans per measurement, as one takes about a millisecond.
+    const unit = ['gh', 'p_', filler(36), '-'].join('');
+    const make = (n: number): string => unit.repeat(Math.ceil(n / unit.length));
+    const work = (text: string): number => {
+      let found = 0;
+      for (let i = 0; i < 10; i++) found += [...secretCandidates(text)].length;
+      return found;
+    };
+    expect(growthRatio(make, 100_000, work)).toBeLessThan(MAX_GROWTH_RATIO);
+  });
+
+  it('a JWT glued to a letter outside its alphabet is not one', () => {
+    expect(detect(`ref é${secret(r, 'jwt')} ok`)).toEqual([]);
+  });
+
+  it('a JWT after a value and a hyphen is found', () => {
+    const jwt = secret(r, 'jwt');
+    const { text, spans } = compose`ref 2345-6789-${jwt} ok`;
+    expect(
+      detect(text).some(
+        (d) => d.type === 'SECRET' && d.start === spans[0]!.start && d.end === spans[0]!.end,
+      ),
+    ).toBe(true);
+  });
+
+  it.each([
+    ['a dotless chain of JWT headers', 'eyJabcdefghij-'],
+    ['a chain of JWT header and payload parts', 'eyJabcdefghij.eyJabcdefghij-'],
+    ['a chain of keys', 'sk-Abc123456789012345678-'],
+  ])('reads %s in linear time', (_name, unit) => {
+    const make = (n: number): string => unit.repeat(Math.ceil(n / unit.length));
     expect(growthRatio(make, 25_000, detect)).toBeLessThan(MAX_GROWTH_RATIO);
   });
 });

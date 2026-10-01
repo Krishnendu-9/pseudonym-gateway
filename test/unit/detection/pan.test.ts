@@ -146,9 +146,11 @@ describe('PAN detection', () => {
       );
     });
 
-    it('a PAN then a dot and more before the "@" keeps only the PAN (known limit, ADR-003 containing span)', () => {
-      const { text, spans } = compose`mail ${pan(rng)}.x@example.com now`;
-      expect(detect(text)).toEqual([panAt(spans[0]!)]);
+    it('a PAN then a dot and more before the "@" is part of the email (ADR-029 containing span)', () => {
+      const { text, spans } = compose`mail ${`${pan(rng)}.x@example.com`} now`;
+      expect(detect(text)).toEqual([
+        { type: 'EMAIL', ...spans[0]!, validated: false, context: false },
+      ]);
     });
   });
 

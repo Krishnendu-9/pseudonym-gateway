@@ -228,23 +228,23 @@ describe('detect: fails closed inside longer numbers', () => {
   });
 });
 
-describe('detect: widening stops at the neighbouring detection (ADR-028)', () => {
-  /** Booleans for a pair: each value covered whole, and no detection touching both. */
-  const pairResult = (a: string, separator: string, b: string): [boolean, boolean, boolean] => {
-    const { text, spans } = compose`Value ${a}${separator}${b} ok.`;
-    const found = detect(text);
-    const covered = (s: { start: number; end: number }): boolean =>
-      [...text.slice(s.start, s.end)].every(
-        (ch, i) =>
-          !/[\p{L}\p{N}]/u.test(ch) ||
-          found.some((d) => d.start <= s.start + i && s.start + i < d.end),
-      );
-    const touches = (d: { start: number; end: number }, s: { start: number; end: number }) =>
-      d.start < s.end && s.start < d.end;
-    const shared = found.some((d) => touches(d, spans[0]!) && touches(d, spans[1]!));
-    return [covered(spans[0]!), covered(spans[1]!), !shared];
-  };
+/** Booleans for a pair: each value covered whole, and no detection touching both. */
+const pairResult = (a: string, separator: string, b: string): [boolean, boolean, boolean] => {
+  const { text, spans } = compose`Value ${a}${separator}${b} ok.`;
+  const found = detect(text);
+  const covered = (s: { start: number; end: number }): boolean =>
+    [...text.slice(s.start, s.end)].every(
+      (ch, i) =>
+        !/[\p{L}\p{N}]/u.test(ch) ||
+        found.some((d) => d.start <= s.start + i && s.start + i < d.end),
+    );
+  const touches = (d: { start: number; end: number }, s: { start: number; end: number }) =>
+    d.start < s.end && s.start < d.end;
+  const shared = found.some((d) => touches(d, spans[0]!) && touches(d, spans[1]!));
+  return [covered(spans[0]!), covered(spans[1]!), !shared];
+};
 
+describe('detect: widening stops at the neighbouring detection (ADR-028)', () => {
   it('keeps two values in one digit run as two detections, the separator between them as text', () => {
     const { text, spans } =
       compose`Numbers ${groupDigits(indianMobile(rng), [5, 5], ' ')} ${spacedAadhaar(rng)} ok`;
@@ -307,6 +307,93 @@ describe('detect: widening stops at the neighbouring detection (ADR-028)', () =>
       }
     }
     expect([...results]).toEqual([JSON.stringify([true, true, true])]);
+  });
+});
+
+describe('detect: the overlap rule after ADR-029', () => {
+  it('two spaced mobiles with " - " or ". " between them stay two detections (size counts digits)', () => {
+    for (const separator of [' - ', '. ', ' ']) {
+      const a = groupDigits(indianMobile(rng), [5, 5], ' ');
+      const b = groupDigits(indianMobile(rng), [5, 5], ' ');
+      const { text, spans } = compose`Numbers ${a}${separator}${b} ok`;
+      expect([separator, detect(text).map((d) => [d.type, d.start, d.end])]).toEqual([
+        separator,
+        [
+          ['PHONE', spans[0]!.start, spans[0]!.end],
+          ['PHONE', spans[2]!.start, spans[2]!.end],
+        ],
+      ]);
+    }
+  });
+
+  it('a keyword secret that contains a mobile is one secret (containing span)', () => {
+    const { text, spans } = compose`token: ${`abc-${indianMobile(rng)}`} ok`;
+    expect(detect(text).map((d) => [d.type, d.start, d.end])).toEqual([
+      ['SECRET', spans[0]!.start, spans[0]!.end],
+    ]);
+  });
+
+  it('digits joined to a mobile by "(" or "+" are taken, the joiner stays text', () => {
+    for (const [joiner, tail] of [
+      ['(', '12345'],
+      ['+', '123'],
+    ] as const) {
+      const { text, spans } = compose`Call ${indianMobile(rng)}${joiner}${tail} now`;
+      expect([joiner, detect(text).map((d) => [d.type, d.start, d.end])]).toEqual([
+        joiner,
+        [
+          ['PHONE', spans[0]!.start, spans[0]!.end],
+          ['NUMBER', spans[2]!.start, spans[2]!.end],
+        ],
+      ]);
+    }
+  });
+});
+
+// Bug-log 35, closed by ADR-029: every type next to every type, with each
+// of the four separators the no-leak test uses, leaves no letter or digit
+// of either value visible. Some pairs become one detection (two keys
+// joined by a hyphen, two unbroken numbers joined by one); none leaks.
+describe('detect: any two values side by side are both covered (bug-log 35, ADR-029)', () => {
+  const r = createRng(3536);
+  const kinds = [
+    'openai',
+    'anthropic',
+    'github',
+    'aws',
+    'stripe',
+    'razorpay',
+    'slack',
+    'google',
+    'jwt',
+  ] as const;
+  const makers: Record<string, () => string> = {
+    AADHAAR: () => spacedAadhaar(r),
+    CARD: () => cardNumber(r),
+    PAN: () => pan(r),
+    EMAIL: () => email(r),
+    PHONE: () => groupDigits(indianMobile(r), [5, 5], ' '),
+    NUMBER: () => String(r.int(1, 9)) + r.digits(r.int(8, 15)),
+    SECRET: () => secret(r, r.pick(kinds)),
+    UPI: () => upiId(r, r.pick(['name', 'mobile'] as const)),
+    IP: () => ipAddress(r, r.pick(['v4', 'v6'] as const)),
+    IFSC: () => ifsc(r),
+  };
+  const types = Object.keys(makers);
+  it.each(types)('%s then every type, with " ", " - ", ". " and "-"', (first) => {
+    const results = new Map<string, number>();
+    for (const second of types) {
+      for (const separator of [' ', ' - ', '. ', '-']) {
+        for (let i = 0; i < 6; i++) {
+          const [a, b] = pairResult(makers[first]!(), separator, makers[second]!());
+          if (!a || !b) {
+            const key = `${second} "${separator}" ${a ? '' : 'first'}${b ? '' : 'second'}`;
+            results.set(key, (results.get(key) ?? 0) + 1);
+          }
+        }
+      }
+    }
+    expect([...results]).toEqual([]);
   });
 });
 

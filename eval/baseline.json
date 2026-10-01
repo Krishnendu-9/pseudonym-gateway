@@ -190,15 +190,15 @@
       },
       "contained": {
         "values": 70,
-        "redacted": 0,
-        "partial": 70,
-        "typed": 0,
-        "overRedactions": 8
+        "redacted": 70,
+        "partial": 0,
+        "typed": 70,
+        "overRedactions": 9
       },
       "joined-digits": {
         "values": 30,
-        "redacted": 6,
-        "partial": 24,
+        "redacted": 21,
+        "partial": 9,
         "typed": 6,
         "overRedactions": 4
       },
@@ -497,6 +497,13 @@
       "changes": [
         "generated shape contact-sheet: 0 values -> 120",
         "generated shape misaligned-sheet: 0 values -> 132"
+      ]
+    },
+    {
+      "date": "2026-10-01",
+      "note": "ADR-029: containing span, joined digits, remainders; contained over-redaction 8->9 is a tracking number already redacted, now its own detection",
+      "changes": [
+        "generated shape contained: over-redactions 8 -> 9"
       ]
     }
   ]

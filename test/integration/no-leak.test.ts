@@ -159,16 +159,15 @@ interface History {
 }
 
 // Neighbours (bug-log 34): a digit, a digit group or a digit-led token right
-// before or after a value; or two numbers with only a separator between.
-// Pairs are numbers only until Phase 5c item 3: other types side by side
-// joined by a hyphen still leak (bug-log 35).
+// before or after a value; or two values of any types, with only a space,
+// " - ", ". " or a hyphen between them (bug-log 35, ADR-029). No pair is
+// left out.
 const BESIDE: readonly ((v: string, rng: Rng) => string)[] = [
   (v, rng) => `${rng.int(1, 9)} ${v}`,
   (v, rng) => `${v} ${rng.int(1, 9)}`,
   (v, rng) => `${v} ${rng.int(10000, 99999)}`,
   (v) => `${v} 24x7`,
 ];
-const PAIRED_TYPES: readonly PlantedType[] = ['AADHAAR', 'CARD', 'PHONE', 'NUMBER'];
 const PAIR_SEPARATORS = [' ', ' - ', '. ', '-'] as const;
 
 function makeHistory(rng: Rng): History {
@@ -186,7 +185,7 @@ function makeHistory(rng: Rng): History {
     for (let i = 0; i < count; i++) {
       let written: string;
       if (rng.chance(0.15)) {
-        written = `${plant(PAIRED_TYPES)}${rng.pick(PAIR_SEPARATORS)}${plant(PAIRED_TYPES)}`;
+        written = `${plant(PLANTED_TYPES)}${rng.pick(PAIR_SEPARATORS)}${plant(PLANTED_TYPES)}`;
         neighbours.pairs++;
       } else {
         written = plant(PLANTED_TYPES);

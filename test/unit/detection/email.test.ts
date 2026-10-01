@@ -4,6 +4,7 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { detect } from '../../../src/detection/detect.js';
+import { emailCandidates } from '../../../src/detection/email.js';
 import { createRng } from '../../../src/synthetic/rng.js';
 import { email } from '../../../src/synthetic/values.js';
 import { compose } from '../../support/compose.js';
@@ -145,5 +146,55 @@ describe('email detection', () => {
       const text = `${'z'.repeat(50_000)}priya@example.com`;
       expect(whole(text, text)).toBe(true);
     });
+  });
+});
+
+// ADR-029: found at every "@", so glued addresses are all candidates.
+describe('email: glued addresses', () => {
+  const spans = (text: string) => [...emailCandidates(text)].map((c) => [c.start, c.end]);
+
+  it('finds both readings when the first domain can swallow the second local part', () => {
+    const text = 'a@example.com-priya.sharma@example.org';
+    // First: domain example.com-priya.sharma; second: local part from "example".
+    expect(spans(text)).toEqual([
+      [0, 26],
+      [2, 38],
+    ]);
+    // The longer reading wins and the other keeps what it leaves: every
+    // letter and digit is covered, split where the overlap rule decides.
+    const found = detect(text);
+    const covered = [...text].every(
+      (ch, i) => !/[a-z0-9]/i.test(ch) || found.some((d) => d.start <= i && i < d.end),
+    );
+    expect([covered, found.map((d) => d.type)]).toEqual([true, ['EMAIL', 'EMAIL']]);
+  });
+
+  it('finds an address glued to a value by a hyphen', () => {
+    const { text, spans: s } = compose`ref 2345-6789-${'priya@example.com'} ok`;
+    expect(
+      detect(text).some((d) => d.type === 'EMAIL' && d.start <= s[0]!.start && s[0]!.end <= d.end),
+    ).toBe(true);
+  });
+
+  it.each([
+    ['glued addresses', (n: number) => 'ab@example.com-'.repeat(Math.ceil(n / 15))],
+    ['local parts and "@" only', (n: number) => 'abcd.efg@'.repeat(Math.ceil(n / 9))],
+  ])('reads %s in linear time', (_name, make) => {
+    expect(growthRatio(make, 25_000, detect)).toBeLessThan(MAX_GROWTH_RATIO);
+  });
+});
+
+describe('email: the local part read leftwards from the "@"', () => {
+  const spans = (text: string) => [...emailCandidates(text)].map((c) => [c.start, c.end]);
+
+  it('a dot only between two local-part characters: not right before the "@"', () => {
+    expect(spans('mail name.@example.com now')).toEqual([]);
+    expect(spans('mail a.b@example.com now')).toEqual([[5, 20]]);
+  });
+
+  it('takes a letter outside the BMP whole', () => {
+    const letter = String.fromCodePoint(0x10400); // DESERET CAPITAL LONG I
+    const text = `mail ${letter}priya@example.com`;
+    expect(spans(text)).toEqual([[5, text.length]]);
   });
 });

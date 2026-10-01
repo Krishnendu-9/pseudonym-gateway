@@ -7,9 +7,18 @@
 // parts ("a b"@example.com), IP-literal domains (a@[192.0.2.1]) or spelled-out
 // forms ("priya at example dot com"). Known limits, documented in the README.
 //
-// Written to avoid catastrophic backtracking (ReDoS): the local part may only
-// start where no local-part character precedes it, so a long token without an
-// "@" is scanned once, not once per position.
+// Found at every "@" (ADR-029): the local part is read leftwards from it, as
+// far as local-part characters go (a dot only between two of them), and the
+// domain rightwards. A left-to-right search cannot return two addresses that
+// overlap, and glued addresses do: in "a@example.com-priya.sharma@example.org"
+// the first domain may run to "sharma", and the second local part starts
+// inside it. Both are candidates; the overlap rule decides, and what the
+// loser leaves uncovered stays redacted (resolve.ts).
+//
+// Linear: neither direction crosses another "@" (no local-part or domain
+// character is one), so each stretch is read at most twice. That also rules
+// out the catastrophic backtracking of bug-log 3: no pattern is tried at
+// every position of a long token.
 //
 // A UPI ID (<name>@okaxis) is not an email: it has no top-level domain, so
 // this pattern never matches it, and the UPI detector steps aside wherever
@@ -19,6 +28,7 @@
 // characters, but an address with a longer label still names a person, so
 // it is redacted rather than let through as "not a real address".
 
+import { charBefore } from './digit-runs.js';
 import type { Candidate } from './types.js';
 
 const LOCAL_CHAR = "[\\p{L}\\p{N}\\p{M}!#$%&'*+/=?^_`{|}~-]";
@@ -36,16 +46,31 @@ const TLD = '(?:xn--[a-z0-9-]*[a-z0-9]|\\p{L}[\\p{L}\\p{M}]+)';
  */
 export const EMAIL_DOMAIN = `(?:${LABEL}\\.)+${TLD}(?![\\p{L}\\p{M}])`;
 
-// Before: not inside a local part (no local-part character, optionally
-// followed by a dot, just before). A stray dot on its own does not block a
-// match: ".priya@example.com" still finds priya@example.com.
-const EMAIL_PATTERN = new RegExp(
-  `(?<!${LOCAL_CHAR}\\.?)${LOCAL_CHAR}+(?:\\.${LOCAL_CHAR}+)*@${EMAIL_DOMAIN}`,
-  'giu',
-);
+const IS_LOCAL_CHAR = new RegExp(`^${LOCAL_CHAR}$`, 'u');
+// Sticky: tried once, right after an "@".
+const DOMAIN_HERE = new RegExp(EMAIL_DOMAIN, 'iuy');
+
+/**
+ * Where the local part ending at `at` starts: as far left as local-part
+ * characters go, a dot only between two of them. A stray dot does not
+ * block: ".priya@example.com" finds priya@example.com.
+ */
+function localPartStart(text: string, at: number): number {
+  let start = at;
+  for (;;) {
+    const ch = charBefore(text, start);
+    if (ch !== '' && IS_LOCAL_CHAR.test(ch)) start -= ch.length;
+    else if (ch === '.' && start < at && IS_LOCAL_CHAR.test(charBefore(text, start - 1))) start--;
+    else return start;
+  }
+}
 
 export function* emailCandidates(text: string): Generator<Candidate> {
-  for (const m of text.matchAll(EMAIL_PATTERN)) {
-    yield { type: 'EMAIL', start: m.index, end: m.index + m[0].length, validated: false };
+  for (let at = text.indexOf('@'); at >= 0; at = text.indexOf('@', at + 1)) {
+    const start = localPartStart(text, at);
+    if (start === at) continue;
+    DOMAIN_HERE.lastIndex = at + 1;
+    if (!DOMAIN_HERE.test(text)) continue;
+    yield { type: 'EMAIL', start, end: DOMAIN_HERE.lastIndex, validated: false };
   }
 }

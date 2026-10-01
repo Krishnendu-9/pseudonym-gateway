@@ -17,6 +17,7 @@ import { unclaimedNumbers } from './number.js';
 import { resolveOverlaps } from './overlap.js';
 import { panCandidates } from './pan.js';
 import { phoneCandidates } from './phone.js';
+import { resolveCandidates } from './resolve.js';
 import { secretCandidates } from './secret.js';
 import { upiCandidates } from './upi.js';
 import type { Candidate, Detection, DetectionType } from './types.js';
@@ -57,7 +58,9 @@ export function detect(original: string): Detection[] {
   }
 
   // Resolve in the normalised text, where lengths count what the detectors
-  // saw rather than invisible characters. Only then widen each winner to the
+  // saw rather than invisible characters (resolve.ts: the overlap rule, a
+  // containing span, and what losers leave uncovered; ADR-029). Only then
+  // widen each winner to the
   // whole digit runs it touches, so that the types are decided first (a card
   // still beats an Aadhaar found in its first 12 digits) and no part of a
   // number is left visible; but never past its neighbours (ADR-028). Then
@@ -65,7 +68,9 @@ export function detect(original: string): Detection[] {
   // map back, and resolve once more: rounding out to whole clusters could,
   // in principle, make two neighbours share a character.
   const runs = digitRuns(text);
-  const widened = widenUpToNeighbours(text, resolveOverlaps(accepted), runs);
+  const widenOne = (d: Detection): Span =>
+    d.type === 'IP' ? widenAddress(text, d, runs) : widenToRuns(d, runs);
+  const widened = widenUpToNeighbours(text, resolveCandidates(text, accepted, widenOne), widenOne);
 
   // Addresses no single host owns (ADR-026) take no part in the above, so
   // they can never cost another value its detection. Afterwards, a
@@ -94,11 +99,11 @@ const spanKey = (span: Span): string => `${span.start}:${span.end}`;
 function widenUpToNeighbours(
   text: string,
   winners: readonly Detection[],
-  runs: readonly Span[],
+  widen: (detection: Detection) => Span,
 ): Detection[] {
   const widened: Detection[] = [];
   for (const [i, d] of winners.entries()) {
-    const wide = d.type === 'IP' ? widenAddress(text, d, runs) : widenToRuns(d, runs);
+    const wide = widen(d);
     let start = Math.max(wide.start, widened.at(-1)?.end ?? 0);
     let end = Math.min(wide.end, winners[i + 1]?.start ?? text.length);
     while (start < d.start && isRunSeparator(text[start]!)) start++;

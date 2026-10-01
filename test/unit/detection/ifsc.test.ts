@@ -237,9 +237,9 @@ describe('IFSC next to the other types', () => {
     ]);
   });
 
-  it('SECRET: a secret made of an IFSC, a hyphen and more keeps only the IFSC (known limit, ADR-003 containing span)', () => {
+  it('SECRET: a secret made of an IFSC, a hyphen and more is one secret (ADR-029 containing span)', () => {
     const text = `api_key=${KNOWN}-x7`;
-    expect(detect(text).map((d) => [d.type, d.start, d.end])).toEqual([['IFSC', 8, 19]]);
+    expect(detect(text).map((d) => [d.type, d.start, d.end])).toEqual([['SECRET', 8, 22]]);
   });
 
   it('UPI: an IFSC-shaped name at a known handle is one UPI ID', () => {
@@ -265,9 +265,9 @@ describe('IFSC next to the other types', () => {
     }
   });
 
-  it('EMAIL: an IFSC, a dot and more before the "@" keeps only the IFSC (known limit, ADR-003 containing span)', () => {
+  it('EMAIL: an IFSC, a dot and more before the "@" is part of the email (ADR-029 containing span)', () => {
     expect(detect(`mail ${KNOWN}.x@example.com now`).map((d) => [d.type, d.start, d.end])).toEqual([
-      ['IFSC', 5, 16],
+      ['EMAIL', 5, 30],
     ]);
   });
 

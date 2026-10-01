@@ -21,6 +21,12 @@
 // part of a secret is a leak, not a redaction. It stops at anything a real
 // detection claimed.
 //
+// Digits joined to a real detection by a joiner are taken however few
+// (ADR-029): in "<mobile>(12345" or "<mobile>+123" they are part of what was
+// written as one number, and leaving them visible would show a piece of it.
+// Not next to an address no single host owns (ADR-026), which is not a
+// detection.
+//
 // This runs on normalised text, where every decimal digit is ASCII.
 
 import { charAt, charBefore } from './digit-runs.js';
@@ -40,7 +46,10 @@ const TOKEN_CHAR = /[\p{L}\p{N}\p{M}_]/u;
  * NUMBER candidates for the stretches of digit runs that no span in `claimed`
  * covers. `claimed` must be sorted by start and must not overlap.
  */
-export function unclaimedNumbers(text: string, claimed: readonly Span[]): Candidate[] {
+export function unclaimedNumbers(
+  text: string,
+  claimed: readonly (Span & { readonly keep?: true })[],
+): Candidate[] {
   const found: Candidate[] = [];
   let next = 0; // first claimed span that ends after `at`
   for (const run of text.matchAll(NUMBER_RUN)) {
@@ -56,10 +65,13 @@ export function unclaimedNumbers(text: string, claimed: readonly Span[]): Candid
       // Every claimed span before `next` ends at or before `at`.
       const floor = next > 0 ? claimed[next - 1]!.end : 0;
       if (!claim || claim.start >= runEnd) {
-        addIfLong(text, at, runEnd, floor, claim ? claim.start : text.length, found);
+        // After a claim in this run, the rest is joined to it.
+        const previous = next > 0 ? claimed[next - 1]! : undefined;
+        const afterClaim = at !== run.index && previous !== undefined && !previous.keep;
+        addIfLong(text, at, runEnd, floor, claim ? claim.start : text.length, found, afterClaim);
         break;
       }
-      addIfLong(text, at, claim.start, floor, claim.start, found);
+      addIfLong(text, at, claim.start, floor, claim.start, found, !claim.keep);
       at = claim.end;
     }
   }
@@ -67,7 +79,7 @@ export function unclaimedNumbers(text: string, claimed: readonly Span[]): Candid
 }
 
 // Trims joiners off both ends of text[start, end) and, if it holds enough
-// digits, adds it widened to the whole token it is glued into, without
+// digits (any, when it is joined to a claimed span), adds it widened to the whole token it is glued into, without
 // leaving [floor, ceiling): the claimed spans on either side. An empty or
 // reversed range holds no digits.
 function addIfLong(
@@ -77,6 +89,7 @@ function addIfLong(
   floor: number,
   ceiling: number,
   found: Candidate[],
+  joinedToClaim = false,
 ): void {
   let digits = 0;
   let first = -1;
@@ -87,7 +100,7 @@ function addIfLong(
     if (first < 0) first = i;
     last = i;
   }
-  if (digits < MIN_NUMBER_DIGITS) return;
+  if (digits < (joinedToClaim ? 1 : MIN_NUMBER_DIGITS)) return;
 
   let from = first;
   let to = last + 1;

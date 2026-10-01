@@ -15,6 +15,24 @@ const c = (type: DetectionType, start: number, end: number, validated = true): C
   validated,
 });
 
+describe('resolveOverlaps: the size rule 2 uses (ADR-029)', () => {
+  // Two mobiles written 5 + 5 with " - " between them, and the window that
+  // straddles them: 10 digits each, but the straddle has 13 characters.
+  const first = c('PHONE', 0, 11);
+  const straddle = c('PHONE', 6, 19);
+  const second = c('PHONE', 14, 25);
+  const digitsOnly = (s: { start: number; end: number }): number =>
+    s.end - s.start - (s.start === 6 ? 3 : 1);
+
+  it('by default counts code units: the straddle is longer and wins', () => {
+    expect(resolveOverlaps([first, straddle, second])).toEqual([straddle]);
+  });
+
+  it('with a size that skips separators, the three tie and the earlier real values win', () => {
+    expect(resolveOverlaps([first, straddle, second], digitsOnly)).toEqual([first, second]);
+  });
+});
+
 describe('resolveOverlaps: the three rules (ADR-003)', () => {
   it('rule 1: a validated candidate beats an unvalidated one, even a longer one', () => {
     const validated = c('PHONE', 5, 15);

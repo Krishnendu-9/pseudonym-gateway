@@ -108,10 +108,19 @@ describe('unclaimedNumbers', () => {
     expect(spansOf('1234567890+123456789', [{ start: 0, end: 10 }])).toEqual([
       { start: 11, end: 20 },
     ]);
-    // A claim in the middle leaves two pieces, one long enough.
-    expect(spansOf('123456789-55-1234', [{ start: 10, end: 12 }])).toEqual([{ start: 0, end: 9 }]);
-    // Leftovers shorter than 9 digits are not taken.
-    expect(spansOf('12345678901234', [{ start: 3, end: 10 }])).toEqual([]);
+    // A claim in the middle leaves two pieces, both joined to it: taken
+    // however few their digits (ADR-029).
+    expect(spansOf('123456789-55-1234', [{ start: 10, end: 12 }])).toEqual([
+      { start: 0, end: 9 },
+      { start: 13, end: 17 },
+    ]);
+    // Leftovers glued to the claim are taken too; digits in a run of their
+    // own (a space is not a joiner) still need 9.
+    expect(spansOf('12345678901234', [{ start: 3, end: 10 }])).toEqual([
+      { start: 0, end: 3 },
+      { start: 10, end: 14 },
+    ]);
+    expect(spansOf('1234567890 1234', [{ start: 0, end: 10 }])).toEqual([]);
   });
 
   it('respects a claim that covers several runs, or starts before one', () => {
@@ -241,5 +250,30 @@ describe('detect: what the safety net does catch that is not personal (the accep
   ])('catches %s', (_name, text, value) => {
     const start = text.indexOf(value);
     expect(detect(text)).toEqual([numberAt({ start, end: start + value.length })]);
+  });
+});
+
+// ADR-029: digits joined to a claimed span by a joiner are taken however few,
+// except next to an address no single host owns (not a detection).
+describe('digits joined to a claimed span (J1)', () => {
+  it('takes a few digits joined by "(", "+" or "-" to a claim', () => {
+    expect(spansOf('9876543210(12345', [{ start: 0, end: 10 }])).toEqual([{ start: 11, end: 16 }]);
+    expect(spansOf('9876543210+123', [{ start: 0, end: 10 }])).toEqual([{ start: 11, end: 14 }]);
+    expect(spansOf('12-9876543210', [{ start: 3, end: 13 }])).toEqual([{ start: 0, end: 2 }]);
+  });
+
+  it('does not take them next to a kept address', () => {
+    const kept = { start: 0, end: 9, keep: true as const };
+    expect(unclaimedNumbers('127.0.0.1-12345', [kept])).toEqual([]);
+    expect(unclaimedNumbers('12345-127.0.0.1', [{ start: 6, end: 15, keep: true }])).toEqual([]);
+  });
+
+  it('does not take digits in a run of their own', () => {
+    expect(spansOf('9876543210 12345', [{ start: 0, end: 10 }])).toEqual([]);
+  });
+
+  it('takes bracket-joined digits after phones in linear time', () => {
+    const make = (n: number): string => '98765 43210(12'.repeat(Math.ceil(n / 14));
+    expect(growthRatio(make, 5_000, detect)).toBeLessThan(MAX_GROWTH_RATIO);
   });
 });

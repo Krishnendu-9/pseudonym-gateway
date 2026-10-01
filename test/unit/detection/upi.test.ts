@@ -259,12 +259,10 @@ describe('a mobile number inside a UPI ID', () => {
     expect(detect(text)).toEqual([upi(spans[0]!)]);
   });
 
-  it('a mobile then a name at an unknown handle keeps only the phone (known limit, ADR-003 containing span)', () => {
+  it('a mobile then a name at an unknown handle is one UPI ID, near a keyword (ADR-029 containing span)', () => {
     const mobile = indianMobile(rng);
-    const { text, spans } = compose`UPI: ${mobile}${`.${nameOf()}@${UNKNOWN}`} ok`;
-    expect(detect(text)).toEqual([
-      { type: 'PHONE', ...spans[0]!, validated: true, context: false },
-    ]);
+    const { text, spans } = compose`UPI: ${`${mobile}.${nameOf()}@${UNKNOWN}`} ok`;
+    expect(detect(text)).toEqual([{ type: 'UPI', ...spans[0]!, validated: false, context: true }]);
   });
 
   it('a mobile at an unknown handle with no keyword: the safety net takes the digits, the handle is sent (known limit)', () => {
@@ -290,6 +288,34 @@ describe('UPI IDs: linear time', () => {
     ['one handle with a long domain-like tail', (n: number) => `a@${'b.'.repeat(n / 2)}`],
     ['one handle with a long hyphenated tail', (n: number) => `a@${'b-'.repeat(n / 2)}`],
   ])('scans %s in linear time', (_name, make) => {
+    expect(growthRatio(make, 25_000, detect)).toBeLessThan(MAX_GROWTH_RATIO);
+  });
+});
+
+// ADR-029: found at every "@", so two IDs glued by a hyphen are both found.
+describe('UPI: glued IDs', () => {
+  const handle = [...UPI_HANDLES][0]!;
+
+  it('finds both IDs of "<name>@<handle>-<name>@<handle>"; every letter and digit is covered', () => {
+    // Names without a dot: with one, the first handle and the second name
+    // read as an email domain ("<handle>-a.b"), a reading tested elsewhere.
+    const { text, spans } = compose`pay ${`asha@${handle}`}-${`ravi@${handle}`} now`;
+    expect([...upiCandidates(text)]).toHaveLength(2);
+    // The longer reading (the second name starts at the first handle) wins;
+    // the first ID's name is kept as what is left over.
+    const found = detect(text).filter((d) => d.type === 'UPI');
+    const covered = spans.every((s) =>
+      [...text.slice(s.start, s.end)].every(
+        (ch, i) =>
+          !/[a-z0-9]/i.test(ch) || found.some((d) => d.start <= s.start + i && s.start + i < d.end),
+      ),
+    );
+    expect(covered).toBe(true);
+  });
+
+  it('reads glued IDs in linear time', () => {
+    const unit = `ab@${handle}-`;
+    const make = (n: number): string => unit.repeat(Math.ceil(n / unit.length));
     expect(growthRatio(make, 25_000, detect)).toBeLessThan(MAX_GROWTH_RATIO);
   });
 });

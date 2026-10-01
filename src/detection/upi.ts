@@ -10,10 +10,12 @@
 //   `user@localhost` and `lodash@latest` have the same shape.
 //
 // The name part is what NPCI allows in one (letters, digits, ".", "-",
-// "_"), and it may start where no such character precedes it, so a long
-// token is scanned once, not once per position (the email detector's
-// ReDoS guard). The handle is letters and digits, starting with a letter:
-// every real one does, and a price written "2kg@40" is not an ID.
+// "_"). Like an email (ADR-029), an ID is found at every "@": the name is
+// read leftwards as far as such characters go, the handle rightwards. Two
+// IDs glued by a hyphen ("<name>@<handle>-<name>@<handle>") overlap, and both are
+// candidates. Neither direction crosses another "@", so this is linear. The
+// handle is letters and digits, starting with a letter: every real one
+// does, and a price written "2kg@40" is not an ID.
 //
 // Email wins where it applies: if what follows the "@" is an email domain
 // by the email detector's own pattern (<name>@okaxis.com), this detector
@@ -100,11 +102,9 @@ export const UPI_HANDLES: ReadonlySet<string> = new Set([
   'yesbank',
 ]);
 
-const NAME_CHAR = 'A-Za-z0-9._\\-';
-const UPI_PATTERN = new RegExp(
-  `(?<![${NAME_CHAR}])(?<name>[${NAME_CHAR}]+)@(?<handle>[A-Za-z][A-Za-z0-9]*)`,
-  'g',
-);
+const NAME_CHAR = /[A-Za-z0-9._-]/;
+// Sticky: tried once, right after the "@".
+const HANDLE_HERE = /[A-Za-z][A-Za-z0-9]*/y;
 // Sticky: tried once, where the handle starts. Only whether it matches is
 // used, so the email pattern's "i" flag (which lets it take an upper-case
 // "XN--" whole) makes no difference here.
@@ -112,16 +112,19 @@ const EMAIL_DOMAIN_HERE = new RegExp(EMAIL_DOMAIN, 'uy');
 const HAS_ALNUM = /[A-Za-z0-9]/;
 
 export function* upiCandidates(text: string): Generator<Candidate> {
-  for (const m of text.matchAll(UPI_PATTERN)) {
-    const { name, handle } = m.groups as { name: string; handle: string };
-    if (!HAS_ALNUM.test(name)) continue;
-    const handleStart = m.index + name.length + 1;
-    EMAIL_DOMAIN_HERE.lastIndex = handleStart;
+  for (let at = text.indexOf('@'); at >= 0; at = text.indexOf('@', at + 1)) {
+    let start = at;
+    while (start > 0 && NAME_CHAR.test(text[start - 1]!)) start--;
+    if (!HAS_ALNUM.test(text.slice(start, at))) continue;
+    HANDLE_HERE.lastIndex = at + 1;
+    const handle = HANDLE_HERE.exec(text)?.[0];
+    if (handle === undefined) continue;
+    EMAIL_DOMAIN_HERE.lastIndex = at + 1;
     if (EMAIL_DOMAIN_HERE.test(text)) continue;
     yield {
       type: 'UPI',
-      start: m.index,
-      end: m.index + m[0].length,
+      start,
+      end: at + 1 + handle.length,
       validated: UPI_HANDLES.has(handle.toLowerCase()),
     };
   }

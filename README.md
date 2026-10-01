@@ -202,7 +202,21 @@ hai`): when the way it is written says it is a value. That is: after `=`;
   number, together with the letters, digits and underscores it is glued to
   (the whole of `UID234567890123` or of a hexadecimal token, never a piece
   cut out of it). Dates such as `2024-09-28 14:30` and amounts such as
-  `1,25,000` stay below 9 digits and are not touched.
+  `1,25,000` stay below 9 digits and are not touched. Digits joined by a
+  bracket, `+`, a dot or a hyphen to a detected value are taken however few
+  (`<mobile>(12345`), since they were written as one number.
+
+**When readings overlap.** A checked value wins over an unchecked one, then
+the reading with more letters and digits (separators do not count), then the
+type order. A reading that wholly contains the winners it touches replaces
+them: `<PAN>.x@example.com` is one email, `token: abc-<mobile>` one secret.
+Any other reading that lost keeps whatever no winner covers, so two values
+written side by side are both replaced even when one could be read as
+running into the other (`<Aadhaar>-name@example.com`): where exactly the
+two are split then depends on these rules, but nothing of either is sent.
+Emails and UPI IDs are read outwards from every `@`, so two of them glued
+by a hyphen are both found; a key in a known format takes the rest of the
+token it is glued to, so two keys joined by a hyphen become one secret.
 
 This leans towards redacting: a check digit passes about 1 in 10 random
 numbers, and every number of 9+ digits is caught, so ordinary numbers (order
@@ -257,11 +271,10 @@ personal identifiers are not caught either:** a passport or voter ID number
 with 7 digits, or a date of birth, has no detector of its own and is below
 the 9 digits the safety net needs (the held-out NUMBER row shows it). An
 IFSC written with the letter O for its zero (`SBINO001234`) or with a space
-or hyphen after the bank code is not caught. **A value inside a longer
-address or secret** can leave the rest visible: in `<PAN>.x@example.com`,
-`<IFSC>.x@example.com` or `api_key=<IFSC>-x7` only the PAN or IFSC is
-replaced, because a checked value wins over a longer unchecked one (an
-open question for the next part of Phase 5). **IP addresses:** one written
+or hyphen after the bank code is not caught. A lone digit and a space
+before a long number (`1 23456789(12345`) leave the lone digit visible: the
+safety net does not join across spaces, and widening the number over them
+was measured to redact the quantity and price columns of tables. **IP addresses:** one written
 inside a host name (`<address>.nip.io`, reverse-DNS names) is not
 recognised; an address with a prefix length whose digits also read as a
 valid phone number (some `203.x.x.x/24`) is replaced as a phone number,
@@ -271,16 +284,6 @@ cannot tell whether two of them are on the same network. **MAC addresses**
 (`00:1A:2B:3C:4D:5E`) they are always sent as written, and in other forms
 they are replaced only when their decimal digits happen to reach the 9 the
 safety net needs.
-**Two values side by side joined by a hyphen** can leave one of them
-visible: an email address or UPI ID right after another value and a hyphen
-is sent (`<Aadhaar>-name@example.com`), as is a JWT, an IP address after
-a UPI ID and a hyphen, and sometimes an IP address after a secret and a
-hyphen. Rarely, an Aadhaar or long number followed by `. ` or `-` and
-an IPv6 address starting with digits reads as a card number reaching into
-the address, and the rest of the address is sent (3 of 200 synthetic
-Aadhaar and IP address pairs written that way). Values separated by a space, a comma or a word, and
-numbers side by side (Aadhaar, card, phone, long numbers), are not
-affected.
 
 ## Measured results
 
@@ -364,8 +367,8 @@ _Measured on 2026-10-01 (UTC date) by `npm run eval`. This block is generated, a
 | message-split    | 60     | 0/60 (0.0%)         | 2               | 0/60 (0.0%)         | 0               |
 | side-by-side     | 80     | 80/80 (100.0%)      | 0               | 66/80 (82.5%)       | 5               |
 | digit-beside     | 40     | 40/40 (100.0%)      | 0               | 40/40 (100.0%)      | 4               |
-| contained        | 70     | 0/70 (0.0%)         | 70              | 0/70 (0.0%)         | 8               |
-| joined-digits    | 30     | 6/30 (20.0%)        | 24              | 6/30 (20.0%)        | 4               |
+| contained        | 70     | 70/70 (100.0%)      | 0               | 70/70 (100.0%)      | 9               |
+| joined-digits    | 30     | 21/30 (70.0%)       | 9               | 6/30 (20.0%)        | 4               |
 | short-id         | 459    | 1/459 (0.2%)        | 0               | 0/459 (0.0%)        | 0               |
 | contact-sheet    | 120    | 120/120 (100.0%)    | 0               | 120/120 (100.0%)    | 0               |
 | misaligned-sheet | 132    | 132/132 (100.0%)    | 0               | 132/132 (100.0%)    | 0               |
@@ -452,8 +455,7 @@ provider-side logging or training on them.
 **Does not protect against:** values the detectors miss (today that includes
 every person's name, an IFSC code with an unknown bank code and no keyword nearby, any secret with neither a known format
 nor a keyword directly before it, a UPI ID at an unknown handle with no
-keyword nearby, an IP address inside a host name, and some values of other
-types written side by side with another value); anything your application
+keyword nearby, and an IP address inside a host name); anything your application
 logs before
 calling Pseudonym; a compromised Pseudonym host; prompt injection that
 manipulates answers (only the URL-exfiltration path is mitigated).
