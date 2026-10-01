@@ -160,7 +160,7 @@ export function readmeBlock(input: ReportInput): string {
   if (Object.keys(shapes).length > 0) {
     const values = Object.values(shapes).reduce((n, row) => n + row.values, 0);
     lines.push(
-      `**Generated dataset, shape block** (${values} labelled personal values, in cases apart from the main ones). Each row is a way of writing values that is hard on purpose: a line break inside a value, a value split across two messages, two values side by side, digits beside a mobile, a checked value inside an address or key, digits joined by a bracket, passport and voter ID numbers and dates of birth. These rows measure known gaps one at a time; they are not part of the numbers above.`,
+      `**Generated dataset, shape block** (${values} labelled personal values, in cases apart from the main ones). Each row is a way of writing values that is hard on purpose: a line break inside a value, a value split across two messages, two values side by side, digits beside a mobile, a checked value inside an address or key, digits joined by a bracket, passport and voter ID numbers and dates of birth, and contact sheets of mobiles in columns (aligned, and with one row out of line). These rows measure known gaps one at a time; they are not part of the numbers above.`,
       '',
       shapeTable(shapes),
       '',

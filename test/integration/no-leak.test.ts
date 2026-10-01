@@ -108,7 +108,14 @@ function plantValue(rng: Rng, type: PlantedType): string {
     case 'PHONE': {
       const v = indianMobile(rng);
       return disguise(
-        rng.pick([v, `+91 ${groupDigits(v, [5, 5], ' ')}`, `+91-${v}`, `0${v}`, `+91${v}`]),
+        rng.pick([
+          v,
+          groupDigits(v, [5, 5], ' '),
+          `+91 ${groupDigits(v, [5, 5], ' ')}`,
+          `+91-${v}`,
+          `0${v}`,
+          `+91${v}`,
+        ]),
       );
     }
     case 'NUMBER':
@@ -147,18 +154,49 @@ interface History {
   readonly planted: readonly Planted[];
   /** The last user message's text as the client wrote it (parts joined). */
   readonly lastUserText: string;
+  /** Values written with a digit beside them, and pairs of numbers side by side. */
+  readonly neighbours: { readonly beside: number; readonly pairs: number };
 }
+
+// Neighbours (bug-log 34): a digit, a digit group or a digit-led token right
+// before or after a value; or two numbers with only a separator between.
+// Pairs are numbers only: other types side by side still leak (bug-log 35,
+// Phase 5c items 2 and 3), and so does a spaced mobile after a token ending
+// in a digit and "x" (bug-log 36).
+const BESIDE: readonly ((v: string, rng: Rng) => string)[] = [
+  (v, rng) => `${rng.int(1, 9)} ${v}`,
+  (v, rng) => `${v} ${rng.int(1, 9)}`,
+  (v, rng) => `${v} ${rng.int(10000, 99999)}`,
+  (v) => `${v} 24x7`,
+];
+const PAIRED_TYPES: readonly PlantedType[] = ['AADHAAR', 'CARD', 'PHONE', 'NUMBER'];
+const PAIR_SEPARATORS = [' ', ' - ', '. ', '-'] as const;
 
 function makeHistory(rng: Rng): History {
   const planted: Planted[] = [];
+  const neighbours = { beside: 0, pairs: 0 };
+  const plant = (types: readonly PlantedType[]): string => {
+    const type = rng.pick(types);
+    const value = plantValue(rng, type);
+    planted.push({ type, value });
+    return value;
+  };
   const text = (): string => {
     const count = rng.int(1, 3);
     const sentences: string[] = [];
     for (let i = 0; i < count; i++) {
-      const type = rng.pick(PLANTED_TYPES);
-      const value = plantValue(rng, type);
-      planted.push({ type, value });
-      sentences.push(rng.pick(TEMPLATES)(value));
+      let written: string;
+      if (rng.chance(0.15)) {
+        written = `${plant(PAIRED_TYPES)}${rng.pick(PAIR_SEPARATORS)}${plant(PAIRED_TYPES)}`;
+        neighbours.pairs++;
+      } else {
+        written = plant(PLANTED_TYPES);
+        if (rng.chance(0.15)) {
+          written = rng.pick(BESIDE)(written, rng);
+          neighbours.beside++;
+        }
+      }
+      sentences.push(rng.pick(TEMPLATES)(written));
     }
     return sentences.join(' ');
   };
@@ -186,7 +224,7 @@ function makeHistory(rng: Rng): History {
     planted.push({ type: 'EMAIL', value });
     body.user = value;
   }
-  return { body, planted, lastUserText };
+  return { body, planted, lastUserText, neighbours };
 }
 
 /** Histories totalling at least 300 messages, from one seed. */
@@ -274,6 +312,10 @@ describe('no-leak: nothing planted reaches the provider', () => {
   it('covers every planted type and every position', () => {
     const types = new Set(histories.flatMap((h) => h.planted.map((p) => p.type)));
     expect([...types].sort()).toEqual([...PLANTED_TYPES].sort());
+    const besides = histories.reduce((n, h) => n + h.neighbours.beside, 0);
+    const pairs = histories.reduce((n, h) => n + h.neighbours.pairs, 0);
+    expect(besides).toBeGreaterThan(50);
+    expect(pairs).toBeGreaterThan(50);
     const bodies = histories.map((h) => h.body);
     expect(bodies.some((b) => b.stop !== undefined)).toBe(true);
     expect(bodies.some((b) => b.user !== undefined)).toBe(true);

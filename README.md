@@ -213,6 +213,22 @@ split by invisible characters are detected. Detection fails closed: a value
 found inside a longer number takes the whole number with it, and no input is
 skipped for being too long.
 
+**Mobiles written in two groups of five** are found even with other digits
+beside them (`Room 3 <mobile>`, `<mobile> 411038`, two mobiles side by
+side, a contact sheet of mobiles in columns). Tables of 5-digit numbers pay
+for it. Two neighbouring groups of five starting 6–9 read as a mobile, so
+inside a table they count only if every other row with two 5-digit groups
+in those same two positions has a mobile there too, or if a word such as
+"mobile" or "call" is nearby. Measured on 200 synthetic tables of each
+layout (detections in text with nothing personal; before → now): a row
+number and two 5-digit amounts per row (`12 34567 89012`) 116 → 149;
+three 5-digit amounts per row 4 → 43; the same with some row labels
+containing a digit (`Q1`) 5 → 130, in 68 of the 200 tables; two rows of
+three 5-digit amounts 1 → 151; two rows of a row number and two amounts
+25 → 80. Two 5-digit amounts per row were already read as phone numbers
+before this (763 in 200 tables, unchanged). Amounts written with commas
+(`65,000`, `1,25,000`) and plain 6-digit amounts are not affected.
+
 **Secrets are found in two ways and no third.** There is no entropy
 scanning: a random-looking string with no known prefix and no credential
 word directly before it is sent as written. So are a password made only of
@@ -254,12 +270,16 @@ cannot tell whether two of them are on the same network. **MAC addresses**
 (a device identifier) have no detector: written with colons
 (`00:1A:2B:3C:4D:5E`) they are always sent as written, and in other forms
 they are replaced only when their decimal digits happen to reach the 9 the
-safety net needs. A 10-digit mobile
-written in two groups of five is not detected at all when another group of
-digits sits next to it with only spaces between: a second such mobile, a
-PIN code after it, `24x7` after it, or a lone digit in front of it
-(`Room 3 <mobile>`, or an address such as `127.0.0.1`). A word such as
-"mobile" or "call" nearby helps only in the last case.
+safety net needs. A mobile written in two
+groups of five right after a word that ends in a digit and an "x"
+(`…1234X <mobile>`, which includes every PAN ending in X) is not
+detected: the phone library reads the "x" as the start of an extension.
+**Two values of other types side by side** can leave one of them visible:
+after a hyphen, an email address or UPI ID that follows another value is
+sent (`<Aadhaar>-name@example.com`), as is a JWT; with only a space
+between, an IFSC next to an IPv6 address or a `<mobile>@<handle>` UPI ID,
+and two IP addresses, sometimes lose one of the pair. Numbers side by side
+(Aadhaar, card, phone, long numbers) are not affected.
 
 ## Measured results
 
@@ -284,7 +304,8 @@ How to read a row:
   cases written in ways that are hard on purpose (a line break inside a
   number, a value split across two messages, two values side by side, a
   checked value inside an email address or key, passport and voter ID
-  numbers and dates of birth), one row per way of writing. Each row there
+  numbers and dates of birth, contact sheets of mobiles in columns), one
+  row per way of writing. Each row there
   measures one known gap; a low number in it is that gap, not the overall
   quality.
 
@@ -334,17 +355,19 @@ _Measured on 2026-10-01 (UTC date) by `npm run eval`. This block is generated, a
 | SECRET  | 153    | 147/153 (96.0%)     | 0               | 147/153 (96.0%)     | 147/147 (100.0%)       | 98.0%  | 0               |
 | PERSON  | 153    | 0/153 (0.0%)        | 0               | 0/153 (0.0%)        | -                      | -      | 0               |
 
-**Generated dataset, shape block** (859 labelled personal values, in cases apart from the main ones). Each row is a way of writing values that is hard on purpose: a line break inside a value, a value split across two messages, two values side by side, digits beside a mobile, a checked value inside an address or key, digits joined by a bracket, passport and voter ID numbers and dates of birth. These rows measure known gaps one at a time; they are not part of the numbers above.
+**Generated dataset, shape block** (1111 labelled personal values, in cases apart from the main ones). Each row is a way of writing values that is hard on purpose: a line break inside a value, a value split across two messages, two values side by side, digits beside a mobile, a checked value inside an address or key, digits joined by a bracket, passport and voter ID numbers and dates of birth, and contact sheets of mobiles in columns (aligned, and with one row out of line). These rows measure known gaps one at a time; they are not part of the numbers above.
 
-| Written as    | Values | Redacted (any type) | Partly redacted | Recall (right type) | Over-redactions |
-| ------------- | ------ | ------------------- | --------------- | ------------------- | --------------- |
-| line-break    | 120    | 11/120 (9.1%)       | 7               | 11/120 (9.1%)       | 12              |
-| message-split | 60     | 0/60 (0.0%)         | 2               | 0/60 (0.0%)         | 0               |
-| side-by-side  | 80     | 68/80 (85.0%)       | 4               | 52/80 (65.0%)       | 5               |
-| digit-beside  | 40     | 13/40 (32.5%)       | 0               | 13/40 (32.5%)       | 4               |
-| contained     | 70     | 0/70 (0.0%)         | 70              | 0/70 (0.0%)         | 8               |
-| joined-digits | 30     | 6/30 (20.0%)        | 24              | 6/30 (20.0%)        | 4               |
-| short-id      | 459    | 1/459 (0.2%)        | 0               | 0/459 (0.0%)        | 0               |
+| Written as       | Values | Redacted (any type) | Partly redacted | Recall (right type) | Over-redactions |
+| ---------------- | ------ | ------------------- | --------------- | ------------------- | --------------- |
+| line-break       | 120    | 11/120 (9.1%)       | 7               | 11/120 (9.1%)       | 12              |
+| message-split    | 60     | 0/60 (0.0%)         | 2               | 0/60 (0.0%)         | 0               |
+| side-by-side     | 80     | 80/80 (100.0%)      | 0               | 60/80 (75.0%)       | 5               |
+| digit-beside     | 40     | 40/40 (100.0%)      | 0               | 40/40 (100.0%)      | 4               |
+| contained        | 70     | 0/70 (0.0%)         | 70              | 0/70 (0.0%)         | 8               |
+| joined-digits    | 30     | 6/30 (20.0%)        | 24              | 6/30 (20.0%)        | 4               |
+| short-id         | 459    | 1/459 (0.2%)        | 0               | 0/459 (0.0%)        | 0               |
+| contact-sheet    | 120    | 120/120 (100.0%)    | 0               | 120/120 (100.0%)    | 0               |
+| misaligned-sheet | 132    | 132/132 (100.0%)    | 0               | 132/132 (100.0%)    | 0               |
 
 **Held-out adversarial dataset** (drafted with AI assistance in a separate session that did not write the detectors, then reviewed by the author; never run against the detectors before it was committed, and never used for tuning; 58 messages in 54 cases, 79 labelled personal values).
 
@@ -428,8 +451,9 @@ provider-side logging or training on them.
 **Does not protect against:** values the detectors miss (today that includes
 every person's name, an IFSC code with an unknown bank code and no keyword nearby, any secret with neither a known format
 nor a keyword directly before it, a UPI ID at an unknown handle with no
-keyword nearby, an IP address inside a host name, and a spaced mobile
-number right after a lone digit with no keyword nearby); anything your application
+keyword nearby, an IP address inside a host name, a spaced mobile number
+right after a word ending in a digit and an "x", and some values of other
+types written side by side with another value); anything your application
 logs before
 calling Pseudonym; a compromised Pseudonym host; prompt injection that
 manipulates answers (only the URL-exfiltration path is mitigated).

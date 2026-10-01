@@ -689,6 +689,8 @@ export const SHAPES = [
   'contained',
   'joined-digits',
   'short-id',
+  'contact-sheet',
+  'misaligned-sheet',
 ] as const;
 export type Shape = (typeof SHAPES)[number];
 
@@ -701,6 +703,8 @@ export const SHAPE_VALUES: Readonly<Record<Shape, number>> = {
   contained: 70,
   'joined-digits': 30,
   'short-id': 3 * VALUES_PER_TYPE,
+  'contact-sheet': 120,
+  'misaligned-sheet': 132,
 };
 
 const SHAPE_SALT = 0x5c5c5c5c;
@@ -881,6 +885,55 @@ const SHORT_ID_LOOKALIKES: readonly Lookalike[] = [
   () => '{{NOT.event-date:1#/0#/19##}}',
 ];
 
+// Contact sheets (bug-log 34, ADR-027): a header, then one row per contact:
+// a label and two mobiles written 5 + 5, with only spaces between the
+// columns. Aligned sheets of 2 to 5 rows; misaligned ones have one row
+// with "+91" in front of its first mobile, or with one mobile missing.
+const SHEET_HEADERS: Readonly<Record<Tongue, readonly string[]>> = {
+  en: ['Name | Mobile | Alternate mobile', 'Staff list', 'Society numbers'],
+  hinglish: ['Naam | Mobile | Doosra mobile', 'Sabke number'],
+  hi: ['नाम | मोबाइल | दूसरा मोबाइल', 'नाम और नंबर'],
+};
+const SHEET_LABELS: Readonly<Record<Tongue, readonly string[]>> = {
+  en: ['Home', 'Office', 'Driver', 'Plumber', 'Electrician', 'Watchman', 'Shop', 'Clinic'],
+  hinglish: ['Ghar', 'Dukaan', 'Driver bhaiya', 'Doodhwala', 'Office', 'Society'],
+  hi: ['घर', 'दुकान', 'दफ़्तर', 'ड्राइवर', 'चौकीदार'],
+};
+const SHEET_COLUMN_GAPS = [' ', '  '] as const;
+// Rows per sheet, in turn: 4 of every 7 aligned sheets have two rows.
+const SHEET_ROWS = [2, 3, 2, 4, 2, 5, 2] as const;
+// Three sizes against two kinds of misalignment: each kind gets every size.
+const MISALIGNED_ROWS = [2, 3, 4] as const;
+const SPACED_MOBILE = '{{PHONE:##### #####}}';
+
+type Misalignment = 'aligned' | 'plus91' | 'missing';
+
+/** A contact sheet with `rows` rows; returns the text and the values planted. */
+function contactSheet(
+  rows: number,
+  misalignment: Misalignment,
+  tongue: Tongue,
+  rng: Rng,
+): { text: string; planted: number } {
+  const gap = rng.pick(SHEET_COLUMN_GAPS);
+  const odd = rng.int(0, rows - 1);
+  const lines = [rng.pick(SHEET_HEADERS[tongue])];
+  let planted = 0;
+  for (let row = 0; row < rows; row++) {
+    let cells = [SPACED_MOBILE, SPACED_MOBILE];
+    if (row === odd && misalignment === 'plus91') {
+      cells = ['{{PHONE:+91 ##### #####}}', SPACED_MOBILE];
+    }
+    if (row === odd && misalignment === 'missing') {
+      // Left out at the end of the row, or marked "-" in either column.
+      cells = rng.pick([[SPACED_MOBILE], [SPACED_MOBILE, '-'], ['-', SPACED_MOBILE]]);
+    }
+    planted += cells.filter((cell) => cell !== '-').length;
+    lines.push(`${rng.pick(SHEET_LABELS[tongue])} ${cells.join(gap)}`);
+  }
+  return { text: lines.join('\n'), planted };
+}
+
 const pickTongue = (rng: Rng): Tongue =>
   weighted<Tongue>(rng, [
     [5, 'en'],
@@ -961,6 +1014,21 @@ function shapeCases(seed: number, firstNumber: number): RawCase[] {
     add(kind, tongue, 'short-id', [
       message(messageText(kind, plan, tongue, rng, SHORT_ID_LOOKALIKES)),
     ]);
+  }
+
+  // Contact sheets come last, so that every shape above renders as before.
+  for (let i = 0, planted = 0; planted < SHAPE_VALUES['contact-sheet']; i++) {
+    const tongue = pickTongue(rng);
+    const sheet = contactSheet(SHEET_ROWS[i % SHEET_ROWS.length]!, 'aligned', tongue, rng);
+    planted += sheet.planted;
+    add('record', tongue, 'contact-sheet', [message(sheet.text)]);
+  }
+  for (let i = 0, planted = 0; planted < SHAPE_VALUES['misaligned-sheet']; i++) {
+    const tongue = pickTongue(rng);
+    const rows = MISALIGNED_ROWS[i % MISALIGNED_ROWS.length]!;
+    const sheet = contactSheet(rows, i % 2 === 0 ? 'plus91' : 'missing', tongue, rng);
+    planted += sheet.planted;
+    add('record', tongue, 'misaligned-sheet', [message(sheet.text)]);
   }
   return out;
 }

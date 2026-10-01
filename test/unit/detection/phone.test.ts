@@ -120,18 +120,19 @@ describe('phone detection', () => {
       expect(detect(text)).toEqual([]);
     });
 
-    it('a spaced mobile after a lone digit and a space is missed without a keyword (known limit, bug-log 32)', () => {
-      // libphonenumber reads "<digit> <mobile>": 11 digits, not valid, and
-      // the mobile on its own is not reported. Only a keyword gets the
-      // unvalidated reading accepted (then widened over the digit run).
+    it('a spaced mobile after a lone digit and a space is found, keyword or not (bug-log 32, 34)', () => {
+      // libphonenumber reads "<digit> <mobile>" as 11 digits, not valid, and
+      // reports nothing; spaced-mobile.ts finds the 5 + 5 pair inside, and
+      // the detection is widened over the digit run.
       const mobile = groupDigits(indianMobile(rng), [5, 5], ' ');
-      for (const before of ['Room 3 ', 'item 1 ', 'curl 127.0.0.1 ']) {
-        expect([before, detect(`${before}${mobile}`)]).toEqual([before, []]);
+      for (const before of ['Room 3 ', 'item 1 ', 'mobile: Room 3 ']) {
+        const { text } = compose`${before}${mobile}`;
+        const digitsFrom = text.search(/[0-9]/);
+        expect([before, detect(text).map((d) => [d.type, d.start, d.end])]).toEqual([
+          before,
+          [['PHONE', digitsFrom, text.length]],
+        ]);
       }
-      const { text } = compose`mobile: Room 3 ${mobile}`;
-      expect(detect(text).map((d) => [d.type, d.start, d.end])).toEqual([
-        ['PHONE', text.indexOf('3'), text.length],
-      ]);
     });
 
     it('an IP address is an IP, even one libphonenumber calls a valid phone number (ADR-026)', () => {

@@ -29,9 +29,14 @@
 // number. Extensions are lost; they are not personal data. The labels are
 // libphonenumber's own (createExtensionPattern.js), in the NFKC form the
 // detectors see.
+//
+// libphonenumber does not look inside a stretch of spaced digit groups that
+// is not a valid number as a whole, so a mobile written 5 + 5 with another
+// group beside it is found by spaced-mobile.ts instead (bug-log 34).
 
 import { findPhoneNumbersInText } from 'libphonenumber-js/max';
 import { charAt, charBefore } from './digit-runs.js';
+import { spacedMobileCandidates } from './spaced-mobile.js';
 import type { Candidate } from './types.js';
 
 const DEFAULT_COUNTRY = 'IN';
@@ -61,4 +66,5 @@ export function* phoneCandidates(text: string): Generator<Candidate> {
     if (found.number.isValid() || !isFree(text, found.startsAt, found.endsAt)) continue;
     yield { type: 'PHONE', start: found.startsAt, end: found.endsAt, validated: false };
   }
+  yield* spacedMobileCandidates(text);
 }

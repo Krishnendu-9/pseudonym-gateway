@@ -267,6 +267,55 @@ describe('the shape block (Phase 5c)', () => {
     expect(valuesByType(ofShape('joined-digits'))).toEqual({ NUMBER: 30 });
   });
 
+  // A sheet's rows: every line after the header, as the gaps between its
+  // values ("" before the first, then the column gap) and how many it holds.
+  const sheetRows = (
+    c: LabelledCase,
+  ): { values: number; plus91: boolean; spacesOnly: boolean }[] => {
+    const m = c.messages[0]!;
+    const lines = m.text.split('\n');
+    let at = lines[0]!.length + 1;
+    return lines.slice(1).map((line) => {
+      const end = at + line.length;
+      const pieces = m.pieces.filter((p) => p.type === 'PHONE' && p.start >= at && p.end <= end);
+      const between = pieces.slice(1).map((p, i) => m.text.slice(pieces[i]!.end, p.start));
+      at = end + 1;
+      return {
+        values: pieces.length,
+        plus91: pieces.some((p) => m.text.slice(p.start, p.end).startsWith('+91')),
+        spacesOnly: between.every((gap) => /^ {1,2}$/.test(gap)),
+      };
+    });
+  };
+
+  it('contact-sheet: a header, then 2 to 5 rows of two spaced mobiles, spaces between', () => {
+    const sheets = ofShape('contact-sheet');
+    expect(valuesByType(sheets)).toEqual({ PHONE: SHAPE_VALUES['contact-sheet'] });
+    const rows = sheets.map(sheetRows);
+    expect(
+      rows.every((sheet) => sheet.every((r) => r.values === 2 && !r.plus91 && r.spacesOnly)),
+    ).toBe(true);
+    expect(tally(rows.map((sheet) => String(sheet.length)))).toEqual({ 2: 12, 3: 3, 4: 3, 5: 3 });
+  });
+
+  it('misaligned-sheet: one row with "+91" in front, or one row with a mobile missing', () => {
+    const sheets = ofShape('misaligned-sheet');
+    expect(valuesByType(sheets)).toEqual({ PHONE: SHAPE_VALUES['misaligned-sheet'] });
+    const odd = sheets.map((c) => {
+      const rows = sheetRows(c);
+      const plus91 = rows.filter((r) => r.plus91).length;
+      const short = rows.filter((r) => r.values === 1).length;
+      const kind =
+        plus91 === 1 && short === 0 ? 'plus91' : plus91 === 0 && short === 1 ? 'missing' : 'bad';
+      return `${kind} ${rows.length}`;
+    });
+    expect(tally(odd)).toEqual(
+      Object.fromEntries(
+        ['plus91', 'missing'].flatMap((k) => [2, 3, 4].map((n) => [`${k} ${n}`, 4])),
+      ),
+    );
+  });
+
   it(`short-id: each short ID type ${VALUES_PER_TYPE} times, among lookalikes of its shape`, () => {
     expect(valuesByType(ofShape('short-id'))).toEqual(
       Object.fromEntries(SHORT_ID_TYPES.map((type) => [type, VALUES_PER_TYPE])),

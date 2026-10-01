@@ -176,16 +176,16 @@
       },
       "side-by-side": {
         "values": 80,
-        "redacted": 68,
-        "partial": 4,
-        "typed": 52,
+        "redacted": 80,
+        "partial": 0,
+        "typed": 60,
         "overRedactions": 5
       },
       "digit-beside": {
         "values": 40,
-        "redacted": 13,
+        "redacted": 40,
         "partial": 0,
-        "typed": 13,
+        "typed": 40,
         "overRedactions": 4
       },
       "contained": {
@@ -207,6 +207,20 @@
         "redacted": 1,
         "partial": 0,
         "typed": 0,
+        "overRedactions": 0
+      },
+      "contact-sheet": {
+        "values": 120,
+        "redacted": 120,
+        "partial": 0,
+        "typed": 120,
+        "overRedactions": 0
+      },
+      "misaligned-sheet": {
+        "values": 132,
+        "redacted": 132,
+        "partial": 0,
+        "typed": 132,
         "overRedactions": 0
       }
     },
@@ -475,6 +489,14 @@
         "generated VOTER: 153 values -> 0",
         "generated DOB: 153 values -> 0",
         "generated shape main: 1683 values -> 0"
+      ]
+    },
+    {
+      "date": "2026-10-01",
+      "note": "ADR-027: contact sheets (aligned, and with one row out of line) added to the shape block; detectors unchanged",
+      "changes": [
+        "generated shape contact-sheet: 0 values -> 120",
+        "generated shape misaligned-sheet: 0 values -> 132"
       ]
     }
   ]
