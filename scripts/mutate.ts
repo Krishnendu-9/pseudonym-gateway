@@ -19,7 +19,14 @@
 
 import { spawn, execSync, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
@@ -85,6 +92,8 @@ const OUT = resolve(args[outIndex + 1]!);
 const listPath = resolve(args[outIndex + 2]!);
 const only = args.slice(outIndex + 3);
 const RESULTS = join(OUT, 'results.log');
+// The tests report into OUT: without it they report nothing (bug-log 38).
+mkdirSync(OUT, { recursive: true });
 
 const refusal = leftoverMutation(ROOT, {});
 if (refusal) {
@@ -182,9 +191,13 @@ for (const m of MUTATIONS) {
   const failed = lines.filter((l) => l.startsWith('failed\t')).map((l) => l.slice(7));
   const moduleErrors = lines.filter((l) => l.startsWith('module-error\t')).length;
   const secs = Math.round((Date.now() - started) / 1000);
+  // No test reported at all is no result, never "0 of 0 failed": that reads
+  // as a mutation the tests did not catch (bug-log 38).
   const head = stopped
     ? `stopped after ${Math.round(LIMIT_MS / 60_000)} minutes with ${failed.length} already failed (${lines.length} reported)`
-    : `${failed.length} of ${lines.length - moduleErrors} failed`;
+    : lines.length === 0
+      ? 'NO RESULT: no test reported anything'
+      : `${failed.length} of ${lines.length - moduleErrors} failed`;
   const errors = moduleErrors ? ` (+${moduleErrors} module error(s))` : '';
   log(`${m.id}: ${head}${errors} in ${secs}s | ${m.what}`);
   for (const t of failed.slice(0, 6)) log(`      - ${t.slice(0, 140)}`);
