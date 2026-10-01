@@ -210,8 +210,9 @@ IDs, tracking numbers, build numbers, hashes with a long stretch of digits)
 will be replaced too; the user will still see the real number in the reply.
 Digits in any script (Devanagari, Bengali, Tamil, full-width…) and numbers
 split by invisible characters are detected. Detection fails closed: a value
-found inside a longer number takes the whole number with it, and no input is
-skipped for being too long.
+found inside a longer number takes the whole number with it (up to where
+the next value starts: two values in one stretch of digits keep two
+placeholders), and no input is skipped for being too long.
 
 **Mobiles written in two groups of five** are found even with other digits
 beside them (`Room 3 <mobile>`, `<mobile> 411038`, two mobiles side by
@@ -264,8 +265,7 @@ open question for the next part of Phase 5). **IP addresses:** one written
 inside a host name (`<address>.nip.io`, reverse-DNS names) is not
 recognised; an address with a prefix length whose digits also read as a
 valid phone number (some `203.x.x.x/24`) is replaced as a phone number,
-prefix and all; two addresses joined only by a space or hyphen share one
-placeholder; and because private addresses are replaced too, the model
+prefix and all; and because private addresses are replaced too, the model
 cannot tell whether two of them are on the same network. **MAC addresses**
 (a device identifier) have no detector: written with colons
 (`00:1A:2B:3C:4D:5E`) they are always sent as written, and in other forms
@@ -274,12 +274,16 @@ safety net needs. A mobile written in two
 groups of five right after a word that ends in a digit and an "x"
 (`…1234X <mobile>`, which includes every PAN ending in X) is not
 detected: the phone library reads the "x" as the start of an extension.
-**Two values of other types side by side** can leave one of them visible:
-after a hyphen, an email address or UPI ID that follows another value is
-sent (`<Aadhaar>-name@example.com`), as is a JWT; with only a space
-between, an IFSC next to an IPv6 address or a `<mobile>@<handle>` UPI ID,
-and two IP addresses, sometimes lose one of the pair. Numbers side by side
-(Aadhaar, card, phone, long numbers) are not affected.
+**Two values side by side joined by a hyphen** can leave one of them
+visible: an email address or UPI ID right after another value and a hyphen
+is sent (`<Aadhaar>-name@example.com`), as is a JWT, an IP address after
+a UPI ID and a hyphen, and sometimes an IP address after a secret and a
+hyphen. Rarely, an Aadhaar or long number followed by `. ` or `-` and
+an IPv6 address starting with digits reads as a card number reaching into
+the address, and the rest of the address is sent (3 of 200 synthetic
+Aadhaar and IP address pairs written that way). Values separated by a space, a comma or a word, and
+numbers side by side (Aadhaar, card, phone, long numbers), are not
+affected.
 
 ## Measured results
 
@@ -361,7 +365,7 @@ _Measured on 2026-10-01 (UTC date) by `npm run eval`. This block is generated, a
 | ---------------- | ------ | ------------------- | --------------- | ------------------- | --------------- |
 | line-break       | 120    | 11/120 (9.1%)       | 7               | 11/120 (9.1%)       | 12              |
 | message-split    | 60     | 0/60 (0.0%)         | 2               | 0/60 (0.0%)         | 0               |
-| side-by-side     | 80     | 80/80 (100.0%)      | 0               | 60/80 (75.0%)       | 5               |
+| side-by-side     | 80     | 80/80 (100.0%)      | 0               | 66/80 (82.5%)       | 5               |
 | digit-beside     | 40     | 40/40 (100.0%)      | 0               | 40/40 (100.0%)      | 4               |
 | contained        | 70     | 0/70 (0.0%)         | 70              | 0/70 (0.0%)         | 8               |
 | joined-digits    | 30     | 6/30 (20.0%)        | 24              | 6/30 (20.0%)        | 4               |
@@ -376,7 +380,7 @@ _Measured on 2026-10-01 (UTC date) by `npm run eval`. This block is generated, a
 | AADHAAR | 9      | 8/9 (88.8%)         | 0               | 7/9 (77.7%)         | 7/7 (100.0%)           | 87.5%  | 0               |
 | CARD    | 7      | 4/7 (57.1%)         | 0               | 4/7 (57.1%)         | 4/4 (100.0%)           | 72.7%  | 0               |
 | PAN     | 8      | 7/8 (87.5%)         | 0               | 7/8 (87.5%)         | 7/7 (100.0%)           | 93.3%  | 0               |
-| PHONE   | 19     | 18/19 (94.7%)       | 0               | 18/19 (94.7%)       | 17/18 (94.4%)          | 94.5%  | 1               |
+| PHONE   | 19     | 18/19 (94.7%)       | 0               | 18/19 (94.7%)       | 18/19 (94.7%)          | 94.7%  | 1               |
 | EMAIL   | 7      | 6/7 (85.7%)         | 0               | 6/7 (85.7%)         | 6/6 (100.0%)           | 92.3%  | 0               |
 | NUMBER  | 6      | 3/6 (50.0%)         | 0               | 3/6 (50.0%)         | 3/8 (37.5%)            | 42.8%  | 4               |
 | IFSC    | 3      | 3/3 (100.0%)        | 0               | 3/3 (100.0%)        | 3/3 (100.0%)           | 100.0% | 0               |

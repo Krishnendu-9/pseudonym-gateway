@@ -20,6 +20,10 @@ import type { Span } from './normalise.js';
 const SEPARATOR = '[ .\\-\\u2010-\\u2015\\u2212]';
 const DIGIT_RUN = new RegExp(`[0-9]+(?:${SEPARATOR}{1,3}[0-9]+)*`, 'g');
 const DIGIT_GROUP = /[0-9]+/g;
+const SEPARATOR_CHAR = new RegExp(`^${SEPARATOR}$`);
+
+/** True if `char` is one of the separators that join digit groups into a run. */
+export const isRunSeparator = (char: string): boolean => SEPARATOR_CHAR.test(char);
 
 // A number glued to a letter, digit, combining mark or underscore is part of
 // a longer token (a hash, an identifier, an API key), not a value on its own.

@@ -387,11 +387,14 @@ describe('IP next to the other types', () => {
     ]);
   });
 
-  it('PHONE: a phone reading that starts inside an address is covered by the widened address', () => {
-    // libphonenumber reads "3 <mobile>"; the address wins the overlap and
-    // widening takes the rest of the digit run with it.
+  it('PHONE: a mobile after an address in the same digit run is its own detection (ADR-028)', () => {
+    // One digit run ("10.1.2.3 <mobile>"): the address is widened only up
+    // to where the mobile starts, so each keeps its own placeholder.
     const joined = compose`mobile 10.1.2.3 ${spacedMobile()}`;
-    expect(spansOf(joined.text)).toEqual([['IP', 7, joined.text.length]]);
+    expect(spansOf(joined.text)).toEqual([
+      ['IP', 7, 15],
+      ['PHONE', joined.spans[0]!.start, joined.spans[0]!.end],
+    ]);
     const colon = compose`mobile 10.1.2.3:${spacedMobile()}`;
     expect(spansOf(colon.text)).toEqual([
       ['IP', 7, 15],
@@ -399,9 +402,17 @@ describe('IP next to the other types', () => {
     ]);
   });
 
-  it('two addresses joined by a space or hyphen become one detection (widening merges neighbours, 5c); a comma keeps them apart', () => {
-    expect(found('IPs 10.1.2.3 10.4.5.6 ok')).toEqual([['IP', '10.1.2.3 10.4.5.6']]);
-    expect(found('range 10.1.2.3-10.1.2.9 ok')).toEqual([['IP', '10.1.2.3-10.1.2.9']]);
+  it('two addresses joined by a space, a hyphen or a comma stay two detections (ADR-028)', () => {
+    // Widening stops where the next detection starts, and the separator
+    // between them stays text.
+    expect(found('IPs 10.1.2.3 10.4.5.6 ok')).toEqual([
+      ['IP', '10.1.2.3'],
+      ['IP', '10.4.5.6'],
+    ]);
+    expect(found('range 10.1.2.3-10.1.2.9 ok')).toEqual([
+      ['IP', '10.1.2.3'],
+      ['IP', '10.1.2.9'],
+    ]);
     expect(found('IPs 10.1.2.3, 10.4.5.6 ok')).toEqual([
       ['IP', '10.1.2.3'],
       ['IP', '10.4.5.6'],

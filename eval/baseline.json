@@ -178,7 +178,7 @@
         "values": 80,
         "redacted": 80,
         "partial": 0,
-        "typed": 60,
+        "typed": 66,
         "overRedactions": 5
       },
       "digit-beside": {
@@ -269,8 +269,8 @@
         "typed": 18,
         "partial": 0,
         "missed": 1,
-        "detections": 18,
-        "rightType": 17,
+        "detections": 19,
+        "rightType": 18,
         "otherPersonal": 0,
         "notPersonal": 1
       },

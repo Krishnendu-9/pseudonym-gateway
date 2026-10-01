@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { detect } from '../../../src/detection/detect.js';
 import { isLuhnValid } from '../../../src/detection/luhn.js';
 import type { DetectionType } from '../../../src/detection/types.js';
+import { ifsc, ipAddress, secret, upiId } from '../../../src/synthetic/identifiers.js';
 import { obfuscate, styleDigits } from '../../../src/synthetic/obfuscate.js';
 import { createRng, type Rng } from '../../../src/synthetic/rng.js';
 import {
@@ -224,6 +225,88 @@ describe('detect: fails closed inside longer numbers', () => {
         context: true,
       },
     ]);
+  });
+});
+
+describe('detect: widening stops at the neighbouring detection (ADR-028)', () => {
+  /** Booleans for a pair: each value covered whole, and no detection touching both. */
+  const pairResult = (a: string, separator: string, b: string): [boolean, boolean, boolean] => {
+    const { text, spans } = compose`Value ${a}${separator}${b} ok.`;
+    const found = detect(text);
+    const covered = (s: { start: number; end: number }): boolean =>
+      [...text.slice(s.start, s.end)].every(
+        (ch, i) =>
+          !/[\p{L}\p{N}]/u.test(ch) ||
+          found.some((d) => d.start <= s.start + i && s.start + i < d.end),
+      );
+    const touches = (d: { start: number; end: number }, s: { start: number; end: number }) =>
+      d.start < s.end && s.start < d.end;
+    const shared = found.some((d) => touches(d, spans[0]!) && touches(d, spans[1]!));
+    return [covered(spans[0]!), covered(spans[1]!), !shared];
+  };
+
+  it('keeps two values in one digit run as two detections, the separator between them as text', () => {
+    const { text, spans } =
+      compose`Numbers ${groupDigits(indianMobile(rng), [5, 5], ' ')} ${spacedAadhaar(rng)} ok`;
+    expect(detect(text).map((d) => [d.type, d.start, d.end])).toEqual([
+      ['PHONE', spans[0]!.start, spans[0]!.end],
+      ['AADHAAR', spans[1]!.start, spans[1]!.end],
+    ]);
+  });
+
+  it('gives the digits between two values to the first, so none is left visible', () => {
+    const { text, spans } =
+      compose`Numbers ${groupDigits(indianMobile(rng), [5, 5], ' ')} 7 ${spacedAadhaar(rng)} ok`;
+    expect(detect(text).map((d) => [d.type, d.start, d.end])).toEqual([
+      ['PHONE', spans[0]!.start, spans[0]!.end + 2],
+      ['AADHAAR', spans[1]!.start, spans[1]!.end],
+    ]);
+  });
+
+  it('trims separators only at a cut between values, never off a value itself', () => {
+    // A password may start or end with a hyphen or a dot; it is part of
+    // the value.
+    for (const password of ['ab12-cd34-', '-ab12-cd34', '.x9.k2']) {
+      const { text, spans } = compose`password: ${password} ok`;
+      expect([password, detect(text).map((d) => [d.type, d.start, d.end])]).toEqual([
+        password,
+        [['SECRET', spans[0]!.start, spans[0]!.end]],
+      ]);
+    }
+  });
+
+  // Pairs that widening used to merge, dropping one of them (bug-log 35):
+  // each value now whole and in its own detection. Hyphen-joined pairs
+  // where one value's pattern can take the hyphen are item 3's.
+  const r = createRng(3535);
+  const makers: Record<string, () => string> = {
+    IFSC: () => ifsc(r),
+    'IP v4': () => ipAddress(r, 'v4'),
+    'IP v6': () => ipAddress(r, 'v6'),
+    'UPI mobile': () => upiId(r, 'mobile'),
+    'UPI name': () => upiId(r, 'name'),
+    'SECRET github': () => secret(r, 'github'),
+    'SECRET aws': () => secret(r, 'aws'),
+  };
+  it.each([
+    ['IFSC', 'IP v6', [' ', ' - ', '. ', '-']],
+    ['IFSC', 'IP v4', [' ', ' - ', '. ', '-']],
+    ['IFSC', 'UPI mobile', [' ', ' - ', '. ']],
+    ['IP v4', 'IP v4', [' ', ' - ', '. ', '-']],
+    ['IP v6', 'IP v6', [' ', ' - ', '. ', '-']],
+    ['IP v4', 'UPI mobile', [' ', ' - ', '. ']],
+    ['IP v6', 'UPI name', [' ', ' - ', '. ']],
+    ['SECRET github', 'IP v4', [' ', ' - ', '. ']],
+    ['SECRET aws', 'IP v6', [' ', ' - ', '. ']],
+    ['SECRET github', 'UPI mobile', [' ', ' - ', '. ']],
+  ] as const)('%s then %s: both whole, in two detections', (first, second, separators) => {
+    const results = new Set<string>();
+    for (let i = 0; i < 40; i++) {
+      for (const separator of separators) {
+        results.add(JSON.stringify(pairResult(makers[first]!(), separator, makers[second]!())));
+      }
+    }
+    expect([...results]).toEqual([JSON.stringify([true, true, true])]);
   });
 });
 

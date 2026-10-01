@@ -7,7 +7,7 @@
 
 import { aadhaarCandidates } from './aadhaar.js';
 import { cardCandidates } from './card.js';
-import { charBefore, digitRuns, widenToRuns } from './digit-runs.js';
+import { charBefore, digitRuns, isRunSeparator, widenToRuns } from './digit-runs.js';
 import { hasContext } from './context.js';
 import { emailCandidates } from './email.js';
 import { ifscCandidates } from './ifsc.js';
@@ -60,17 +60,12 @@ export function detect(original: string): Detection[] {
   // saw rather than invisible characters. Only then widen each winner to the
   // whole digit runs it touches, so that the types are decided first (a card
   // still beats an Aadhaar found in its first 12 digits) and no part of a
-  // number is left visible. Widening can make winners in one run overlap, so
-  // resolve again. Then the safety net claims long numbers nobody else did
-  // (ADR-011). Finally map back, and resolve once more: rounding out to whole
-  // clusters could, in principle, make two neighbours share a character.
+  // number is left visible; but never past its neighbours (ADR-028). Then
+  // the safety net claims long numbers nobody else did (ADR-011). Finally
+  // map back, and resolve once more: rounding out to whole clusters could,
+  // in principle, make two neighbours share a character.
   const runs = digitRuns(text);
-  const widened = resolveOverlaps(
-    resolveOverlaps(accepted).map((d) => ({
-      ...d,
-      ...(d.type === 'IP' ? widenAddress(text, d, runs) : widenToRuns(d, runs)),
-    })),
-  );
+  const widened = widenUpToNeighbours(text, resolveOverlaps(accepted), runs);
 
   // Addresses no single host owns (ADR-026) take no part in the above, so
   // they can never cost another value its detection. Afterwards, a
@@ -86,6 +81,32 @@ export function detect(original: string): Detection[] {
 }
 
 const spanKey = (span: Span): string => `${span.start}:${span.end}`;
+
+/**
+ * Widens each of `winners` (sorted, not overlapping) to the digit runs it
+ * touches, but only up to where the previous one ends and the next one
+ * starts (ADR-028). Two values in one run (`<mobile> <mobile>`) stay two
+ * detections with two placeholders, and neither can push the other out;
+ * the digits between them go to the first, so none is left visible. Where
+ * a cut falls between two values, the separators there stay text, so the
+ * placeholders keep the space or hyphen between them.
+ */
+function widenUpToNeighbours(
+  text: string,
+  winners: readonly Detection[],
+  runs: readonly Span[],
+): Detection[] {
+  const widened: Detection[] = [];
+  for (const [i, d] of winners.entries()) {
+    const wide = d.type === 'IP' ? widenAddress(text, d, runs) : widenToRuns(d, runs);
+    let start = Math.max(wide.start, widened.at(-1)?.end ?? 0);
+    let end = Math.min(wide.end, winners[i + 1]?.start ?? text.length);
+    while (start < d.start && isRunSeparator(text[start]!)) start++;
+    while (end > d.end && isRunSeparator(text[end - 1]!)) end--;
+    widened.push({ ...d, start, end });
+  }
+  return widened;
+}
 
 /** True if `span` overlaps one of `sorted` (sorted by start, not overlapping). */
 function overlapsAny(sorted: readonly Span[], span: Span): boolean {
