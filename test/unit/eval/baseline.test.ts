@@ -10,7 +10,7 @@ import {
   type Measurement,
   type StoredDataset,
 } from '../../../eval/baseline.js';
-import type { DatasetScore, TypeScore } from '../../../eval/score.js';
+import type { DatasetScore, ShapeScore, TypeScore } from '../../../eval/score.js';
 import { PERSONAL_TYPES } from '../../../eval/types.js';
 
 const row = (values: number, redacted: number, typed: number, notPersonal: number): TypeScore => ({
@@ -64,59 +64,79 @@ describe('a type the stored baseline predates (PASSPORT, VOTER, DOB in Phase 5c)
 });
 
 describe('compare, by shape (the generated set’s shape block)', () => {
+  const shape = (
+    values: number,
+    redacted: number,
+    typed: number,
+    overRedactions: number,
+    partial = 0,
+  ): ShapeScore => ({ values, redacted, partial, typed, overRedactions });
   const shaped = (shapes: DatasetScore['shapes']): DatasetScore => dataset(BASE.types, {}, shapes);
-  const BEFORE = stored(
-    shaped({
-      main: { values: 10, redacted: 8, partial: 1 },
-      contained: { values: 4, redacted: 0, partial: 4 },
-    }),
-  );
+  const LINE_BREAK = shape(10, 8, 7, 2, 1);
+  const BEFORE = stored(shaped({ 'line-break': LINE_BREAK, contained: shape(4, 0, 0, 0, 4) }));
+  const withContained = (contained: ShapeScore): DatasetScore =>
+    shaped({ 'line-break': LINE_BREAK, contained });
 
   it.each([
-    ['the same counts', { values: 4, redacted: 0, partial: 4 }, 'nothing', []],
+    ['the same counts', shape(4, 0, 0, 0, 4), 'nothing', []],
+    ['partial moves alone', shape(4, 0, 0, 0, 2), 'nothing', []],
     [
       'more redacted',
-      { values: 4, redacted: 3, partial: 1 },
+      shape(4, 3, 0, 0, 1),
       'better',
       ['generated shape contained: redacted 0 -> 3'],
     ],
-    ['partial moves alone', { values: 4, redacted: 0, partial: 2 }, 'nothing', []],
     [
-      'more values',
-      { values: 5, redacted: 0, partial: 4 },
-      'changed',
-      ['generated shape contained: 4 values -> 5'],
+      'more of the right type',
+      shape(4, 0, 2, 0, 4),
+      'better',
+      ['generated shape contained: redacted with the right type 0 -> 2'],
     ],
-  ] as const)('%s: %s', (_name, contained, side, lines) => {
-    const result = compare(
-      'generated',
-      BEFORE,
-      shaped({ main: { values: 10, redacted: 8, partial: 1 }, contained }),
-    );
+    [
+      'more over-redactions',
+      shape(4, 0, 0, 3, 4),
+      'worse',
+      ['generated shape contained: over-redactions 0 -> 3'],
+    ],
+    ['more values', shape(5, 0, 0, 0, 4), 'changed', ['generated shape contained: 4 values -> 5']],
+  ] as const)('%s', (_name, contained, side, lines) => {
     const expected = { worse: [], better: [], changed: [] } as Record<string, readonly string[]>;
     if (side !== 'nothing') expected[side] = lines;
-    expect(result).toEqual(expected);
+    expect(compare('generated', BEFORE, withContained(contained))).toEqual(expected);
   });
 
-  it('fewer redacted is worse', () => {
-    const now = shaped({
-      main: { values: 10, redacted: 7, partial: 1 },
-      contained: { values: 4, redacted: 0, partial: 4 },
-    });
-    expect(compare('generated', BEFORE, now).worse).toEqual([
-      'generated shape main: redacted 8 -> 7',
+  it('fewer redacted, fewer of the right type and fewer over-redactions go both ways', () => {
+    const now = shaped({ 'line-break': shape(10, 7, 6, 1, 1), contained: shape(4, 0, 0, 0, 4) });
+    const result = compare('generated', BEFORE, now);
+    expect(result.worse).toEqual([
+      'generated shape line-break: redacted 8 -> 7',
+      'generated shape line-break: redacted with the right type 7 -> 6',
     ]);
+    expect(result.better).toEqual(['generated shape line-break: over-redactions 2 -> 1']);
   });
 
   it('a shape that appears or disappears is a changed dataset', () => {
-    const now = shaped({
-      main: { values: 10, redacted: 8, partial: 1 },
-      'short-id': { values: 6, redacted: 0, partial: 0 },
-    });
+    const now = shaped({ 'line-break': LINE_BREAK, 'short-id': shape(6, 0, 0, 0) });
     expect(compare('generated', BEFORE, now).changed).toEqual([
       'generated shape contained: 4 values -> 0',
       'generated shape short-id: 0 values -> 6',
     ]);
+  });
+
+  it('a shape stored before its right-type and over-redaction counts were kept has them as 0', () => {
+    const older = { 'line-break': { values: 10, redacted: 8, partial: 1 } } as unknown as Record<
+      string,
+      ShapeScore
+    >;
+    const result = compare(
+      'generated',
+      { ...stored(BASE), shapes: older },
+      shaped({ 'line-break': LINE_BREAK }),
+    );
+    expect(result.better).toEqual([
+      'generated shape line-break: redacted with the right type 0 -> 7',
+    ]);
+    expect(result.worse).toEqual(['generated shape line-break: over-redactions 0 -> 2']);
   });
 
   it('a stored dataset with no shapes and a score with none: nothing to compare', () => {
@@ -321,7 +341,9 @@ describe('nextBaseline', () => {
   });
 
   it('stores the shape counts when the score has them, and no shapes key when it has none', () => {
-    const shapes = { main: { values: 10, redacted: 8, partial: 1 } };
+    const shapes = {
+      'line-break': { values: 10, redacted: 8, partial: 1, typed: 7, overRedactions: 2 },
+    };
     const next = nextBaseline(
       undefined,
       measurement(dataset(BASE.types, {}, shapes), BASE),

@@ -73,16 +73,16 @@ describe('scoreTable', () => {
 
 describe('shapeTable', () => {
   const SHAPES = {
-    main: { values: 12, redacted: 11, partial: 1 },
-    'line-break': { values: 3, redacted: 0, partial: 2 },
+    'line-break': { values: 12, redacted: 11, partial: 1, typed: 9, overRedactions: 0 },
+    contained: { values: 3, redacted: 0, partial: 2, typed: 0, overRedactions: 4 },
   };
 
   it('one row per shape, in the order given, counts beside cut percentages', () => {
     expect(shapeTable(SHAPES).split('\n')).toEqual([
-      '| Written as | Values | Redacted (any type) | Partly redacted |',
-      '| ---------- | ------ | ------------------- | --------------- |',
-      '| main       | 12     | 11/12 (91.6%)       | 1               |',
-      '| line-break | 3      | 0/3 (0.0%)          | 2               |',
+      '| Written as | Values | Redacted (any type) | Partly redacted | Recall (right type) | Over-redactions |',
+      '| ---------- | ------ | ------------------- | --------------- | ------------------- | --------------- |',
+      '| line-break | 12     | 11/12 (91.6%)       | 1               | 9/12 (75.0%)        | 0               |',
+      '| contained  | 3      | 0/3 (0.0%)          | 2               | 0/3 (0.0%)          | 4               |',
     ]);
   });
 
@@ -146,7 +146,7 @@ describe('readmeBlock', () => {
     expect(block.endsWith(`\n${README_END}`)).toBe(true);
     expect(block).toContain('_Measured on 2026-09-30 (UTC date) by `npm run eval`.');
     expect(block).toContain(
-      '**Generated dataset** (seed 42; 6 messages in 5 cases, 12 labelled personal values). Its generator and the detectors share an author',
+      '**Generated dataset, main cases** (seed 42; 6 messages in 5 cases, 12 labelled personal values). Its generator and the detectors share an author',
     );
     expect(block).toContain(scoreTable(SCORE));
   });
@@ -174,12 +174,19 @@ describe('readmeBlock', () => {
     }
   });
 
-  it('shows the shape table under the generated one when there are shapes, and only then', async () => {
-    const shapes = { main: { values: 12, redacted: 11, partial: 1 } };
+  it('shows the shape block apart, after the main table, when there are shapes, and only then', async () => {
+    const shapes = {
+      'line-break': { values: 12, redacted: 11, partial: 1, typed: 9, overRedactions: 0 },
+      contained: { values: 3, redacted: 0, partial: 2, typed: 0, overRedactions: 4 },
+    };
     const block = readmeBlock({ ...input, generated: { ...SCORE, seed: 42, shapes } });
-    expect(block).toContain(`${scoreTable(SCORE)}\n\nThe same values by the way they are written`);
-    expect(block).toContain(`Each value also counts in the table above.\n\n${shapeTable(shapes)}`);
-    expect(readmeBlock(input)).not.toContain('The same values by the way they are written');
+    expect(block).toContain(
+      `${scoreTable(SCORE)}\n\n**Generated dataset, shape block** (15 labelled personal values, in cases apart from the main ones).`,
+    );
+    expect(block).toContain(
+      `they are not part of the numbers above.\n\n${shapeTable(shapes)}\n\n**Held-out`,
+    );
+    expect(readmeBlock(input)).not.toContain('shape block');
     const markdown = `# Title\n\n${block}\n\nAfter.\n`;
     expect(await format(markdown, { parser: 'markdown' })).toBe(markdown);
   });

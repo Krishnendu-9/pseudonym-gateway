@@ -230,25 +230,33 @@ describe('score: by shape (the generated set’s shape block)', () => {
   });
   const PARTLY = 'aa WWWWWWWW bb';
   const MISSED = 'aa XXXXXXXX bb';
+  const OTHER_TYPE = 'aa YYYYYYYY bb';
   const detector = scripted({
     [TEXT]: [{ type: 'AADHAAR', start: 3, end: 11 }],
     [PARTLY]: [{ type: 'NUMBER', start: 3, end: 6 }],
+    // Redacted, but as a NUMBER; and "bb" redacted though not personal.
+    [OTHER_TYPE]: [
+      { type: 'NUMBER', start: 3, end: 11 },
+      { type: 'PHONE', start: 12, end: 14 },
+    ],
   });
   const cases = [
-    tagged('A', ['ticket', 'en']),
+    tagged('A', ['ticket', 'en'], OTHER_TYPE),
     tagged('B', ['ticket', 'en', 'shape:line-break'], PARTLY),
     tagged('C', ['chat', 'hi', 'shape:line-break'], MISSED),
     tagged('D', ['ticket', 'en', 'shape:line-break']),
+    tagged('E', ['ticket', 'en', 'shape:line-break'], OTHER_TYPE),
+    tagged('F', ['ticket', 'en', 'shape:short-id']),
   ];
 
   it('is not tallied unless asked for', () => {
     expect(score(cases, detector).shapes).toEqual({});
   });
 
-  it('tallies each shape in the order it first appears; a case with no shape tag is "main"', () => {
+  it('tallies each shape in the order it first appears; cases with no shape tag are left out', () => {
     expect(score(cases, detector, { byShape: true }).shapes).toEqual({
-      main: { values: 1, redacted: 1, partial: 0 },
-      'line-break': { values: 3, redacted: 1, partial: 1 },
+      'line-break': { values: 4, redacted: 2, partial: 1, typed: 1, overRedactions: 1 },
+      'short-id': { values: 1, redacted: 1, partial: 0, typed: 1, overRedactions: 0 },
     });
   });
 
@@ -262,7 +270,7 @@ describe('score: by shape (the generated set’s shape block)', () => {
       ],
     };
     expect(score([split], detector, { byShape: true }).shapes).toEqual({
-      'message-split': { values: 1, redacted: 0, partial: 1 },
+      'message-split': { values: 1, redacted: 0, partial: 1, typed: 0, overRedactions: 0 },
     });
   });
 });

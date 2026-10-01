@@ -63,17 +63,26 @@ export function scoreTable(score: StoredDataset): string {
 }
 
 /**
- * One row per way of writing values (the generated set's shape block,
- * Phase 5c). Each value also counts in its type's row of scoreTable.
+ * One row per way of writing values: the generated set's shape block
+ * (Phase 5c), scored apart from its main cases.
  */
 export function shapeTable(shapes: Readonly<Record<string, ShapeScore>>): string {
   return table(
-    ['Written as', 'Values', 'Redacted (any type)', 'Partly redacted'],
+    [
+      'Written as',
+      'Values',
+      'Redacted (any type)',
+      'Partly redacted',
+      'Recall (right type)',
+      'Over-redactions',
+    ],
     Object.entries(shapes).map(([shape, row]) => [
       shape,
       String(row.values),
       ratio(row.redacted, row.values),
       String(row.partial),
+      ratio(row.typed, row.values),
+      String(row.overRedactions),
     ]),
   );
 }
@@ -142,15 +151,16 @@ export function readmeBlock(input: ReportInput): string {
     '',
     `_Measured on ${input.measuredOn} (UTC date) by \`npm run eval\`. This block is generated, and the run fails if it is out of date._`,
     '',
-    `**Generated dataset** (seed ${input.generated.seed}; ${size(input.generated)}). Its generator and the detectors share an author, so it mostly shows regressions.`,
+    `**Generated dataset, main cases** (seed ${input.generated.seed}; ${size(input.generated)}). Its generator and the detectors share an author, so it mostly shows regressions.`,
     '',
     scoreTable(input.generated),
     '',
   ];
   const shapes = input.generated.shapes ?? {};
   if (Object.keys(shapes).length > 0) {
+    const values = Object.values(shapes).reduce((n, row) => n + row.values, 0);
     lines.push(
-      'The same values by the way they are written: the main cases (`main`), then one row per way that is hard on purpose (a line break inside a value, a value split across two messages, two values side by side, digits beside a mobile, a checked value inside an address or key, digits joined by a bracket, passport and voter ID numbers and dates of birth). Each value also counts in the table above.',
+      `**Generated dataset, shape block** (${values} labelled personal values, in cases apart from the main ones). Each row is a way of writing values that is hard on purpose: a line break inside a value, a value split across two messages, two values side by side, digits beside a mobile, a checked value inside an address or key, digits joined by a bracket, passport and voter ID numbers and dates of birth. These rows measure known gaps one at a time; they are not part of the numbers above.`,
       '',
       shapeTable(shapes),
       '',

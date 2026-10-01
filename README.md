@@ -279,17 +279,18 @@ How to read a row:
   number, a timestamp). They cost no privacy; they replace text that was
   fine to send. The user still sees the original in the reply.
 - Percentages are cut to one decimal, never rounded up.
-- The generated dataset has 500 main cases, written the usual ways, and a
-  **shape block** of cases written in ways that are hard on purpose (a
-  line break inside a number, a value split across two messages, two values
-  side by side, a checked value inside an email address or key, short
-  identity numbers). Its second table gives one row per way of writing;
-  every value also counts in its type's row of the first.
+- The generated dataset's headline table is its **500 main cases**, written
+  the usual ways. Below it, and kept apart from it, is the **shape block**:
+  cases written in ways that are hard on purpose (a line break inside a
+  number, a value split across two messages, two values side by side, a
+  checked value inside an email address or key, passport and voter ID
+  numbers and dates of birth), one row per way of writing. Each row there
+  measures one known gap; a low number in it is that gap, not the overall
+  quality.
 
-PERSON has no detector yet, and neither have PASSPORT, VOTER (a voter ID)
-and DOB (a date of birth). They are labelled and measured from the start so
-that the "before" is on record. The numbers in the rest of this paragraph
-are for the 500 main cases (the `main` row of the second table). The IP
+PERSON has no detector yet, and neither have passport numbers, voter IDs
+and dates of birth (the shape block's `short-id` row). They are labelled
+and measured from the start so that the "before" is on record. The IP
 row's 4 values of the wrong type are
 addresses written with a prefix length (`/24`) whose digits also read as a
 valid phone number: still redacted, as a phone number, prefix and all. Its
@@ -317,37 +318,33 @@ four) was touched.
 
 _Measured on 2026-10-01 (UTC date) by `npm run eval`. This block is generated, and the run fails if it is out of date._
 
-**Generated dataset** (seed 20260930; 1251 messages in 1091 cases, 2542 labelled personal values). Its generator and the detectors share an author, so it mostly shows regressions.
+**Generated dataset, main cases** (seed 20260930; 600 messages in 500 cases, 1683 labelled personal values). Its generator and the detectors share an author, so it mostly shows regressions.
 
-| Type     | Values | Redacted (any type) | Partly redacted | Recall (right type) | Precision (right type) | F1    | Over-redactions |
-| -------- | ------ | ------------------- | --------------- | ------------------- | ---------------------- | ----- | --------------- |
-| AADHAAR  | 233    | 173/233 (74.2%)     | 1               | 169/233 (72.5%)     | 164/173 (94.7%)        | 82.1% | 3               |
-| CARD     | 227    | 164/227 (72.2%)     | 8               | 163/227 (71.8%)     | 156/163 (95.7%)        | 82.0% | 1               |
-| PAN      | 153    | 142/153 (92.8%)     | 0               | 142/153 (92.8%)     | 142/163 (87.1%)        | 89.8% | 11              |
-| PHONE    | 293    | 205/293 (69.9%)     | 4               | 195/293 (66.5%)     | 187/314 (59.5%)        | 62.8% | 53              |
-| EMAIL    | 183    | 153/183 (83.6%)     | 30              | 153/183 (83.6%)     | 153/153 (100.0%)       | 91.0% | 0               |
-| NUMBER   | 189    | 147/189 (77.7%)     | 24              | 122/189 (64.5%)     | 131/217 (60.3%)        | 62.3% | 83              |
-| IFSC     | 153    | 152/153 (99.3%)     | 0               | 152/153 (99.3%)     | 152/175 (86.8%)        | 92.6% | 3               |
-| UPI      | 163    | 147/163 (90.1%)     | 10              | 147/163 (90.1%)     | 147/147 (100.0%)       | 94.8% | 0               |
-| IP       | 153    | 153/153 (100.0%)    | 0               | 149/153 (97.3%)     | 149/220 (67.7%)        | 79.8% | 61              |
-| SECRET   | 183    | 147/183 (80.3%)     | 30              | 147/183 (80.3%)     | 147/147 (100.0%)       | 89.0% | 0               |
-| PERSON   | 153    | 0/153 (0.0%)        | 0               | 0/153 (0.0%)        | -                      | -     | 0               |
-| PASSPORT | 153    | 0/153 (0.0%)        | 0               | 0/153 (0.0%)        | -                      | -     | 0               |
-| VOTER    | 153    | 0/153 (0.0%)        | 0               | 0/153 (0.0%)        | -                      | -     | 0               |
-| DOB      | 153    | 1/153 (0.6%)        | 0               | 0/153 (0.0%)        | -                      | -     | 0               |
+| Type    | Values | Redacted (any type) | Partly redacted | Recall (right type) | Precision (right type) | F1     | Over-redactions |
+| ------- | ------ | ------------------- | --------------- | ------------------- | ---------------------- | ------ | --------------- |
+| AADHAAR | 153    | 153/153 (100.0%)    | 0               | 153/153 (100.0%)    | 153/160 (95.6%)        | 97.7%  | 3               |
+| CARD    | 153    | 150/153 (98.0%)     | 0               | 149/153 (97.3%)     | 149/154 (96.7%)        | 97.0%  | 1               |
+| PAN     | 153    | 142/153 (92.8%)     | 0               | 142/153 (92.8%)     | 142/152 (93.4%)        | 93.1%  | 10              |
+| PHONE   | 153    | 153/153 (100.0%)    | 0               | 153/153 (100.0%)    | 153/219 (69.8%)        | 82.2%  | 46              |
+| EMAIL   | 153    | 153/153 (100.0%)    | 0               | 153/153 (100.0%)    | 153/153 (100.0%)       | 100.0% | 0               |
+| NUMBER  | 153    | 135/153 (88.2%)     | 0               | 112/153 (73.2%)     | 112/178 (62.9%)        | 67.6%  | 66              |
+| IFSC    | 153    | 152/153 (99.3%)     | 0               | 152/153 (99.3%)     | 152/155 (98.0%)        | 98.7%  | 3               |
+| UPI     | 153    | 147/153 (96.0%)     | 0               | 147/153 (96.0%)     | 147/147 (100.0%)       | 98.0%  | 0               |
+| IP      | 153    | 153/153 (100.0%)    | 0               | 149/153 (97.3%)     | 149/202 (73.7%)        | 83.9%  | 53              |
+| SECRET  | 153    | 147/153 (96.0%)     | 0               | 147/153 (96.0%)     | 147/147 (100.0%)       | 98.0%  | 0               |
+| PERSON  | 153    | 0/153 (0.0%)        | 0               | 0/153 (0.0%)        | -                      | -      | 0               |
 
-The same values by the way they are written: the main cases (`main`), then one row per way that is hard on purpose (a line break inside a value, a value split across two messages, two values side by side, digits beside a mobile, a checked value inside an address or key, digits joined by a bracket, passport and voter ID numbers and dates of birth). Each value also counts in the table above.
+**Generated dataset, shape block** (859 labelled personal values, in cases apart from the main ones). Each row is a way of writing values that is hard on purpose: a line break inside a value, a value split across two messages, two values side by side, digits beside a mobile, a checked value inside an address or key, digits joined by a bracket, passport and voter ID numbers and dates of birth. These rows measure known gaps one at a time; they are not part of the numbers above.
 
-| Written as    | Values | Redacted (any type) | Partly redacted |
-| ------------- | ------ | ------------------- | --------------- |
-| main          | 1683   | 1485/1683 (88.2%)   | 0               |
-| line-break    | 120    | 11/120 (9.1%)       | 7               |
-| message-split | 60     | 0/60 (0.0%)         | 2               |
-| side-by-side  | 80     | 68/80 (85.0%)       | 4               |
-| digit-beside  | 40     | 13/40 (32.5%)       | 0               |
-| contained     | 70     | 0/70 (0.0%)         | 70              |
-| joined-digits | 30     | 6/30 (20.0%)        | 24              |
-| short-id      | 459    | 1/459 (0.2%)        | 0               |
+| Written as    | Values | Redacted (any type) | Partly redacted | Recall (right type) | Over-redactions |
+| ------------- | ------ | ------------------- | --------------- | ------------------- | --------------- |
+| line-break    | 120    | 11/120 (9.1%)       | 7               | 11/120 (9.1%)       | 12              |
+| message-split | 60     | 0/60 (0.0%)         | 2               | 0/60 (0.0%)         | 0               |
+| side-by-side  | 80     | 68/80 (85.0%)       | 4               | 52/80 (65.0%)       | 5               |
+| digit-beside  | 40     | 13/40 (32.5%)       | 0               | 13/40 (32.5%)       | 4               |
+| contained     | 70     | 0/70 (0.0%)         | 70              | 0/70 (0.0%)         | 8               |
+| joined-digits | 30     | 6/30 (20.0%)        | 24              | 6/30 (20.0%)        | 4               |
+| short-id      | 459    | 1/459 (0.2%)        | 0               | 0/459 (0.0%)        | 0               |
 
 **Held-out adversarial dataset** (drafted with AI assistance in a separate session that did not write the detectors, then reviewed by the author; never run against the detectors before it was committed, and never used for tuning; 58 messages in 54 cases, 79 labelled personal values).
 

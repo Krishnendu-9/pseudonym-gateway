@@ -42,8 +42,8 @@ import {
   shapeTable,
   withReadmeBlock,
 } from './report.js';
-import { percent, score, scoreByTag } from './score.js';
-import { PERSONAL_TYPES } from './types.js';
+import { percent, score, scoreByTag, type DatasetScore } from './score.js';
+import { PERSONAL_TYPES, SHAPE_TAG, type LabelledCase } from './types.js';
 import { leftoverMutation } from '../scripts/mutation-marker.js';
 
 const BASELINE_PATH = join(import.meta.dirname, 'baseline.json');
@@ -65,14 +65,28 @@ const previous = existsSync(BASELINE_PATH)
   ? (JSON.parse(readFileSync(BASELINE_PATH, 'utf8')) as Baseline)
   : undefined;
 
-const generated = score(generateCases(), undefined, { byShape: true });
-write(`## Generated dataset (seed ${GENERATED_SEED}, ${generated.messages} messages)`);
+// The main cases give the headline numbers; the shape block (Phase 5c) is
+// scored apart, by shape, so that its hard layouts never read as a drop in
+// the main ones.
+const generatedCases = generateCases();
+const shaped = (c: LabelledCase): boolean => c.tags.some((tag) => tag.startsWith(SHAPE_TAG));
+const main = score(generatedCases.filter((c) => !shaped(c)));
+const blockCases = generatedCases.filter(shaped);
+const block = score(blockCases, undefined, { byShape: true });
+const generated: DatasetScore = { ...main, shapes: block.shapes };
+write(`## Generated dataset, main cases (seed ${GENERATED_SEED}, ${main.messages} messages)`);
 write();
-write(scoreTable(generated));
+write(scoreTable(main));
 write();
-write(shapeTable(generated.shapes));
+write(overRedactionTable(main));
 write();
-write(overRedactionTable(generated));
+write(
+  `## Generated dataset, shape block (${block.cases} cases, ${block.messages} messages; not part of the numbers above)`,
+);
+write();
+write(shapeTable(block.shapes));
+write();
+write(overRedactionTable(block));
 write();
 
 const held = checkHeldOut();

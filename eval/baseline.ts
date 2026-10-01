@@ -69,6 +69,17 @@ const METRICS: readonly { key: keyof TypeScore; higherIsBetter: boolean; name: s
   { key: 'notPersonal', higherIsBetter: false, name: 'over-redactions' },
 ];
 
+// The same thresholds for each shape of the generated set's shape block.
+const SHAPE_METRICS: readonly {
+  key: 'redacted' | 'typed' | 'overRedactions';
+  higherIsBetter: boolean;
+  name: string;
+}[] = [
+  { key: 'redacted', higherIsBetter: true, name: 'redacted' },
+  { key: 'typed', higherIsBetter: true, name: 'redacted with the right type' },
+  { key: 'overRedactions', higherIsBetter: false, name: 'over-redactions' },
+];
+
 /** Compares one dataset's fresh score with its stored one. */
 export function compare(
   name: string,
@@ -101,16 +112,21 @@ export function compare(
       (now[key] > before[key] === higherIsBetter ? better : worse).push(line);
     }
   }
-  const empty: ShapeScore = { values: 0, redacted: 0, partial: 0 };
+  const empty: ShapeScore = { values: 0, redacted: 0, partial: 0, typed: 0, overRedactions: 0 };
   const shapes = new Set([...Object.keys(stored.shapes ?? {}), ...Object.keys(current.shapes)]);
   for (const shape of shapes) {
-    const before = stored.shapes?.[shape] ?? empty;
+    // A shape stored before its typed and over-redaction counts were kept
+    // has them as 0.
+    const before = { ...empty, ...stored.shapes?.[shape] };
     const now = current.shapes[shape] ?? empty;
     if (before.values !== now.values) {
       changed.push(`${name} shape ${shape}: ${before.values} values -> ${now.values}`);
-    } else if (before.redacted !== now.redacted) {
-      const line = `${name} shape ${shape}: redacted ${before.redacted} -> ${now.redacted}`;
-      (now.redacted > before.redacted ? better : worse).push(line);
+      continue;
+    }
+    for (const { key, higherIsBetter, name: metric } of SHAPE_METRICS) {
+      if (before[key] === now[key]) continue;
+      const line = `${name} shape ${shape}: ${metric} ${before[key]} -> ${now[key]}`;
+      (now[key] > before[key] === higherIsBetter ? better : worse).push(line);
     }
   }
   return { worse, better, changed };
