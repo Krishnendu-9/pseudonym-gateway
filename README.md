@@ -4,15 +4,17 @@
 reaches an LLM, and restores it in the reply.**
 
 > **Status: work in progress (Phase 4 of 8 done; Phase 5, evaluation, under
-> way).** Not ready for production use.
+> way: its detector part is complete, and every planned detector except
+> person names is built).** Not ready
+> for production use.
 > Pseudonym runs as a gateway: `POST /v1/chat/completions` (OpenAI format,
 > streaming and non-streaming) redacts emails, phone numbers, Aadhaar, PAN,
-> card numbers, UPI IDs, IFSC codes, API keys in known formats, secrets written after a
+> card numbers, UPI IDs, IFSC codes, IP addresses, API keys in known formats, secrets written after a
 > keyword (`password: …`) and any other number of 9+ digits, forwards the
 > request to a local [Ollama](https://ollama.com) model, and restores the
 > values in the answer, including when it arrives as a stream. No-leak tests
 > send planted values through both paths and check none reaches the
-> provider. **Person names and IP addresses are not detected yet** (they
+> provider. **Person names are not detected yet** (they
 > are sent as written), and neither is a password or token with no keyword
 > before it and no known format, nor a UPI ID at an app or bank handle
 > Pseudonym does not know with no word such as "UPI" near it, nor an IFSC
@@ -85,7 +87,8 @@ What Pseudonym is being built to do:
   always `[PERSON_1]`, without storing anything between requests.
 - **India-aware detection.** Aadhaar (Verhoeff check digit), PAN, UPI IDs
   (known app and bank handles) and IFSC codes (bank codes from RBI's list)
-  alongside emails, phone numbers and card numbers (Luhn check).
+  alongside emails, phone numbers, card numbers (Luhn check) and IPv4 and
+  IPv6 addresses (a hand-written parser).
 - **Unicode-hardened.** Digits in any script (full-width, mathematical,
   Devanagari, Bengali, Tamil and every other Unicode decimal digit) are
   normalised, and invisible characters that can hide data (zero-width spaces,
@@ -123,8 +126,8 @@ What Pseudonym is being built to do:
 
 The types marked "redacted" below are replaced before a request leaves
 Pseudonym, in every message and in `stop`. Everything else in a message is
-sent as written: a person's name or an IP address typed into a message
-**goes to the provider today**. The measurements below come from
+sent as written: a person's name typed into a message **goes to the
+provider today**. The measurements below come from
 synthetic datasets, one of them small, so do not rely on Pseudonym to
 protect real data.
 
@@ -140,7 +143,7 @@ protect real data.
 | Any other number of 9+ digits       | none: a safety net for numbers no detector claimed (bank accounts, odd layouts)                                                                                                               | redacted |
 | UPI ID                              | a handle on Pseudonym's list of 54 app and bank handles (Google Pay, PhonePe, Paytm, BHIM, banks' own…), compiled from public sources, not NPCI's list; any other handle only near a keyword  | redacted |
 | IFSC code                           | a bank code on Pseudonym's list of 260 (every bank with branches in RBI's list of NEFT-enabled branches, taken from a published copy of RBI's files); any other bank code only near a keyword | redacted |
-| IP address                          | pattern + context                                                                                                                                                                             | planned  |
+| IP address (IPv4 and IPv6)          | parsed by hand: four parts of 0–255, or an IPv6 form (compressed, full, with an IPv4 part); addresses no single host owns (loopback, netmasks, multicast) are left as written                 | redacted |
 | Person names                        | local NER model                                                                                                                                                                               | planned  |
 
 Which detected matches count:
@@ -169,6 +172,25 @@ Which detected matches count:
   not be downloaded, so the codes come from Razorpay's open-source copy of
   them, checked against the bank names on RBI's page. A bank added after
   that is found only with a keyword.
+- **IP address:** every address, public or private, except the ones no
+  single host owns: `0.0.0.0` and the rest of 0/8, loopback (`127.x`,
+  `::1`), multicast (`224.x`–`239.x`, `ff00::/8`) and the reserved
+  `240.x`–`255.x`, which holds the broadcast address and every netmask
+  (`255.255.255.0`). Those are the same on every machine and are left as
+  written, and no other detector may take them for a phone number or an
+  Aadhaar either. Private (`10.x`, `192.168.x`…), carrier-grade NAT,
+  link-local and documentation addresses are redacted: it was measured that
+  leaving them to the other detectors would not keep them visible anyway
+  (most would be redacted as phone numbers or long numbers) and would only
+  make it depend on how many digits they have. Only the address is
+  replaced: a port (`:8080`), a prefix length (`/24`), a zone (`%eth0`),
+  brackets and the rest of a URL stay as written. Two forms are found only
+  near a word such as "IP", "IPv4", "IPv6" or "inet": four numbers right
+  after a version word ("version", "build", "firmware", संस्करण…), and IPv6
+  addresses made only of one- or two-digit groups (`a::b`, eight pairs of
+  hex digits), which is also what names in code and hardware ids look
+  like. A version with no such word in front of it cannot be told from an
+  address and is redacted.
 - **A secret after a keyword** (`password: …`, `api_key=…`, `Mera password …
 hai`): when the way it is written says it is a value. That is: after `=`;
   in quotes; after `:` when it is the last thing on its line; or when it
@@ -222,7 +244,16 @@ or hyphen after the bank code is not caught. **A value inside a longer
 address or secret** can leave the rest visible: in `<PAN>.x@example.com`,
 `<IFSC>.x@example.com` or `api_key=<IFSC>-x7` only the PAN or IFSC is
 replaced, because a checked value wins over a longer unchecked one (an
-open question for the next part of Phase 5).
+open question for the next part of Phase 5). **IP addresses:** one written
+inside a host name (`<address>.nip.io`, reverse-DNS names) is not
+recognised; an address with a prefix length whose digits also read as a
+valid phone number (some `203.x.x.x/24`) is replaced as a phone number,
+prefix and all; two addresses joined only by a space or hyphen share one
+placeholder; and because private addresses are replaced too, the model
+cannot tell whether two of them are on the same network. A 10-digit mobile
+written in two groups of five straight after a lone digit and a space
+(`Room 3 <mobile>`, or after an address such as `127.0.0.1`) is not
+detected unless a word such as "mobile" or "call" is nearby.
 
 ## Measured results
 
@@ -243,25 +274,29 @@ How to read a row:
   fine to send. The user still sees the original in the reply.
 - Percentages are cut to one decimal, never rounded up.
 
-IP and PERSON have no detector yet. They are labelled and
-measured from the start so that the "before" is on record; what is redacted
-in those rows today is digits the existing detectors happened to catch,
-mostly the generic-number safety net. The SECRET row counts eleven kinds
-of secret in equal shares: nine known key formats, passwords and bare
-40-character tokens. The last two are found only after a keyword, and some
-of the generated sentences deliberately have none ("I pasted … into the
-chat by mistake"): those are the misses in that row. The same holds for
-UPI: the two misses are IDs at a handle on no list, in sentences with no
-UPI keyword. Every handle the generator uses is on the detector's list, so
-the UPI row does not measure how complete that list is, and nothing else
-does yet: the list is compiled from public sources, not NPCI's official
-list. The IFSC row has the same limit: every generated IFSC sentence or
-field has a keyword, so the 26 IFSCs with an unknown bank code are all
-found, and an unknown one with no keyword (missed by design) is not
-tested there. Its 6 over-redactions are IFSC-shaped product codes (four
-letters, a zero, six digits) near an IFSC keyword: 6 of the 30 in the set.
-None of the 55 codes that are one character off (a fifth character other
-than zero, three letters instead of four) was touched.
+PERSON has no detector yet. It is labelled and measured from the start so
+that the "before" is on record. The IP row's 4 values of the wrong type are
+addresses written with a prefix length (`/24`) whose digits also read as a
+valid phone number: still redacted, as a phone number, prefix and all. Its
+53 over-redactions are private (14) and link-local (17) addresses, which
+are redacted on purpose, four-part versions with no version word in front
+(20), which cannot be told from an address, and two IPv6 interface ids
+next to an IP keyword. The SECRET row counts eleven kinds of secret in
+equal shares: nine known key formats, passwords and bare 40-character
+tokens. The last two are found only after a keyword, and some of the
+generated sentences deliberately have none ("I pasted … into the chat by
+mistake"): those are the misses in that row. The same holds for UPI: the
+six misses are IDs at a handle on no list, in sentences with no UPI
+keyword. Every real handle the generator uses is taken from the
+detector's list (the others are made up), so the UPI row does not measure
+how complete that list is, and nothing else does yet: the list is compiled
+from public sources, not NPCI's official list. The IFSC row has the same
+limit. Of its 24 IFSCs with an unknown bank code, 23 have a keyword nearby
+and are found; the one without is the row's one miss, by design. Its 3
+over-redactions are IFSC-shaped product codes (four letters, a zero, six
+digits): 3 of the 15 in the set. None of the 35 codes that are one
+character off (a fifth character other than zero, three letters instead of
+four) was touched.
 
 <!-- eval:start -->
 
@@ -271,16 +306,16 @@ _Measured on 2026-09-30 (UTC date) by `npm run eval`. This block is generated, a
 
 | Type    | Values | Redacted (any type) | Partly redacted | Recall (right type) | Precision (right type) | F1     | Over-redactions |
 | ------- | ------ | ------------------- | --------------- | ------------------- | ---------------------- | ------ | --------------- |
-| AADHAAR | 153    | 152/153 (99.3%)     | 0               | 152/153 (99.3%)     | 152/166 (91.5%)        | 95.2%  | 3               |
-| CARD    | 153    | 151/153 (98.6%)     | 0               | 148/153 (96.7%)     | 148/157 (94.2%)        | 95.4%  | 2               |
-| PAN     | 153    | 141/153 (92.1%)     | 0               | 141/153 (92.1%)     | 141/152 (92.7%)        | 92.4%  | 11              |
-| PHONE   | 153    | 153/153 (100.0%)    | 0               | 153/153 (100.0%)    | 153/267 (57.3%)        | 72.8%  | 75              |
+| AADHAAR | 153    | 153/153 (100.0%)    | 0               | 153/153 (100.0%)    | 153/160 (95.6%)        | 97.7%  | 3               |
+| CARD    | 153    | 150/153 (98.0%)     | 0               | 149/153 (97.3%)     | 149/154 (96.7%)        | 97.0%  | 1               |
+| PAN     | 153    | 142/153 (92.8%)     | 0               | 142/153 (92.8%)     | 142/152 (93.4%)        | 93.1%  | 10              |
+| PHONE   | 153    | 153/153 (100.0%)    | 0               | 153/153 (100.0%)    | 153/219 (69.8%)        | 82.2%  | 46              |
 | EMAIL   | 153    | 153/153 (100.0%)    | 0               | 153/153 (100.0%)    | 153/153 (100.0%)       | 100.0% | 0               |
-| NUMBER  | 153    | 130/153 (84.9%)     | 0               | 97/153 (63.3%)      | 97/252 (38.4%)         | 47.9%  | 94              |
-| IFSC    | 153    | 153/153 (100.0%)    | 0               | 153/153 (100.0%)    | 153/159 (96.2%)        | 98.0%  | 6               |
-| UPI     | 153    | 151/153 (98.6%)     | 0               | 151/153 (98.6%)     | 151/151 (100.0%)       | 99.3%  | 0               |
-| IP      | 153    | 81/153 (52.9%)      | 0               | 0/153 (0.0%)        | -                      | -      | 0               |
-| SECRET  | 153    | 147/153 (96.0%)     | 0               | 146/153 (95.4%)     | 146/146 (100.0%)       | 97.6%  | 0               |
+| NUMBER  | 153    | 135/153 (88.2%)     | 0               | 112/153 (73.2%)     | 112/178 (62.9%)        | 67.6%  | 66              |
+| IFSC    | 153    | 152/153 (99.3%)     | 0               | 152/153 (99.3%)     | 152/155 (98.0%)        | 98.7%  | 3               |
+| UPI     | 153    | 147/153 (96.0%)     | 0               | 147/153 (96.0%)     | 147/147 (100.0%)       | 98.0%  | 0               |
+| IP      | 153    | 153/153 (100.0%)    | 0               | 149/153 (97.3%)     | 149/202 (73.7%)        | 83.9%  | 53              |
+| SECRET  | 153    | 147/153 (96.0%)     | 0               | 147/153 (96.0%)     | 147/147 (100.0%)       | 98.0%  | 0               |
 | PERSON  | 153    | 0/153 (0.0%)        | 0               | 0/153 (0.0%)        | -                      | -      | 0               |
 
 **Held-out adversarial dataset** (drafted with AI assistance in a separate session that did not write the detectors, then reviewed by the author; never run against the detectors before it was committed, and never used for tuning; 58 messages in 54 cases, 79 labelled personal values).
@@ -292,10 +327,10 @@ _Measured on 2026-09-30 (UTC date) by `npm run eval`. This block is generated, a
 | PAN     | 8      | 7/8 (87.5%)         | 0               | 7/8 (87.5%)         | 7/7 (100.0%)           | 93.3%  | 0               |
 | PHONE   | 19     | 18/19 (94.7%)       | 0               | 18/19 (94.7%)       | 17/18 (94.4%)          | 94.5%  | 1               |
 | EMAIL   | 7      | 6/7 (85.7%)         | 0               | 6/7 (85.7%)         | 6/6 (100.0%)           | 92.3%  | 0               |
-| NUMBER  | 6      | 3/6 (50.0%)         | 0               | 3/6 (50.0%)         | 3/9 (33.3%)            | 40.0%  | 4               |
+| NUMBER  | 6      | 3/6 (50.0%)         | 0               | 3/6 (50.0%)         | 3/8 (37.5%)            | 42.8%  | 4               |
 | IFSC    | 3      | 3/3 (100.0%)        | 0               | 3/3 (100.0%)        | 3/3 (100.0%)           | 100.0% | 0               |
 | UPI     | 3      | 3/3 (100.0%)        | 0               | 3/3 (100.0%)        | 3/3 (100.0%)           | 100.0% | 0               |
-| IP      | 2      | 1/2 (50.0%)         | 0               | 0/2 (0.0%)          | -                      | -      | 0               |
+| IP      | 2      | 2/2 (100.0%)        | 0               | 2/2 (100.0%)        | 2/4 (50.0%)            | 66.6%  | 2               |
 | SECRET  | 5      | 5/5 (100.0%)        | 0               | 5/5 (100.0%)        | 5/5 (100.0%)           | 100.0% | 0               |
 | PERSON  | 10     | 0/10 (0.0%)         | 0               | 0/10 (0.0%)         | -                      | -      | 0               |
 
@@ -364,8 +399,9 @@ provider-side logging or training on them.
 
 **Does not protect against:** values the detectors miss (today that includes
 every person's name, an IFSC code with an unknown bank code and no keyword nearby, any secret with neither a known format
-nor a keyword directly before it, and a UPI ID at an unknown handle with no
-keyword nearby); anything your application
+nor a keyword directly before it, a UPI ID at an unknown handle with no
+keyword nearby, an IP address inside a host name, and a spaced mobile
+number right after a lone digit with no keyword nearby); anything your application
 logs before
 calling Pseudonym; a compromised Pseudonym host; prompt injection that
 manipulates answers (only the URL-exfiltration path is mitigated).

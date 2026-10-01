@@ -6,36 +6,36 @@
     "types": {
       "AADHAAR": {
         "values": 153,
-        "redacted": 152,
-        "typed": 152,
+        "redacted": 153,
+        "typed": 153,
         "partial": 0,
-        "missed": 1,
-        "detections": 166,
-        "rightType": 152,
-        "otherPersonal": 11,
+        "missed": 0,
+        "detections": 160,
+        "rightType": 153,
+        "otherPersonal": 4,
         "notPersonal": 3
       },
       "CARD": {
         "values": 153,
-        "redacted": 151,
-        "typed": 148,
+        "redacted": 150,
+        "typed": 149,
         "partial": 0,
-        "missed": 2,
-        "detections": 157,
-        "rightType": 148,
-        "otherPersonal": 7,
-        "notPersonal": 2
+        "missed": 3,
+        "detections": 154,
+        "rightType": 149,
+        "otherPersonal": 4,
+        "notPersonal": 1
       },
       "PAN": {
         "values": 153,
-        "redacted": 141,
-        "typed": 141,
+        "redacted": 142,
+        "typed": 142,
         "partial": 0,
-        "missed": 12,
+        "missed": 11,
         "detections": 152,
-        "rightType": 141,
+        "rightType": 142,
         "otherPersonal": 0,
-        "notPersonal": 11
+        "notPersonal": 10
       },
       "PHONE": {
         "values": 153,
@@ -43,10 +43,10 @@
         "typed": 153,
         "partial": 0,
         "missed": 0,
-        "detections": 267,
+        "detections": 219,
         "rightType": 153,
-        "otherPersonal": 39,
-        "notPersonal": 75
+        "otherPersonal": 20,
+        "notPersonal": 46
       },
       "EMAIL": {
         "values": 153,
@@ -61,56 +61,56 @@
       },
       "NUMBER": {
         "values": 153,
-        "redacted": 130,
-        "typed": 97,
+        "redacted": 135,
+        "typed": 112,
         "partial": 0,
-        "missed": 23,
-        "detections": 252,
-        "rightType": 97,
-        "otherPersonal": 61,
-        "notPersonal": 94
+        "missed": 18,
+        "detections": 178,
+        "rightType": 112,
+        "otherPersonal": 0,
+        "notPersonal": 66
       },
       "IFSC": {
         "values": 153,
-        "redacted": 153,
-        "typed": 153,
+        "redacted": 152,
+        "typed": 152,
         "partial": 0,
-        "missed": 0,
-        "detections": 159,
-        "rightType": 153,
+        "missed": 1,
+        "detections": 155,
+        "rightType": 152,
         "otherPersonal": 0,
-        "notPersonal": 6
+        "notPersonal": 3
       },
       "UPI": {
         "values": 153,
-        "redacted": 151,
-        "typed": 151,
+        "redacted": 147,
+        "typed": 147,
         "partial": 0,
-        "missed": 2,
-        "detections": 151,
-        "rightType": 151,
+        "missed": 6,
+        "detections": 147,
+        "rightType": 147,
         "otherPersonal": 0,
         "notPersonal": 0
       },
       "IP": {
         "values": 153,
-        "redacted": 81,
-        "typed": 0,
+        "redacted": 153,
+        "typed": 149,
         "partial": 0,
-        "missed": 72,
-        "detections": 0,
-        "rightType": 0,
+        "missed": 0,
+        "detections": 202,
+        "rightType": 149,
         "otherPersonal": 0,
-        "notPersonal": 0
+        "notPersonal": 53
       },
       "SECRET": {
         "values": 153,
         "redacted": 147,
-        "typed": 146,
+        "typed": 147,
         "partial": 0,
         "missed": 6,
-        "detections": 146,
-        "rightType": 146,
+        "detections": 147,
+        "rightType": 147,
         "otherPersonal": 0,
         "notPersonal": 0
       },
@@ -193,9 +193,9 @@
         "typed": 3,
         "partial": 0,
         "missed": 3,
-        "detections": 9,
+        "detections": 8,
         "rightType": 3,
-        "otherPersonal": 2,
+        "otherPersonal": 1,
         "notPersonal": 4
       },
       "IFSC": {
@@ -222,14 +222,14 @@
       },
       "IP": {
         "values": 2,
-        "redacted": 1,
-        "typed": 0,
+        "redacted": 2,
+        "typed": 2,
         "partial": 0,
-        "missed": 1,
-        "detections": 0,
-        "rightType": 0,
+        "missed": 0,
+        "detections": 4,
+        "rightType": 2,
         "otherPersonal": 0,
-        "notPersonal": 0
+        "notPersonal": 2
       },
       "SECRET": {
         "values": 5,
@@ -269,6 +269,45 @@
       "note": "ADR-025: IFSC detector; its 6 over-redactions are IFSC-shaped product codes within 40 characters of an IFSC keyword, the cost ADR-010 accepts for an unvalidated shape",
       "changes": [
         "generated IFSC: over-redactions 0 -> 6"
+      ]
+    },
+    {
+      "date": "2026-09-30",
+      "note": "ADR-026: dataset step before the IP detector: IP written with a port, prefix length, in a URL and in brackets; 7 new lookalike kinds (link-local, version-build, app-version, time, date, mac, eui-64); detectors unchanged, every moved count is the dataset's",
+      "changes": [
+        "generated AADHAAR: redacted 152 -> 151",
+        "generated AADHAAR: redacted with the right type 152 -> 151",
+        "generated PAN: redacted 141 -> 140",
+        "generated PAN: redacted with the right type 141 -> 140",
+        "generated IFSC: redacted 153 -> 152",
+        "generated IFSC: redacted with the right type 153 -> 152",
+        "generated UPI: redacted 151 -> 149",
+        "generated UPI: redacted with the right type 151 -> 149",
+        "generated IP: redacted 81 -> 80",
+        "generated SECRET: redacted 147 -> 145",
+        "generated SECRET: redacted with the right type 146 -> 145"
+      ]
+    },
+    {
+      "date": "2026-09-30",
+      "note": "ADR-026: second dataset step before the IP detector: netmask and multicast lookalikes (addresses no single host owns); detectors as in the baseline (IP switched off for this run), every moved count is the dataset's",
+      "changes": [
+        "generated AADHAAR: over-redactions 3 -> 10",
+        "generated CARD: redacted 153 -> 150",
+        "generated CARD: redacted with the right type 152 -> 149",
+        "generated PAN: over-redactions 8 -> 10",
+        "generated IFSC: over-redactions 2 -> 3",
+        "generated UPI: redacted 149 -> 147",
+        "generated UPI: redacted with the right type 149 -> 147",
+        "generated IP: redacted 80 -> 76"
+      ]
+    },
+    {
+      "date": "2026-09-30",
+      "note": "ADR-026: the IP detector; its over-redactions are the accepted cost of failing closed: private and link-local addresses are redacted like public ones, and a bare four-part version cannot be told from an address",
+      "changes": [
+        "generated IP: over-redactions 0 -> 53",
+        "held-out IP: over-redactions 0 -> 2"
       ]
     }
   ]

@@ -55,7 +55,11 @@ const NOT_PLAIN_NUMBER = /\p{L}|[^\P{Nd}0-9]/u;
 
 /**
  * True for an IP address nobody can be found at: the documentation ranges
- * (RFC 5737, RFC 3849), private, loopback and link-local ones.
+ * (RFC 5737, RFC 3849), private, loopback and link-local ones, and those no
+ * single host owns (0/8, multicast and reserved 224-255.x with every
+ * netmask, `::`, ff00::/8; ADR-026). An IPv4 address written as IPv6
+ * (`::ffff:a.b.c.d`, or after the NAT64 prefix 64:ff9b) is judged by its
+ * IPv4 part.
  */
 export function isSafeIp(text: string): boolean {
   const v4 = /^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$/.exec(text);
@@ -70,12 +74,18 @@ export function isSafeIp(text: string): boolean {
       a === 127 ||
       (a === 172 && b >= 16 && b <= 31) ||
       (a === 192 && b === 168) ||
-      (a === 169 && b === 254)
+      (a === 169 && b === 254) ||
+      a === 0 ||
+      a >= 224
     );
   }
   const v6 = text.toLowerCase();
+  const embedded = /^(?:::ffff|64:ff9b:):([0-9.]+)$/.exec(v6);
+  if (embedded) return isSafeIp(embedded[1]!);
   if (!/^[0-9a-f:]+$/.test(v6) || v6.split(':').length < 3) return false;
-  return v6 === '::1' || /^(?:2001:db8:|fe80:|f[cd][0-9a-f]{2}:)/.test(v6);
+  return (
+    v6 === '::1' || v6 === '::' || /^(?:2001:db8:|fe80:|f[cd][0-9a-f]{2}:|ff[0-9a-f]{2}:)/.test(v6)
+  );
 }
 
 /** Why a literal of this type may not be typed, or undefined if it may. */
@@ -105,7 +115,7 @@ function literalProblem(
         ? undefined
         : [
             'ip-not-reserved',
-            'a typed IP address must be in a documentation, private, loopback or link-local range',
+            'a typed IP address must be in a documentation, private, loopback or link-local range, or be one no single host owns (0.x, 224-255.x, multicast)',
           ];
     case 'EMAIL':
       return RESERVED_DOMAIN.test(text)

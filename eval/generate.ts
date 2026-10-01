@@ -145,7 +145,22 @@ const SLOT: Readonly<Record<PersonalType, (rng: Rng, tongue: Tongue) => string>>
       [2, '{{UPI.unknown}}'],
       [1, '{{UPI|upper}}'],
     ]),
-  IP: (rng) => `{{IP=${ipAddress(rng, rng.chance(0.7) ? 'v4' : 'v6')}}}`,
+  // Mostly a bare address; sometimes with a port, a prefix length, inside a
+  // URL, or in brackets with a port, the ways logs and tickets write one
+  // (ADR-026). Only the address is labelled: a port or a prefix length
+  // names nobody.
+  IP: (rng) => {
+    const v4 = (): string => `{{IP=${ipAddress(rng, 'v4')}}}`;
+    const v6 = (): string => `{{IP=${ipAddress(rng, 'v6')}}}`;
+    return weighted<() => string>(rng, [
+      [10, v4],
+      [4, v6],
+      [2, () => `${v4()}:${rng.pick(['22', '443', '8080', '3389'])}`],
+      [1, () => `${v4()}/${rng.pick(['24', '32'])}`],
+      [1, () => `http://${v4()}/login`],
+      [1, () => `[${v6()}]:443`],
+    ])();
+  },
   SECRET: (rng) => `{{SECRET.${rng.pick(SECRET_KINDS)}}}`,
   PERSON: (rng, tongue) =>
     `{{PERSON=${personName(rng, tongue === 'hi' && rng.chance(0.7) ? 'devanagari' : 'latin')}}}`,
@@ -340,6 +355,10 @@ const amount = (rng: Rng): string =>
     `${rng.int(1, 9)},${rng.digits(2)},${rng.digits(3)}`,
   ]);
 
+// The SSDP multicast address. It passes the Aadhaar checks, so it is put
+// together here rather than typed (repo-hygiene.test.ts).
+const SSDP = [239, 255, 255, 250].join('.');
+
 const LOOKALIKES: readonly ((rng: Rng) => string)[] = [
   () => '{{NOT.order:OD#########}}',
   () => '{{NOT.tracking:##########}}',
@@ -361,6 +380,28 @@ const LOOKALIKES: readonly ((rng: Rng) => string)[] = [
   () => '{{NOT.invoice-no:INV000#####}}',
   (rng) => `{{NOT.private-ip=${ipAddress(rng, 'private')}}}`,
   (rng) => `{{NOT.loopback=${ipAddress(rng, 'loopback')}}}`,
+  // IP lookalikes (ADR-026). A link-local address, a policy question like
+  // the two above (an IPv6 one sometimes with its zone). A Windows build
+  // number, and a four-part version after a version word or glued to a
+  // "v"; NOT.version above is one with no word at all. A time, a dotted
+  // date, a MAC address, and eight groups of two hex digits (an EUI-64
+  // interface id), which is also a well-formed IPv6 address.
+  (rng) => {
+    const address = ipAddress(rng, 'link-local');
+    const zone = address.includes(':') && rng.chance(0.5) ? '%eth0' : '';
+    return `{{NOT.link-local=${address}}}${zone}`;
+  },
+  (rng) => `${rng.pick(['build', 'Windows'])} {{NOT.version-build:10.0.#####.####}}`,
+  (rng) => `${rng.pick(['version ', 'ver. ', 'app version ', 'v'])}{{NOT.app-version:#.#.#.##}}`,
+  () => '{{NOT.time:1#:3#:4#}}',
+  () => '{{NOT.date:1#.0#.2026}}',
+  () => '{{NOT.mac:##:A#:#B:##:C#:#E}}',
+  () => '{{NOT.eui-64:##:##:##:FF:FE:##:##:##}}',
+  // Addresses no single host owns, which other detectors can read as a
+  // value: a netmask, a multicast group (ADR-026, second dataset step).
+  (rng) =>
+    `{{NOT.netmask=${rng.pick(['255.255.255.0', '255.255.0.0', '255.255.255.252', '255.255.255.128'])}}}`,
+  (rng) => `{{NOT.multicast=${rng.pick([SSDP, '224.0.0.251', '224.0.0.1', 'ff02::1'])}}}`,
 ];
 
 const NAMED: Readonly<Record<Tongue, readonly Sentence[]>> = {

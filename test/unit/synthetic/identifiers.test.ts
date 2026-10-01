@@ -135,6 +135,14 @@ describe('ipAddress', () => {
   it('loopback: 127.0.0.1 or ::1', () => {
     holds((rng) => ['127.0.0.1', '::1'].includes(ipAddress(rng, 'loopback')));
   });
+
+  it('link-local: inside 169.254/16 or fe80::/10, both kinds', () => {
+    const rng = createRng(4);
+    const addresses = Array.from({ length: 200 }, () => ipAddress(rng, 'link-local'));
+    const v4 = addresses.filter((a) => /^169\.254\.[0-9]{1,3}\.[0-9]{1,3}$/.test(a));
+    const v6 = addresses.filter((a) => /^fe80::(?:[0-9a-f]{1,4}:){3}[0-9a-f]{1,4}$/.test(a));
+    expect([v4.length + v6.length, v4.length > 0, v6.length > 0]).toEqual([200, true, true]);
+  });
 });
 
 describe('secret', () => {

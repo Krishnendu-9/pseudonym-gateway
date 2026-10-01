@@ -5,7 +5,12 @@
 // into a source comment. `eval/` is scanned too: the held-out set lives
 // there as a file, behind its own stricter lint (eval/lint.ts). Nor may a
 // file hold a UPI ID at a known handle (ADR-021, ADR-024): typed, it could
-// be somebody's; tests put theirs together at run time.
+// be somebody's; tests put theirs together at run time. Nor an IP address
+// outside the ranges nobody can be found at (ADR-026): documentation,
+// private, loopback, link-local, and those no single host owns, by the
+// held-out lint's own rule (eval/lint.ts, isSafeIp). The held-out file is
+// left to that lint: its author may type a short dotted number, and a hit
+// would point into a file the detectors' author must not look at.
 //
 // Failures report file and line only, never the number.
 
@@ -14,7 +19,9 @@ import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { isValidAadhaar } from '../../src/detection/aadhaar.js';
 import { isValidCard } from '../../src/detection/card.js';
+import { ipCandidates, ipValueKey } from '../../src/detection/ip.js';
 import { upiCandidates } from '../../src/detection/upi.js';
+import { isSafeIp } from '../../eval/lint.js';
 import { upiId } from '../../src/synthetic/identifiers.js';
 import { createRng } from '../../src/synthetic/rng.js';
 import { PUBLISHED_TEST_CARDS } from '../fixtures/published-test-cards.js';
@@ -48,9 +55,20 @@ const isPublishedOrPartOfOne = (digits: string): boolean =>
 const hasKnownUpiId = (line: string): boolean =>
   [...upiCandidates(line)].some((candidate) => candidate.validated);
 
-function findings(check: (line: string) => boolean): string[] {
+// Judged as written and in its canonical form (2001:0db8::1 is 2001:db8::1).
+const hasPublicIp = (line: string): boolean =>
+  [...ipCandidates(line)].some((candidate) => {
+    if (!candidate.validated || candidate.keep) return false;
+    const address = line.slice(candidate.start, candidate.end);
+    return !isSafeIp(address) && !isSafeIp(ipValueKey(address));
+  });
+
+const HELD_OUT = join(ROOT, 'eval', 'held-out.txt');
+
+function findings(check: (line: string) => boolean, skip: readonly string[] = []): string[] {
   const out: string[] = [];
   for (const file of allFiles()) {
+    if (skip.includes(file)) continue;
     readFileSync(file, 'utf8')
       .split('\n')
       .forEach((line, i) => {
@@ -88,5 +106,17 @@ describe('repo hygiene: no real-looking personal values in files', () => {
   it('the UPI check flags an ID put together at run time', () => {
     expect(hasKnownUpiId(`pay ${upiId(createRng(1), 'name')} now`)).toBe(true);
     expect(hasKnownUpiId(`pay ${upiId(createRng(1), 'mobile')} now`)).toBe(true);
+  });
+
+  it('contains no IP address outside the ranges nobody can be found at (the held-out file has its own lint)', () => {
+    expect(findings(hasPublicIp, [HELD_OUT])).toEqual([]);
+  });
+
+  it('the IP check flags a public address put together at run time, and passes reserved ones', () => {
+    expect(hasPublicIp(`from ${[8, 8, 4, 4].join('.')} today`)).toBe(true);
+    expect(hasPublicIp(`from ${['2606', '4700', '', '1111'].join(':')} today`)).toBe(true);
+    for (const reserved of ['203.0.113.5', '2001:0DB8::1', '::ffff:cb00:7105', '255.255.255.0']) {
+      expect([reserved, hasPublicIp(`from ${reserved} today`)]).toEqual([reserved, false]);
+    }
   });
 });

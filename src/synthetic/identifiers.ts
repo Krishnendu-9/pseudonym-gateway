@@ -109,11 +109,12 @@ export function upiId(rng: Rng, kind: UpiKind = 'name'): string {
 // an address here is nobody's.
 const DOCUMENTATION_V4 = ['192.0.2', '198.51.100', '203.0.113'] as const;
 
-export type IpKind = 'v4' | 'v6' | 'private' | 'loopback';
+export type IpKind = 'v4' | 'v6' | 'private' | 'loopback' | 'link-local';
 
 /**
  * IP address. `v4`/`v6`: from the documentation ranges, standing in for a
- * public address; `private`: RFC 1918; `loopback`: 127.0.0.1 or ::1.
+ * public address; `private`: RFC 1918; `loopback`: 127.0.0.1 or ::1;
+ * `link-local`: 169.254/16 or fe80::/10.
  */
 export function ipAddress(rng: Rng, kind: IpKind = 'v4'): string {
   switch (kind) {
@@ -133,6 +134,12 @@ export function ipAddress(rng: Rng, kind: IpKind = 'v4'): string {
       ]);
     case 'loopback':
       return rng.pick(['127.0.0.1', '::1']);
+    case 'link-local': {
+      const group = (): string => rng.int(0, 0xffff).toString(16);
+      return rng.chance(0.5)
+        ? `169.254.${rng.int(0, 255)}.${rng.int(1, 254)}`
+        : `fe80::${group()}:${group()}:${group()}:${group()}`;
+    }
   }
 }
 

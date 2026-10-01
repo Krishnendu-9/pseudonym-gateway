@@ -31,6 +31,7 @@
 
 import { detect } from '../detection/detect.js';
 import { normalise } from '../detection/normalise.js';
+import { ipValueKey } from '../detection/ip.js';
 import { DETECTION_TYPES, type DetectionType } from '../detection/types.js';
 import { parsePhoneNumberFromString } from 'libphonenumber-js/max';
 import { PlaceholderMapping } from './mapping.js';
@@ -88,6 +89,8 @@ function valueKey(type: DetectionType, surface: string): string {
       // Exactly as written: two passwords that differ only in case are two
       // passwords.
       return normalised;
+    case 'IP':
+      return ipValueKey(normalised);
     case 'PHONE': {
       const parsed = parsePhoneNumberFromString(normalised, { defaultCountry: 'IN' });
       return parsed ? parsed.number : normalised;

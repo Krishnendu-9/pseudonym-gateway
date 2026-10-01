@@ -19,7 +19,13 @@
 // checks the streamed answer restores exactly what the user wrote.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { ifsc, secret, upiId, type SecretKind } from '../../src/synthetic/identifiers.js';
+import {
+  ifsc,
+  ipAddress,
+  secret,
+  upiId,
+  type SecretKind,
+} from '../../src/synthetic/identifiers.js';
 import { obfuscate } from '../../src/synthetic/obfuscate.js';
 import { createRng, type Rng } from '../../src/synthetic/rng.js';
 import {
@@ -43,7 +49,7 @@ import { expandCaptured, leakedForm } from '../support/leak-check.js';
 import { assertTextEqualQuietly } from '../support/quiet-text.js';
 
 type PlantedType =
-  'AADHAAR' | 'CARD' | 'PAN' | 'EMAIL' | 'PHONE' | 'NUMBER' | 'SECRET' | 'UPI' | 'IFSC';
+  'AADHAAR' | 'CARD' | 'PAN' | 'EMAIL' | 'PHONE' | 'NUMBER' | 'SECRET' | 'UPI' | 'IFSC' | 'IP';
 
 interface Planted {
   readonly type: PlantedType;
@@ -60,6 +66,7 @@ const PLANTED_TYPES: readonly PlantedType[] = [
   'SECRET',
   'UPI',
   'IFSC',
+  'IP',
 ];
 
 // Secrets in a known format: the ones found without a keyword, which the
@@ -114,6 +121,10 @@ function plantValue(rng: Rng, type: PlantedType): string {
       const v = upiId(rng, rng.pick(['name', 'mobile'] as const));
       return disguise(rng.chance(0.2) ? v.toUpperCase() : v);
     }
+    case 'IP':
+      // A documentation address standing in for a public one (ADR-026),
+      // IPv4 or IPv6: the sentences below have no IP keyword.
+      return disguise(ipAddress(rng, rng.pick(['v4', 'v6'] as const)));
     case 'IFSC': {
       // With a known bank code: the sentences below have no IFSC keyword.
       const v = ifsc(rng);

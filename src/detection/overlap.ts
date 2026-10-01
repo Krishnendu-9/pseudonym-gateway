@@ -1,9 +1,9 @@
 // When detections overlap, one wins (ADR-003):
 //   1. a validated detection beats an unvalidated one;
 //   2. then the longer span wins;
-//   3. then the fixed type priority: Aadhaar > Card > PAN > IFSC > Phone >
-//      UPI > Email > Secret > Number (DETECTION_TYPES; IP slots in when its
-//      detector exists).
+//   3. then the fixed type priority: IP > Aadhaar > Card > PAN > IFSC >
+//      Phone > UPI > Email > Secret > Number (DETECTION_TYPES; IP first,
+//      ADR-026).
 // Ties after that go to the earlier span, so the result never depends on the
 // order the detectors ran in.
 //

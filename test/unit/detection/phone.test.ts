@@ -7,9 +7,9 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { detect } from '../../../src/detection/detect.js';
 import type { Span } from '../../../src/detection/normalise.js';
-import { hideExtensionMarkers } from '../../../src/detection/phone.js';
+import { hideExtensionMarkers, phoneCandidates } from '../../../src/detection/phone.js';
 import { createRng } from '../../../src/synthetic/rng.js';
-import { indianMobile, ukDramaMobile } from '../../../src/synthetic/values.js';
+import { groupDigits, indianMobile, ukDramaMobile } from '../../../src/synthetic/values.js';
 import { compose } from '../../support/compose.js';
 import { numberAt } from '../../support/number-at.js';
 import { assertPropertyQuietly, seedArb } from '../../support/quiet-property.js';
@@ -113,15 +113,37 @@ describe('phone detection', () => {
 
     it.each([
       ['a date', 'Due 2024-05-01, thanks'],
-      [
-        'a short IP address (under 9 digits; longer ones are NUMBER, ADR-011)',
-        'Server 10.0.0.1 down',
-      ],
       ['a short number', 'Room 4021'],
       ['a price', 'Total Rs 1,49,999.00'],
       ['a year range', 'From 1998 to 2024'],
     ])('ignores %s', (_name, text) => {
       expect(detect(text)).toEqual([]);
+    });
+
+    it('a spaced mobile after a lone digit and a space is missed without a keyword (known limit, bug-log 32)', () => {
+      // libphonenumber reads "<digit> <mobile>": 11 digits, not valid, and
+      // the mobile on its own is not reported. Only a keyword gets the
+      // unvalidated reading accepted (then widened over the digit run).
+      const mobile = groupDigits(indianMobile(rng), [5, 5], ' ');
+      for (const before of ['Room 3 ', 'item 1 ', 'curl 127.0.0.1 ']) {
+        expect([before, detect(`${before}${mobile}`)]).toEqual([before, []]);
+      }
+      const { text } = compose`mobile: Room 3 ${mobile}`;
+      expect(detect(text).map((d) => [d.type, d.start, d.end])).toEqual([
+        ['PHONE', text.indexOf('3'), text.length],
+      ]);
+    });
+
+    it('an IP address is an IP, even one libphonenumber calls a valid phone number (ADR-026)', () => {
+      // 2030113100 reads as a landline in Pune (area code 20): a validated
+      // phone over exactly the address's text, so the type order decides.
+      const tie = 'Server 203.0.113.100 down';
+      expect([...phoneCandidates(tie)].map((c) => [c.start, c.end, c.validated])).toEqual([
+        [7, 20, true],
+      ]);
+      for (const text of ['Server 10.0.0.1 down', tie]) {
+        expect(detect(text).map((d) => d.type)).toEqual(['IP']);
+      }
     });
 
     it('finds a number right after an emoji', () => {

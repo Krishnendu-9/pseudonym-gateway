@@ -55,6 +55,9 @@ const KEYWORDS: Readonly<Partial<Record<DetectionType, readonly string[]>>> = {
   ],
   // Words that name a UPI ID or the apps that use one. Not "phone pe": in
   // Hinglish it also means "on the phone".
+  // Needed only by the forms that are not validated (ip.ts): an IPv4 address
+  // after a version word, an IPv6 one made of short groups. आईपी is "IP".
+  IP: ['ip', 'ips', 'ipv4', 'ipv6', 'inet', 'inet6', 'आईपी'],
   UPI: ['upi', 'vpa', 'bhim', 'gpay', 'google pay', 'phonepe', 'paytm', 'amazon pay', 'यूपीआई'],
 };
 

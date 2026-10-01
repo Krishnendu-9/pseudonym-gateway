@@ -126,6 +126,25 @@ describe('redactMessage: value keys dedupe the same value (ADR-013)', () => {
     assertTextEqualQuietly(redacted, 'NEFT to [IFSC_1] ([IFSC_1]), not IFSC [IFSC_2].');
     assertTextEqualQuietly(restore(redacted, mapping), text.replace(code.toLowerCase(), code));
   });
+
+  // Typed documentation and private addresses: nobody's, so compared directly.
+  it('an IP address is [IP_1], one value however it is written, restored as first written', () => {
+    const mapping = new PlaceholderMapping();
+    const text =
+      'From 192.168.1.10 (192.168.001.010), then 2001:db8::1 and 2001:DB8:0:0:0:0:0:1, via ::ffff:192.168.1.10.';
+    const redacted = redactMessage(text, mapping);
+    expect(redacted).toBe('From [IP_1] ([IP_1]), then [IP_2] and [IP_2], via [IP_1].');
+    expect(restore(redacted, mapping)).toBe(
+      'From 192.168.1.10 (192.168.1.10), then 2001:db8::1 and 2001:db8::1, via 192.168.1.10.',
+    );
+  });
+
+  it('an address no single host owns is left as written (ADR-026)', () => {
+    const text = 'Mask 255.255.255.0, gateway 10.0.0.1, test on 127.0.0.1:3000 and [::1]:3000.';
+    expect(redactMessage(text, new PlaceholderMapping())).toBe(
+      'Mask 255.255.255.0, gateway [IP_1], test on 127.0.0.1:3000 and [::1]:3000.',
+    );
+  });
 });
 
 describe('redactMessage: LITERAL namespace (ADR-002)', () => {

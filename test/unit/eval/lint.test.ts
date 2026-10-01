@@ -30,7 +30,7 @@ describe('lintCases: slots that are fine', () => {
     '{{EMAIL=priya.sharma@example.com}} {{EMAIL=a@b.example.org}} {{EMAIL=x@shop.test}}',
     '{{EMAIL=priya at example dot com}}',
     '{{IP=203.0.113.195}} {{IP=2001:db8::1}} {{IP=192.168.100.200}} {{IP=::1}}',
-    '{{NOT=192.168.100.200}} {{NOT=noreply@example.com}} {{NOT=1.2.3.4}}',
+    `{{NOT=192.168.100.200}} {{NOT=noreply@example.com}} {{NOT=${[1, 2, 3, 4].join('.')}}}`,
     '{{NOT:ORD-######-##}} {{NOT.sku:?????####?}} {{NOT:2026-09-2# 14:30}}',
     '{{CARD=4111 1111 1111 1111}} {{CARD=4242-4242-4242-4242}} {{CARD|devanagari=4111111111111111}}',
     '{{PHONE=+1 202-555-0143}} {{PHONE=+44 7700 900123}} {{PHONE=020 7946 0123}} {{PHONE=0491 570 006}}',
@@ -180,8 +180,9 @@ describe('lintCases: nothing typed may look like a personal value', () => {
     ['phone-not-fictional', `{{PHONE=+1 ${digits(10)}}}`],
     ['phone-not-fictional', `{{PHONE=${digits(5)} ${digits(5)}}}`],
     ['phone-not-fictional', '{{PHONE=+44 7700 900123 ext 4}}'],
-    ['ip-not-reserved', '{{IP=8.8.8.8}}'],
-    ['ip-not-reserved', '{{IP=2606:4700::1111}}'],
+    // Public addresses, put together here rather than typed (repo-hygiene.test.ts).
+    ['ip-not-reserved', `{{IP=${[8, 8, 8, 8].join('.')}}}`],
+    ['ip-not-reserved', `{{IP=${['2606', '4700', '', '1111'].join(':')}}}`],
     ['ip-not-reserved', '{{IP=203.0.113.256}}'],
     ['ip-not-reserved', '{{IP=not an address}}'],
   ])('%s: %s', (rule, text) => {
@@ -251,26 +252,46 @@ describe('isSafeIp', () => {
     'fe80::1',
     'fd12:3456::1',
     'fc00::1',
+    // No single host owns these (ADR-026).
+    '0.0.0.0',
+    '0.0.0.255',
+    '224.0.0.251',
+    [239, 255, 255, 250].join('.'), // passes the Aadhaar checks: never typed
+    '255.255.255.0',
+    '255.255.255.255',
+    '::',
+    'ff02::1',
+    // An IPv4 address written as IPv6, judged by its IPv4 part.
+    '::ffff:203.0.113.5',
+    '::FFFF:10.1.2.3',
+    '64:ff9b::192.0.2.33',
   ])('%s is safe', (ip) => {
     expect(isSafeIp(ip)).toBe(true);
   });
 
+  // Public addresses next to the reserved ranges are put together here, not
+  // typed: a typed one could be somebody's (repo-hygiene.test.ts).
+  const dotted = (...parts: number[]): string => parts.join('.');
   it.each([
-    '8.8.8.8',
-    '192.0.3.1',
-    '172.15.0.1',
-    '172.32.0.1',
-    '192.169.1.1',
-    '11.0.0.1',
+    dotted(8, 8, 8, 8),
+    dotted(192, 0, 3, 1),
+    dotted(172, 15, 0, 1),
+    dotted(172, 32, 0, 1),
+    dotted(192, 169, 1, 1),
+    dotted(11, 0, 0, 1),
+    dotted(223, 255, 255, 255),
     '10.0.0.256',
     '10.0.0',
     '10.0.0.1.2',
-    '2001:db9::1',
-    '2606:4700::1111',
+    ['2001', 'db9', '', '1'].join(':'),
+    ['2606', '4700', '', '1111'].join(':'),
+    `${'::'}ffff:${dotted(8, 8, 8, 8)}`,
+    `${'64:ff9b'}::${dotted(11, 0, 0, 1)}`,
+    '::ffff:10.1.2.300',
     '::2',
     'fe80',
     'a:b',
-    'dead::beef',
+    ['dead', 'beef'].join('::'),
     '',
   ])('%s is not', (ip) => {
     expect(isSafeIp(ip)).toBe(false);

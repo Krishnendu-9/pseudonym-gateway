@@ -108,6 +108,15 @@ describe('the generated dataset', () => {
       'NOT.invoice-no',
       'NOT.private-ip',
       'NOT.loopback',
+      'NOT.link-local',
+      'NOT.version-build',
+      'NOT.app-version',
+      'NOT.time',
+      'NOT.date',
+      'NOT.mac',
+      'NOT.eui-64',
+      'NOT.netmask',
+      'NOT.multicast',
       'AADHAAR.typo',
       'CARD.typo',
       'CARD.amex',
@@ -120,6 +129,28 @@ describe('the generated dataset', () => {
     ]) {
       expect([expected, labels.has(expected)]).toEqual([expected, true]);
     }
+  });
+
+  it('writes IP addresses bare, with a port, a prefix length, in a URL and in brackets', () => {
+    const forms = messages.flatMap((m) =>
+      m.pieces
+        .filter((p) => p.type === 'IP')
+        .map((p) => {
+          const before = m.text.slice(0, p.start);
+          const after = m.text.slice(p.end);
+          if (before.endsWith('http://')) return 'url';
+          if (before.endsWith('[') && after.startsWith(']:443')) return 'brackets';
+          if (/^:[0-9]/.test(after)) return 'port';
+          if (/^\/[0-9]/.test(after)) return 'prefix';
+          return 'bare';
+        }),
+    );
+    expect(Object.keys(tally(forms)).sort()).toEqual(['bare', 'brackets', 'port', 'prefix', 'url']);
+    // The IP pieces are the addresses alone: no port, prefix or bracket inside.
+    const pieces = messages.flatMap((m) =>
+      m.pieces.filter((p) => p.type === 'IP').map((p) => m.text.slice(p.start, p.end)),
+    );
+    expect(pieces.filter((p) => /[[\]/]|\.[0-9]+:[0-9]/.test(p))).toEqual([]);
   });
 
   it('labels stay inside their message and never overlap', () => {

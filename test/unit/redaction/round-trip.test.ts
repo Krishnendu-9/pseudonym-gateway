@@ -117,4 +117,29 @@ describe('round trip: restoration safety survives the full pipeline', () => {
     assertTextEqualQuietly(restored, injectedReply); // left exactly as the model wrote it
     expect(restored.includes(value)).toBe(false);
   });
+
+  // Documentation addresses: nobody's, so compared directly.
+  it('an IP address restores in prose but not inside a URL the model writes (the known cost)', () => {
+    const mapping = new PlaceholderMapping();
+    redactMessage('Login from 203.0.113.5 failed.', mapping);
+    const reply = 'Block [IP_1], or open http://[IP_1]/admin to check.';
+    expect(restore(reply, mapping)).toBe(
+      'Block 203.0.113.5, or open http://[IP_1]/admin to check.',
+    );
+  });
+});
+
+describe('round trip: IP addresses in their written forms (ADR-026)', () => {
+  it.each([
+    'Connect to 203.0.113.5:8080 now.',
+    'Allow 203.0.113.0/24 only.',
+    'Connect to [2001:db8::1]:443 now.',
+    'Ping fe80::1%eth0 please.',
+    'IPv4 198.51.100.7 and IPv6 2001:db8::7 are ours.',
+  ])('%s', (text) => {
+    const mapping = new PlaceholderMapping();
+    const redacted = redactMessage(text, mapping);
+    expect(/[0-9]{2}/.test(redacted.replace(/(?:8080|24|443|IPv4|IPv6|_[0-9]+)/g, ''))).toBe(false);
+    expect(restore(redacted, mapping)).toBe(text);
+  });
 });

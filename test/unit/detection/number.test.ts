@@ -212,9 +212,17 @@ describe('detect: what the safety net does not catch (ADR-011)', () => {
     ['a version', 'Version v1.12.30'],
     ['an invoice reference', 'Invoice INV/2024/00123'],
     ['a short order number', 'Order #402100 shipped'],
-    ['a short IP address', 'Host 10.0.0.1 down'],
+    // Addresses no single host owns are kept by the IP detector (ADR-026).
+    ['a netmask', 'Mask 255.255.255.0 set'],
+    ['the broadcast address', 'Bcast 255.255.255.255 x'],
   ])('does not catch %s', (_name, text) => {
     expect(detect(text)).toEqual([]);
+  });
+
+  it('never sees an IP address of any length: the IP detector claims it first (ADR-026)', () => {
+    for (const text of ['Host 10.0.0.1 down', 'Host 192.168.100.200 down']) {
+      expect(detect(text).map((d) => d.type)).toEqual(['IP']);
+    }
   });
 });
 
@@ -223,7 +231,6 @@ describe('detect: what the safety net does catch that is not personal (the accep
     ['an order ID in 3-7-7 form', 'Order 403-5550143-5550199 shipped', '403-5550143-5550199'],
     ['a 12-digit tracking number', 'AWB 100000000017 in transit', '100000000017'],
     ['a Windows build number', 'Windows 10.0.19045.3693 ok', '10.0.19045.3693'],
-    ['an IPv4 address with 9 or more digits', 'Host 192.168.100.200 down', '192.168.100.200'],
     ['an ISBN', 'ISBN 978-3-16-148410-0 ok', '978-3-16-148410-0'],
     ['a millisecond timestamp', 'at 1727500000000 ms', '1727500000000'],
     [
