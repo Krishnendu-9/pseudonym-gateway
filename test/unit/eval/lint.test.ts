@@ -152,6 +152,23 @@ describe('lintCases: nothing typed may look like a personal value', () => {
     expect(rules(text)).toContain('typed-pan');
   });
 
+  // Built at run time: a passport or voter ID number has no check digit, so
+  // any typed one could be somebody's.
+  it.each([
+    ['a passport shape', `K${digits(7)}`],
+    ['a voter ID shape', `abc${digits(7)}`],
+    ['one in a sentence', `ID: ABC${digits(7)}.`],
+    ['one typed as a lookalike', `{{NOT=K${digits(7)}}}`],
+  ])('rejects %s', (_name, text) => {
+    expect(rules(text)).toContain('typed-id');
+  });
+
+  it('an ID shape inside a longer token, with 8 digits, or generated, is not one', () => {
+    expect(
+      rules(`XK${digits(7)} K${digits(8)} ABCD${digits(7)} {{NOT:?#######}} {{NOT:INV#######}}`),
+    ).toEqual([]);
+  });
+
   it('a PAN shape inside a longer token, or with generated characters, is not one', () => {
     expect(rules('XABCDE1234F and ABCDE1234F9 and {{NOT:ABCDE####F}}')).toEqual([]);
   });

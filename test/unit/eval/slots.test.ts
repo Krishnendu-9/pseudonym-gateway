@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { SECRET_KINDS } from '../../../src/synthetic/identifiers.js';
-import { maskMarks, MODIFIERS, parseSegments, TYPE_SPECS } from '../../../eval/slots.js';
+import {
+  EMAIL_CONTAINING,
+  maskMarks,
+  MODIFIERS,
+  parseSegments,
+  SECRET_CONTAINING,
+  TYPE_SPECS,
+} from '../../../eval/slots.js';
 import { PERSONAL_TYPES } from '../../../eval/types.js';
 
 const slotsOf = (text: string): unknown[] =>
@@ -104,13 +111,27 @@ describe('the type table', () => {
         spec.length ? [[type, spec.length(undefined)]] : [],
       ),
     );
-    expect(lengths).toEqual({ AADHAAR: 12, CARD: 16, PAN: 10, PHONE: 10, IFSC: 11 });
+    expect(lengths).toEqual({
+      AADHAAR: 12,
+      CARD: 16,
+      PAN: 10,
+      PHONE: 10,
+      IFSC: 11,
+      PASSPORT: 8,
+      VOTER: 10,
+    });
     expect(TYPE_SPECS.CARD.length!('amex')).toBe(15);
   });
 
-  it('SECRET needs a kind, and knows every kind the generator has', () => {
+  it('SECRET needs a kind, and knows every kind the generator has, and the containing ones', () => {
     expect(TYPE_SPECS.SECRET.variantRequired).toBe(true);
-    expect(TYPE_SPECS.SECRET.variants).toEqual(SECRET_KINDS);
+    expect(TYPE_SPECS.SECRET.variants).toEqual([...SECRET_KINDS, ...SECRET_CONTAINING]);
+  });
+
+  it('the containing variants (Phase 5c): EMAIL and UPI ones, DOB generated whole', () => {
+    expect(TYPE_SPECS.EMAIL.variants).toEqual(EMAIL_CONTAINING);
+    expect(TYPE_SPECS.UPI.variants).toContain('mobile-name');
+    expect(TYPE_SPECS.DOB.generated).toEqual({ mask: 'never' });
   });
 
   it('only NOT reads "?" as a generated character', () => {

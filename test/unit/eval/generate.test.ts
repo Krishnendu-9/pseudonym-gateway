@@ -7,13 +7,25 @@ import {
   GENERATED_SEED,
   generateCases,
   generateRawCases,
+  MAIN_TYPES,
+  SHAPE_VALUES,
+  SHAPES,
   SHARE_WITHOUT_VALUES,
+  SHORT_ID_TYPES,
   VALUES_PER_TYPE,
 } from '../../../eval/generate.js';
 import { lintCases } from '../../../eval/lint.js';
-import { PERSONAL_TYPES, type LabelledCase } from '../../../eval/types.js';
+import { PERSONAL_TYPES, SHAPE_TAG, type LabelledCase } from '../../../eval/types.js';
 
-const cases = generateCases();
+const shapeOf = (c: LabelledCase): string | undefined =>
+  c.tags.find((tag) => tag.startsWith(SHAPE_TAG))?.slice(SHAPE_TAG.length);
+const mainOf = (set: readonly LabelledCase[]): LabelledCase[] =>
+  set.filter((c) => shapeOf(c) === undefined);
+
+const all = generateCases();
+// The 500 cases written the usual way; the shape block (Phase 5c) follows them.
+const cases = mainOf(all);
+const block = all.filter((c) => shapeOf(c) !== undefined);
 const messages = cases.flatMap((c) => c.messages);
 
 const tally = <T extends string>(items: readonly T[]): Record<string, number> => {
@@ -34,9 +46,10 @@ function valuesByType(set: readonly LabelledCase[]): Record<string, number> {
 }
 
 describe('the generated dataset', () => {
-  it('has 600 messages in 500 cases, with unique ids', () => {
+  it('has 600 messages in 500 cases, then the shape block; ids numbered in order', () => {
     expect([cases.length, messages.length]).toEqual([500, 600]);
-    expect(new Set(cases.map((c) => c.id)).size).toBe(500);
+    expect(all.slice(0, 500)).toEqual(cases);
+    expect(all.map((c) => c.id)).toEqual(all.map((_, i) => `G${String(i + 1).padStart(4, '0')}`));
   });
 
   it('mixes tickets, emails, chats and records as planned', () => {
@@ -70,10 +83,11 @@ describe('the generated dataset', () => {
     expect(has('mixed').some(Boolean)).toBe(true);
   });
 
-  it(`plants every type exactly ${VALUES_PER_TYPE} times`, () => {
+  it(`plants every type but the short IDs exactly ${VALUES_PER_TYPE} times`, () => {
     expect(valuesByType(cases)).toEqual(
-      Object.fromEntries(PERSONAL_TYPES.map((type) => [type, VALUES_PER_TYPE])),
+      Object.fromEntries(MAIN_TYPES.map((type) => [type, VALUES_PER_TYPE])),
     );
+    expect([...MAIN_TYPES, ...SHORT_ID_TYPES].sort()).toEqual([...PERSONAL_TYPES].sort());
   });
 
   it('leaves one message in five without any personal value', () => {
@@ -171,9 +185,102 @@ describe('the generated dataset', () => {
     const other = generateCases(GENERATED_SEED + 1);
     const text = (set: readonly LabelledCase[]): string =>
       set.map((c) => c.messages.map((m) => m.text).join('\n')).join('\n');
-    expect([text(again) === text(cases), text(other) === text(cases)]).toEqual([true, false]);
+    expect([text(again) === text(all), text(other) === text(all)]).toEqual([true, false]);
     // Another seed is another dataset of the same shape.
-    expect([other.length, valuesByType(other).AADHAAR]).toEqual([500, VALUES_PER_TYPE]);
+    const otherBlock = other.filter((c) => shapeOf(c) !== undefined);
+    expect([mainOf(other).length, valuesByType(mainOf(other)).AADHAAR]).toEqual([
+      500,
+      VALUES_PER_TYPE,
+    ]);
+    expect(valuesByType(otherBlock).PASSPORT).toBe(VALUES_PER_TYPE);
+  });
+});
+
+describe('the shape block (Phase 5c)', () => {
+  const ofShape = (shape: string): LabelledCase[] => block.filter((c) => shapeOf(c) === shape);
+  const piecesOf = (set: readonly LabelledCase[]) =>
+    set.flatMap((c) => c.messages.flatMap((m) => m.pieces.map((p) => ({ m, p }))));
+  const labelsOf = (set: readonly LabelledCase[]): Set<string> =>
+    new Set(piecesOf(set).map(({ p }) => `${p.type}.${p.label ?? ''}`));
+
+  it('tags every case with one known shape, after a kind and a language', () => {
+    const shapeTags = block.map((c) => c.tags.filter((t) => t.startsWith(SHAPE_TAG)).length);
+    expect(new Set(shapeTags)).toEqual(new Set([1]));
+    expect([...new Set(block.map(shapeOf))]).toEqual([...SHAPES]);
+    expect(new Set(block.map((c) => c.tags[1]))).toEqual(new Set(['en', 'hinglish', 'hi']));
+  });
+
+  it('plants the planned number of values in each shape', () => {
+    const planted = Object.fromEntries(
+      SHAPES.map((shape) => {
+        const ids = piecesOf(ofShape(shape))
+          .filter(({ p }) => p.type !== 'NOT')
+          .map(({ p }) => p.valueId);
+        return [shape, new Set(ids).size];
+      }),
+    );
+    expect(planted).toEqual(SHAPE_VALUES);
+  });
+
+  it('line-break: a line break inside every value, 40 each of Aadhaar, card and phone', () => {
+    const values = piecesOf(ofShape('line-break')).filter(({ p }) => p.type !== 'NOT');
+    // The whole stretch: in "+91", a line break, then 10 digits, the break
+    // comes before the first digit of the value.
+    const broken = values.filter(({ m, p }) => m.text.slice(p.start, p.end).includes('\n'));
+    expect(broken).toHaveLength(values.length);
+    expect(valuesByType(ofShape('line-break'))).toEqual({ AADHAAR: 40, CARD: 40, PHONE: 40 });
+  });
+
+  it('message-split: every value has one piece in each of two messages', () => {
+    const ok = ofShape('message-split').every((c) => {
+      const [first, second] = c.messages.map((m) => m.pieces.filter((p) => p.type !== 'NOT'));
+      return (
+        c.messages.length === 2 &&
+        first!.length === 1 &&
+        second!.length === 1 &&
+        first![0]!.valueId === second![0]!.valueId
+      );
+    });
+    expect(ok).toBe(true);
+  });
+
+  it('side-by-side: two values with only a separator between them', () => {
+    const ok = ofShape('side-by-side').every((c) => {
+      const m = c.messages[0]!;
+      const [a, b] = m.pieces.filter((p) => p.type !== 'NOT');
+      return b !== undefined && /^(?: | - |\. |-)$/.test(m.text.slice(a!.end, b.start));
+    });
+    expect(ok).toBe(true);
+  });
+
+  it('contained and joined-digits use their variants and masks', () => {
+    const contained = [...labelsOf(ofShape('contained'))].filter((l) => !l.startsWith('NOT.'));
+    expect(contained.sort()).toEqual([
+      'EMAIL.ifsc',
+      'EMAIL.mobile',
+      'EMAIL.pan',
+      'SECRET.ifsc-tail',
+      'SECRET.ip-tail',
+      'SECRET.mobile-tail',
+      'UPI.mobile-name',
+    ]);
+    expect(valuesByType(ofShape('joined-digits'))).toEqual({ NUMBER: 30 });
+  });
+
+  it(`short-id: each short ID type ${VALUES_PER_TYPE} times, among lookalikes of its shape`, () => {
+    expect(valuesByType(ofShape('short-id'))).toEqual(
+      Object.fromEntries(SHORT_ID_TYPES.map((type) => [type, VALUES_PER_TYPE])),
+    );
+    const labels = labelsOf(ofShape('short-id'));
+    for (const label of [
+      'NOT.invoice-code',
+      'NOT.order-code',
+      'NOT.model-code',
+      'NOT.ticket-code',
+      'NOT.event-date',
+    ]) {
+      expect([label, labels.has(label)]).toEqual([label, true]);
+    }
   });
 });
 

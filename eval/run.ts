@@ -35,7 +35,13 @@ import {
 } from './baseline.js';
 import { GENERATED_SEED, generateCases } from './generate.js';
 import { checkHeldOut, loadHeldOut } from './held-out.js';
-import { overRedactionTable, readmeBlock, scoreTable, withReadmeBlock } from './report.js';
+import {
+  overRedactionTable,
+  readmeBlock,
+  scoreTable,
+  shapeTable,
+  withReadmeBlock,
+} from './report.js';
 import { percent, score, scoreByTag } from './score.js';
 import { PERSONAL_TYPES } from './types.js';
 import { leftoverMutation } from '../scripts/mutation-marker.js';
@@ -59,10 +65,12 @@ const previous = existsSync(BASELINE_PATH)
   ? (JSON.parse(readFileSync(BASELINE_PATH, 'utf8')) as Baseline)
   : undefined;
 
-const generated = score(generateCases());
+const generated = score(generateCases(), undefined, { byShape: true });
 write(`## Generated dataset (seed ${GENERATED_SEED}, ${generated.messages} messages)`);
 write();
 write(scoreTable(generated));
+write();
+write(shapeTable(generated.shapes));
 write();
 write(overRedactionTable(generated));
 write();

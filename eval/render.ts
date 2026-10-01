@@ -9,19 +9,30 @@
 import {
   aadhaarWithTypo,
   cardWithTypo,
+  dateOfBirth,
   ifsc,
+  ipAddress,
   panWithTypo,
+  passportNumber,
   secret,
   upiId,
+  voterId,
   type SecretKind,
   type UpiKind,
 } from '../src/synthetic/identifiers.js';
 import { INVISIBLES } from '../src/synthetic/obfuscate.js';
 import { createRng, type Rng } from '../src/synthetic/rng.js';
-import { aadhaar, cardNumber, email, indianMobile, pan } from '../src/synthetic/values.js';
+import {
+  aadhaar,
+  cardNumber,
+  email,
+  indianMobile,
+  pan,
+  RESERVED_EMAIL_DOMAINS,
+} from '../src/synthetic/values.js';
 import { parseCases, type Problem, type RawCase } from './format.js';
 import { lintCases } from './lint.js';
-import { DIGIT_SCRIPTS, parseSegments, type Slot } from './slots.js';
+import { DIGIT_SCRIPTS, parseSegments, SECRET_CONTAINING, type Slot } from './slots.js';
 import type { LabelledCase, LabelledMessage, TruthPiece, TruthType } from './types.js';
 
 /** One character of a rendered slot (or an invisible one inserted into it). */
@@ -45,6 +56,22 @@ interface Value {
 
 const SIXTEEN_DIGIT_NETWORKS = ['visa', 'mastercard', 'discover', 'rupay'] as const;
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+const NAMES = ['priya', 'rahul', 'meera', 'arjun', 'kavya'] as const;
+
+/** A checked value with more of a longer value around it (EMAIL_CONTAINING, SECRET_CONTAINING). */
+function containing(type: 'EMAIL' | 'SECRET', variant: string, rng: Rng): string {
+  const address = (local: string): string =>
+    `${local}.${rng.pick(NAMES)}@${rng.pick(RESERVED_EMAIL_DOMAINS)}`;
+  const tail = (): string => `-x${rng.int(1, 9)}`;
+  if (type === 'EMAIL') {
+    if (variant === 'pan') return address(pan(rng));
+    if (variant === 'ifsc') return address(ifsc(rng));
+    return address(indianMobile(rng));
+  }
+  if (variant === 'ifsc-tail') return ifsc(rng) + tail();
+  if (variant === 'ip-tail') return ipAddress(rng, 'v4') + tail();
+  return `${rng.pick(NAMES).slice(0, 3)}-${indianMobile(rng)}`;
+}
 
 /** The whole value a slot stands for, for the types that have one. */
 function generate(slot: Slot, rng: Rng): string | undefined {
@@ -59,13 +86,21 @@ function generate(slot: Slot, rng: Rng): string | undefined {
     case 'PHONE':
       return indianMobile(rng);
     case 'EMAIL':
-      return email(rng);
+      return slot.variant === undefined ? email(rng) : containing('EMAIL', slot.variant, rng);
     case 'IFSC':
       return ifsc(rng, slot.variant !== 'unknown');
     case 'UPI':
       return upiId(rng, (slot.variant ?? 'name') as UpiKind);
     case 'SECRET':
-      return secret(rng, slot.variant as SecretKind);
+      return SECRET_CONTAINING.includes(slot.variant as (typeof SECRET_CONTAINING)[number])
+        ? containing('SECRET', slot.variant!, rng)
+        : secret(rng, slot.variant as SecretKind);
+    case 'PASSPORT':
+      return passportNumber(rng);
+    case 'VOTER':
+      return voterId(rng);
+    case 'DOB':
+      return dateOfBirth(rng);
     default:
       // NUMBER and NOT are made mark by mark; IP and PERSON are always typed.
       return undefined;

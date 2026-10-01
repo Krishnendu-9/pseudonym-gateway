@@ -28,6 +28,7 @@ const row = (values: number, redacted: number, typed: number, notPersonal: numbe
 const dataset = (
   rows: Partial<Record<string, TypeScore>> = {},
   size: { cases?: number; messages?: number } = {},
+  shapes: DatasetScore['shapes'] = {},
 ): DatasetScore => ({
   cases: size.cases ?? 10,
   messages: size.messages ?? 12,
@@ -35,6 +36,7 @@ const dataset = (
     PERSONAL_TYPES.map((type) => [type, rows[type] ?? row(0, 0, 0, 0)]),
   ) as DatasetScore['types'],
   overRedactions: {},
+  shapes,
 });
 
 const BASE = dataset({ AADHAAR: row(10, 8, 7, 3), PHONE: row(5, 5, 5, 0) });
@@ -42,6 +44,84 @@ const stored = (score: DatasetScore): StoredDataset => ({
   cases: score.cases,
   messages: score.messages,
   types: score.types,
+  ...(Object.keys(score.shapes).length > 0 ? { shapes: score.shapes } : {}),
+});
+
+describe('a type the stored baseline predates (PASSPORT, VOTER, DOB in Phase 5c)', () => {
+  const older = Object.fromEntries(Object.entries(BASE.types).filter(([t]) => t !== 'PASSPORT'));
+  const before: StoredDataset = { cases: 10, messages: 12, types: older as StoredDataset['types'] };
+
+  it('reads as an empty row: no values now is no change at all', () => {
+    expect(compare('held-out', before, BASE)).toEqual({ worse: [], better: [], changed: [] });
+  });
+
+  it('values for it now are a changed dataset, not a crash', () => {
+    const now = dataset({ ...BASE.types, PASSPORT: row(3, 0, 0, 0) });
+    expect(compare('generated', before, now).changed).toEqual([
+      'generated PASSPORT: 0 values -> 3',
+    ]);
+  });
+});
+
+describe('compare, by shape (the generated set’s shape block)', () => {
+  const shaped = (shapes: DatasetScore['shapes']): DatasetScore => dataset(BASE.types, {}, shapes);
+  const BEFORE = stored(
+    shaped({
+      main: { values: 10, redacted: 8, partial: 1 },
+      contained: { values: 4, redacted: 0, partial: 4 },
+    }),
+  );
+
+  it.each([
+    ['the same counts', { values: 4, redacted: 0, partial: 4 }, 'nothing', []],
+    [
+      'more redacted',
+      { values: 4, redacted: 3, partial: 1 },
+      'better',
+      ['generated shape contained: redacted 0 -> 3'],
+    ],
+    ['partial moves alone', { values: 4, redacted: 0, partial: 2 }, 'nothing', []],
+    [
+      'more values',
+      { values: 5, redacted: 0, partial: 4 },
+      'changed',
+      ['generated shape contained: 4 values -> 5'],
+    ],
+  ] as const)('%s: %s', (_name, contained, side, lines) => {
+    const result = compare(
+      'generated',
+      BEFORE,
+      shaped({ main: { values: 10, redacted: 8, partial: 1 }, contained }),
+    );
+    const expected = { worse: [], better: [], changed: [] } as Record<string, readonly string[]>;
+    if (side !== 'nothing') expected[side] = lines;
+    expect(result).toEqual(expected);
+  });
+
+  it('fewer redacted is worse', () => {
+    const now = shaped({
+      main: { values: 10, redacted: 7, partial: 1 },
+      contained: { values: 4, redacted: 0, partial: 4 },
+    });
+    expect(compare('generated', BEFORE, now).worse).toEqual([
+      'generated shape main: redacted 8 -> 7',
+    ]);
+  });
+
+  it('a shape that appears or disappears is a changed dataset', () => {
+    const now = shaped({
+      main: { values: 10, redacted: 8, partial: 1 },
+      'short-id': { values: 6, redacted: 0, partial: 0 },
+    });
+    expect(compare('generated', BEFORE, now).changed).toEqual([
+      'generated shape contained: 4 values -> 0',
+      'generated shape short-id: 0 values -> 6',
+    ]);
+  });
+
+  it('a stored dataset with no shapes and a score with none: nothing to compare', () => {
+    expect(compare('held-out', stored(BASE), BASE)).toEqual({ worse: [], better: [], changed: [] });
+  });
 });
 
 describe('compare', () => {
@@ -238,6 +318,17 @@ describe('nextBaseline', () => {
     const next = nextBaseline(undefined, measurement(BASE, BASE), undefined);
     expect(Object.keys(next.generated).sort()).toEqual(['cases', 'messages', 'seed', 'types']);
     expect(Object.keys(next.heldOut!).sort()).toEqual(['cases', 'messages', 'types']);
+  });
+
+  it('stores the shape counts when the score has them, and no shapes key when it has none', () => {
+    const shapes = { main: { values: 10, redacted: 8, partial: 1 } };
+    const next = nextBaseline(
+      undefined,
+      measurement(dataset(BASE.types, {}, shapes), BASE),
+      undefined,
+    );
+    expect(next.generated.shapes).toEqual(shapes);
+    expect(Object.keys(next.heldOut!)).not.toContain('shapes');
   });
 
   it('a better measurement moves the floor up without a note', () => {

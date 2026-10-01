@@ -7,6 +7,7 @@ import { isValidAadhaar } from '../../../src/detection/aadhaar.js';
 import { isValidCard } from '../../../src/detection/card.js';
 import { normalise } from '../../../src/detection/normalise.js';
 import { isValidPan } from '../../../src/detection/pan.js';
+import { IFSC_BANK_CODES } from '../../../src/detection/ifsc.js';
 import { INVISIBLES } from '../../../src/synthetic/obfuscate.js';
 import { parseCases } from '../../../eval/format.js';
 import { CaseFileError, checkCaseFile, loadCases, renderCase } from '../../../eval/render.js';
@@ -143,6 +144,47 @@ describe('renderCase: what each type generates', () => {
     expect(/^XX/.test(only('{{IFSC.unknown}}').value)).toBe(true);
     expect(/^ghp_[A-Za-z0-9]{36}$/.test(only('{{SECRET.github}}').value)).toBe(true);
     expect(masked(only('{{SECRET.aws}}').message)).toBe('•'.repeat(20));
+  });
+
+  it('PASSPORT, VOTER and DOB (Phase 5c)', () => {
+    expect(/^[A-Z][1-9][0-9]{6}$/.test(only('{{PASSPORT}}').value)).toBe(true);
+    expect(/^[A-Z][1-9][0-9]{6}$/.test(only('{{PASSPORT:# #######}}').value)).toBe(true);
+    expect(/^[A-Z]{3}[0-9]{7}$/.test(only('{{VOTER}}').value)).toBe(true);
+    for (let i = 0; i < 40; i++) {
+      // The spaces of "7 March 1991" are not part of the value.
+      const value = only(`${'x'.repeat(i)} {{DOB}}`).value;
+      const date =
+        /^(?:[0-9]{1,2}[/.-][0-9]{1,2}[/.-][0-9]{4}|[0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{1,2}[A-Z][a-z]+[0-9]{4})$/;
+      expect(date.test(value)).toBe(true);
+    }
+  });
+
+  it('a checked value inside a longer one: the whole longer value is the label', () => {
+    const at = String.raw`@(?:example\.(?:com|org|net)|mail\.example|company\.test)$`;
+    const address = (head: string): RegExp => new RegExp(String.raw`^${head}\.[a-z]+${at}`);
+    const pan = only('{{EMAIL.pan}}').value;
+    expect([address('[A-Z]{5}[0-9]{4}[A-Z]').test(pan), isValidPan(pan.slice(0, 10))]).toEqual([
+      true,
+      true,
+    ]);
+    const ifsc = only('{{EMAIL.ifsc}}').value;
+    expect([
+      address('[A-Z]{4}0[A-Z0-9]{6}').test(ifsc),
+      IFSC_BANK_CODES.has(ifsc.slice(0, 4)),
+    ]).toEqual([true, true]);
+    expect(address('[6-9][0-9]{9}').test(only('{{EMAIL.mobile}}').value)).toBe(true);
+    expect(/^[A-Z]{4}0[A-Z0-9]{6}-x[1-9]$/.test(only('{{SECRET.ifsc-tail}}').value)).toBe(true);
+    expect(
+      /^(?:192\.0\.2|198\.51\.100|203\.0\.113)\.[0-9]{1,3}-x[1-9]$/.test(
+        only('{{SECRET.ip-tail}}').value,
+      ),
+    ).toBe(true);
+    expect(/^[a-z]{3}-[6-9][0-9]{9}$/.test(only('{{SECRET.mobile-tail}}').value)).toBe(true);
+    expect(/^[6-9][0-9]{9}\.[a-z]+@zz[a-z]{4}$/.test(only('{{UPI.mobile-name}}').value)).toBe(true);
+    for (const slot of ['{{EMAIL.pan}}', '{{SECRET.ip-tail}}', '{{UPI.mobile-name}}']) {
+      const { message } = only(slot);
+      expect(masked(message)).toBe('•'.repeat(message.text.length));
+    }
   });
 });
 

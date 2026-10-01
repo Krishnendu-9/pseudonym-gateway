@@ -9,15 +9,35 @@
 //    that the file, and the README table made from it, never lag behind;
 //  - a dataset that changed shape (more cases, more values) needs a note as
 //    well, because every count is then measured on different text.
+//
+// A type added after a baseline was stored (PASSPORT, VOTER and DOB in
+// Phase 5c) is read as an empty row there, so that its values show up as a
+// changed dataset, not as a crash.
 
-import type { DatasetScore, TypeScore } from './score.js';
+import type { DatasetScore, ShapeScore, TypeScore } from './score.js';
 import { PERSONAL_TYPES, type PersonalType } from './types.js';
 
 export interface StoredDataset {
   readonly cases: number;
   readonly messages: number;
   readonly types: Readonly<Record<PersonalType, TypeScore>>;
+  /** The generated set's values by the way they are written (Phase 5c); absent before. */
+  readonly shapes?: Readonly<Record<string, ShapeScore>>;
 }
+
+/** A type's row, or an empty one for a type the stored dataset predates. */
+export const rowOf = (dataset: StoredDataset, type: PersonalType): TypeScore =>
+  (dataset.types as Partial<Record<PersonalType, TypeScore>>)[type] ?? {
+    values: 0,
+    redacted: 0,
+    typed: 0,
+    partial: 0,
+    missed: 0,
+    detections: 0,
+    rightType: 0,
+    otherPersonal: 0,
+    notPersonal: 0,
+  };
 
 export interface Baseline {
   /** The day the counts were last accepted (YYYY-MM-DD). */
@@ -69,7 +89,7 @@ export function compare(
     );
   }
   for (const type of PERSONAL_TYPES) {
-    const before = stored.types[type];
+    const before = rowOf(stored, type);
     const now = current.types[type];
     if (before.values !== now.values) {
       changed.push(`${name} ${type}: ${before.values} values -> ${now.values}`);
@@ -79,6 +99,18 @@ export function compare(
       if (before[key] === now[key]) continue;
       const line = `${name} ${type}: ${metric} ${before[key]} -> ${now[key]}`;
       (now[key] > before[key] === higherIsBetter ? better : worse).push(line);
+    }
+  }
+  const empty: ShapeScore = { values: 0, redacted: 0, partial: 0 };
+  const shapes = new Set([...Object.keys(stored.shapes ?? {}), ...Object.keys(current.shapes)]);
+  for (const shape of shapes) {
+    const before = stored.shapes?.[shape] ?? empty;
+    const now = current.shapes[shape] ?? empty;
+    if (before.values !== now.values) {
+      changed.push(`${name} shape ${shape}: ${before.values} values -> ${now.values}`);
+    } else if (before.redacted !== now.redacted) {
+      const line = `${name} shape ${shape}: redacted ${before.redacted} -> ${now.redacted}`;
+      (now.redacted > before.redacted ? better : worse).push(line);
     }
   }
   return { worse, better, changed };
@@ -110,6 +142,7 @@ const stored = (score: DatasetScore): StoredDataset => ({
   cases: score.cases,
   messages: score.messages,
   types: score.types,
+  ...(Object.keys(score.shapes).length > 0 ? { shapes: score.shapes } : {}),
 });
 
 export interface Measurement {

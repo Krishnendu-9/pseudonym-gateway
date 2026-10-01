@@ -7,6 +7,7 @@ import {
   README_START,
   readmeBlock,
   scoreTable,
+  shapeTable,
   withReadmeBlock,
 } from '../../../eval/report.js';
 import type { DatasetScore, TypeScore } from '../../../eval/score.js';
@@ -61,12 +62,41 @@ describe('scoreTable', () => {
     const markdown = `${scoreTable(SCORE)}\n`;
     expect(await format(markdown, { parser: 'markdown' })).toBe(markdown);
   });
+
+  it('a stored dataset older than a type has no row for it, and no crash', () => {
+    const older = Object.fromEntries(Object.entries(SCORE.types).filter(([t]) => t !== 'DOB'));
+    expect(scoreTable({ ...SCORE, types: older as StoredDataset['types'] })).toBe(
+      scoreTable(SCORE),
+    );
+  });
+});
+
+describe('shapeTable', () => {
+  const SHAPES = {
+    main: { values: 12, redacted: 11, partial: 1 },
+    'line-break': { values: 3, redacted: 0, partial: 2 },
+  };
+
+  it('one row per shape, in the order given, counts beside cut percentages', () => {
+    expect(shapeTable(SHAPES).split('\n')).toEqual([
+      '| Written as | Values | Redacted (any type) | Partly redacted |',
+      '| ---------- | ------ | ------------------- | --------------- |',
+      '| main       | 12     | 11/12 (91.6%)       | 1               |',
+      '| line-break | 3      | 0/3 (0.0%)          | 2               |',
+    ]);
+  });
+
+  it('is laid out exactly as Prettier would lay it out', async () => {
+    const markdown = `${shapeTable(SHAPES)}\n`;
+    expect(await format(markdown, { parser: 'markdown' })).toBe(markdown);
+  });
 });
 
 describe('overRedactionTable', () => {
   const withOver = (overRedactions: DatasetScore['overRedactions']): DatasetScore => ({
     ...SCORE,
     overRedactions,
+    shapes: {},
   });
 
   it('kinds in rows, detection types in columns, a total', () => {
@@ -142,6 +172,16 @@ describe('readmeBlock', () => {
       const markdown = `# Title\n\n${readmeBlock({ ...input, heldOut })}\n\nAfter.\n`;
       expect(await format(markdown, { parser: 'markdown' })).toBe(markdown);
     }
+  });
+
+  it('shows the shape table under the generated one when there are shapes, and only then', async () => {
+    const shapes = { main: { values: 12, redacted: 11, partial: 1 } };
+    const block = readmeBlock({ ...input, generated: { ...SCORE, seed: 42, shapes } });
+    expect(block).toContain(`${scoreTable(SCORE)}\n\nThe same values by the way they are written`);
+    expect(block).toContain(`Each value also counts in the table above.\n\n${shapeTable(shapes)}`);
+    expect(readmeBlock(input)).not.toContain('The same values by the way they are written');
+    const markdown = `# Title\n\n${block}\n\nAfter.\n`;
+    expect(await format(markdown, { parser: 'markdown' })).toBe(markdown);
   });
 });
 

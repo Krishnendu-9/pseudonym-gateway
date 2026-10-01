@@ -25,6 +25,9 @@ export const MAX_TYPED_DIGITS = 8;
 // dash, brackets, plus. The same stretch a reader would see as one number.
 const DIGIT_STRETCH = /\p{Nd}+(?:[ .\-\u2010-\u2015\u2212()+]{1,3}\p{Nd}+)*/gu;
 const PAN_SHAPE = /(?<![\p{L}\p{N}_])[A-Za-z]{5}[0-9]{4}[A-Za-z](?![\p{L}\p{N}_])/u;
+// A passport number (a letter and 7 digits) or a voter ID (3 letters and 7
+// digits): no check digit, so the shape alone could be somebody's.
+const ID_SHAPE = /(?<![\p{L}\p{N}_])[A-Za-z](?:[A-Za-z]{2})?[0-9]{7}(?![\p{L}\p{N}_])/u;
 const ADDRESS = /[^\s@]@[^\s@]/u;
 // The start of a provider key, a JWT or a private-key block.
 const SECRET_SHAPE =
@@ -196,6 +199,14 @@ function lintMessage(caseId: string, message: RawMessage, values: Map<string, Pe
       origin[pan.index]!,
       'typed-pan',
       'a typed PAN-shaped code; use {{PAN}} or {{NOT:?????####?}}',
+    );
+  }
+  const id = ID_SHAPE.exec(typed);
+  if (id) {
+    add(
+      origin[id.index]!,
+      'typed-id',
+      'a typed code shaped like a passport or voter ID number; use {{PASSPORT}}, {{VOTER}} or {{NOT:?#######}}',
     );
   }
   const key = SECRET_SHAPE.exec(typed);

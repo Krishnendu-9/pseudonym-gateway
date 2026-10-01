@@ -1,29 +1,29 @@
 {
-  "measuredOn": "2026-09-30",
+  "measuredOn": "2026-10-01",
   "generated": {
-    "cases": 500,
-    "messages": 600,
+    "cases": 1091,
+    "messages": 1251,
     "types": {
       "AADHAAR": {
-        "values": 153,
-        "redacted": 153,
-        "typed": 153,
-        "partial": 0,
-        "missed": 0,
-        "detections": 160,
-        "rightType": 153,
-        "otherPersonal": 4,
+        "values": 233,
+        "redacted": 173,
+        "typed": 169,
+        "partial": 1,
+        "missed": 59,
+        "detections": 173,
+        "rightType": 164,
+        "otherPersonal": 6,
         "notPersonal": 3
       },
       "CARD": {
-        "values": 153,
-        "redacted": 150,
-        "typed": 149,
-        "partial": 0,
-        "missed": 3,
-        "detections": 154,
-        "rightType": 149,
-        "otherPersonal": 4,
+        "values": 227,
+        "redacted": 164,
+        "typed": 163,
+        "partial": 8,
+        "missed": 55,
+        "detections": 163,
+        "rightType": 156,
+        "otherPersonal": 6,
         "notPersonal": 1
       },
       "PAN": {
@@ -32,27 +32,27 @@
         "typed": 142,
         "partial": 0,
         "missed": 11,
-        "detections": 152,
+        "detections": 163,
         "rightType": 142,
-        "otherPersonal": 0,
-        "notPersonal": 10
+        "otherPersonal": 10,
+        "notPersonal": 11
       },
       "PHONE": {
-        "values": 153,
-        "redacted": 153,
-        "typed": 153,
-        "partial": 0,
-        "missed": 0,
-        "detections": 219,
-        "rightType": 153,
-        "otherPersonal": 20,
-        "notPersonal": 46
+        "values": 293,
+        "redacted": 205,
+        "typed": 195,
+        "partial": 4,
+        "missed": 84,
+        "detections": 314,
+        "rightType": 187,
+        "otherPersonal": 74,
+        "notPersonal": 53
       },
       "EMAIL": {
-        "values": 153,
+        "values": 183,
         "redacted": 153,
         "typed": 153,
-        "partial": 0,
+        "partial": 30,
         "missed": 0,
         "detections": 153,
         "rightType": 153,
@@ -60,15 +60,15 @@
         "notPersonal": 0
       },
       "NUMBER": {
-        "values": 153,
-        "redacted": 135,
-        "typed": 112,
-        "partial": 0,
+        "values": 189,
+        "redacted": 147,
+        "typed": 122,
+        "partial": 24,
         "missed": 18,
-        "detections": 178,
-        "rightType": 112,
-        "otherPersonal": 0,
-        "notPersonal": 66
+        "detections": 217,
+        "rightType": 131,
+        "otherPersonal": 3,
+        "notPersonal": 83
       },
       "IFSC": {
         "values": 153,
@@ -76,16 +76,16 @@
         "typed": 152,
         "partial": 0,
         "missed": 1,
-        "detections": 155,
+        "detections": 175,
         "rightType": 152,
-        "otherPersonal": 0,
+        "otherPersonal": 20,
         "notPersonal": 3
       },
       "UPI": {
-        "values": 153,
+        "values": 163,
         "redacted": 147,
         "typed": 147,
-        "partial": 0,
+        "partial": 10,
         "missed": 6,
         "detections": 147,
         "rightType": 147,
@@ -98,16 +98,16 @@
         "typed": 149,
         "partial": 0,
         "missed": 0,
-        "detections": 202,
+        "detections": 220,
         "rightType": 149,
-        "otherPersonal": 0,
-        "notPersonal": 53
+        "otherPersonal": 10,
+        "notPersonal": 61
       },
       "SECRET": {
-        "values": 153,
+        "values": 183,
         "redacted": 147,
         "typed": 147,
-        "partial": 0,
+        "partial": 30,
         "missed": 6,
         "detections": 147,
         "rightType": 147,
@@ -124,6 +124,81 @@
         "rightType": 0,
         "otherPersonal": 0,
         "notPersonal": 0
+      },
+      "PASSPORT": {
+        "values": 153,
+        "redacted": 0,
+        "typed": 0,
+        "partial": 0,
+        "missed": 153,
+        "detections": 0,
+        "rightType": 0,
+        "otherPersonal": 0,
+        "notPersonal": 0
+      },
+      "VOTER": {
+        "values": 153,
+        "redacted": 0,
+        "typed": 0,
+        "partial": 0,
+        "missed": 153,
+        "detections": 0,
+        "rightType": 0,
+        "otherPersonal": 0,
+        "notPersonal": 0
+      },
+      "DOB": {
+        "values": 153,
+        "redacted": 1,
+        "typed": 0,
+        "partial": 0,
+        "missed": 152,
+        "detections": 0,
+        "rightType": 0,
+        "otherPersonal": 0,
+        "notPersonal": 0
+      }
+    },
+    "shapes": {
+      "main": {
+        "values": 1683,
+        "redacted": 1485,
+        "partial": 0
+      },
+      "line-break": {
+        "values": 120,
+        "redacted": 11,
+        "partial": 7
+      },
+      "message-split": {
+        "values": 60,
+        "redacted": 0,
+        "partial": 2
+      },
+      "side-by-side": {
+        "values": 80,
+        "redacted": 68,
+        "partial": 4
+      },
+      "digit-beside": {
+        "values": 40,
+        "redacted": 13,
+        "partial": 0
+      },
+      "contained": {
+        "values": 70,
+        "redacted": 0,
+        "partial": 70
+      },
+      "joined-digits": {
+        "values": 30,
+        "redacted": 6,
+        "partial": 24
+      },
+      "short-id": {
+        "values": 459,
+        "redacted": 1,
+        "partial": 0
       }
     },
     "seed": 20260930
@@ -252,6 +327,39 @@
         "rightType": 0,
         "otherPersonal": 0,
         "notPersonal": 0
+      },
+      "PASSPORT": {
+        "values": 0,
+        "redacted": 0,
+        "typed": 0,
+        "partial": 0,
+        "missed": 0,
+        "detections": 0,
+        "rightType": 0,
+        "otherPersonal": 0,
+        "notPersonal": 0
+      },
+      "VOTER": {
+        "values": 0,
+        "redacted": 0,
+        "typed": 0,
+        "partial": 0,
+        "missed": 0,
+        "detections": 0,
+        "rightType": 0,
+        "otherPersonal": 0,
+        "notPersonal": 0
+      },
+      "DOB": {
+        "values": 0,
+        "redacted": 0,
+        "typed": 0,
+        "partial": 0,
+        "missed": 0,
+        "detections": 0,
+        "rightType": 0,
+        "otherPersonal": 0,
+        "notPersonal": 0
       }
     }
   },
@@ -308,6 +416,33 @@
       "changes": [
         "generated IP: over-redactions 0 -> 53",
         "held-out IP: over-redactions 0 -> 2"
+      ]
+    },
+    {
+      "date": "2026-10-01",
+      "note": "ADR-021 amendment (Phase 5c step 0): shape block and PASSPORT/VOTER/DOB labels added to the generated set; detectors unchanged",
+      "changes": [
+        "generated PAN: over-redactions 10 -> 11",
+        "generated IP: over-redactions 53 -> 61",
+        "generated: 500 cases / 600 messages -> 1091 / 1251",
+        "generated AADHAAR: 153 values -> 233",
+        "generated CARD: 153 values -> 227",
+        "generated PHONE: 153 values -> 293",
+        "generated EMAIL: 153 values -> 183",
+        "generated NUMBER: 153 values -> 189",
+        "generated UPI: 153 values -> 163",
+        "generated SECRET: 153 values -> 183",
+        "generated PASSPORT: 0 values -> 153",
+        "generated VOTER: 0 values -> 153",
+        "generated DOB: 0 values -> 153",
+        "generated shape main: 0 values -> 1683",
+        "generated shape line-break: 0 values -> 120",
+        "generated shape message-split: 0 values -> 60",
+        "generated shape side-by-side: 0 values -> 80",
+        "generated shape digit-beside: 0 values -> 40",
+        "generated shape contained: 0 values -> 70",
+        "generated shape joined-digits: 0 values -> 30",
+        "generated shape short-id: 0 values -> 459"
       ]
     }
   ]

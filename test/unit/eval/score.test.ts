@@ -222,6 +222,51 @@ describe('score: with the real detectors', () => {
   });
 });
 
+describe('score: by shape (the generated set’s shape block)', () => {
+  const tagged = (id: string, tags: string[], text = TEXT): LabelledCase => ({
+    id,
+    tags,
+    messages: [message(text, [piece(`${id}#1`, 'AADHAAR', 3, 11)])],
+  });
+  const PARTLY = 'aa WWWWWWWW bb';
+  const MISSED = 'aa XXXXXXXX bb';
+  const detector = scripted({
+    [TEXT]: [{ type: 'AADHAAR', start: 3, end: 11 }],
+    [PARTLY]: [{ type: 'NUMBER', start: 3, end: 6 }],
+  });
+  const cases = [
+    tagged('A', ['ticket', 'en']),
+    tagged('B', ['ticket', 'en', 'shape:line-break'], PARTLY),
+    tagged('C', ['chat', 'hi', 'shape:line-break'], MISSED),
+    tagged('D', ['ticket', 'en', 'shape:line-break']),
+  ];
+
+  it('is not tallied unless asked for', () => {
+    expect(score(cases, detector).shapes).toEqual({});
+  });
+
+  it('tallies each shape in the order it first appears; a case with no shape tag is "main"', () => {
+    expect(score(cases, detector, { byShape: true }).shapes).toEqual({
+      main: { values: 1, redacted: 1, partial: 0 },
+      'line-break': { values: 3, redacted: 1, partial: 1 },
+    });
+  });
+
+  it('counts a value in two messages once, and only tags that start with "shape:"', () => {
+    const split: LabelledCase = {
+      id: 'S',
+      tags: ['chat', 'shape-ish', 'shape:message-split'],
+      messages: [
+        message(TEXT, [piece('S#1', 'AADHAAR', 3, 11)]),
+        message(MISSED, [piece('S#1', 'AADHAAR', 3, 11)]),
+      ],
+    };
+    expect(score([split], detector, { byShape: true }).shapes).toEqual({
+      'message-split': { values: 1, redacted: 0, partial: 1 },
+    });
+  });
+});
+
 describe('scoreByTag', () => {
   it('scores the cases of each tag; a case with two tags counts under both', () => {
     const tagged = (id: string, tags: string[]): LabelledCase => ({

@@ -1,6 +1,7 @@
 // More synthetic values: the types whose detectors arrive in Phase 5 (IFSC,
-// UPI IDs, IP addresses, secrets), person names for Phase 6, and the
-// "typo" variants of checksummed values (right shape, failed check).
+// UPI IDs, IP addresses, secrets, passport and voter ID numbers, dates of
+// birth), person names for Phase 6, and the "typo" variants of checksummed
+// values (right shape, failed check).
 //
 // Same handling rule as values.ts (ADR-009): a generated UPI ID can coincide
 // with a real one and a generated key has the shape of a real key, so these
@@ -90,14 +91,19 @@ export const UPI_HANDLES = [
 const GIVEN = ['priya', 'rahul', 'ananya', 'arjun', 'meera', 'vikram', 'sara', 'imran', 'kavya'];
 const FAMILY = ['sharma', 'iyer', 'khan', 'das', 'reddy', 'singh', 'nair', 'gupta'];
 
-export type UpiKind = 'name' | 'mobile' | 'unknown';
+export type UpiKind = 'name' | 'mobile' | 'unknown' | 'mobile-name';
 
 /**
  * UPI ID. `name`: a name at a known handle; `mobile`: a 10-digit mobile at a
- * known handle; `unknown`: a name at a handle no list will have.
+ * known handle; `unknown`: a name at a handle no list will have;
+ * `mobile-name`: a mobile, a dot and a name at such a handle (a validated
+ * phone number inside a value that is not validated; ADR-003, Phase 5c).
  */
 export function upiId(rng: Rng, kind: UpiKind = 'name'): string {
   if (kind === 'mobile') return `${indianMobile(rng)}@${rng.pick(UPI_HANDLES)}`;
+  if (kind === 'mobile-name') {
+    return `${indianMobile(rng)}.${rng.pick(GIVEN)}@zz${chars(rng, LOWER, 4)}`;
+  }
   let local = rng.pick(GIVEN);
   if (rng.chance(0.6)) local += rng.pick(['.', '']) + rng.pick(FAMILY);
   if (rng.chance(0.5)) local += String(rng.int(1, 99));
@@ -206,4 +212,40 @@ const DEVANAGARI_NAMES = [
 export function personName(rng: Rng, script: 'latin' | 'devanagari' = 'latin'): string {
   if (script === 'devanagari') return rng.pick(DEVANAGARI_NAMES);
   return `${rng.pick(GIVEN_NAMES)} ${rng.pick(FAMILY_NAMES)}`;
+}
+
+/** Indian passport number: a letter, then 7 digits, the first not 0. */
+export function passportNumber(rng: Rng): string {
+  return chars(rng, UPPER, 1) + String(rng.int(1, 9)) + rng.digits(6);
+}
+
+/** Voter ID (EPIC) number: 3 letters, then 7 digits. */
+export function voterId(rng: Rng): string {
+  return chars(rng, UPPER, 3) + rng.digits(7);
+}
+
+const MONTH_NAMES = ['Jan', 'January', 'March', 'Aug', 'August', 'Oct', 'December'];
+
+/**
+ * A date of birth between 1950 and 2008, in one of the ways forms and
+ * messages write one: 07/03/1991, 07-03-1991, 7.3.1991, 1991-03-07 or
+ * 7 March 1991.
+ */
+export function dateOfBirth(rng: Rng): string {
+  const day = rng.int(1, 28);
+  const month = rng.int(1, 12);
+  const year = rng.int(1950, 2008);
+  const two = (n: number): string => String(n).padStart(2, '0');
+  switch (rng.int(1, 5)) {
+    case 1:
+      return `${two(day)}/${two(month)}/${year}`;
+    case 2:
+      return `${two(day)}-${two(month)}-${year}`;
+    case 3:
+      return `${day}.${month}.${year}`;
+    case 4:
+      return `${year}-${two(month)}-${two(day)}`;
+    default:
+      return `${day} ${rng.pick(MONTH_NAMES)} ${year}`;
+  }
 }

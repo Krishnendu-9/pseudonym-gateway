@@ -2,8 +2,8 @@
 // the README shows between its eval markers. Counts first, percentages cut
 // (never rounded up) to one decimal beside them.
 
-import type { StoredDataset } from './baseline.js';
-import { percent, prf, type DatasetScore, type TypeScore } from './score.js';
+import { rowOf, type StoredDataset } from './baseline.js';
+import { percent, prf, type DatasetScore, type ShapeScore, type TypeScore } from './score.js';
 import { PERSONAL_TYPES } from './types.js';
 
 const ratio = (part: number, whole: number): string =>
@@ -33,8 +33,8 @@ const hasData = (row: TypeScore): boolean => row.values > 0 || row.detections > 
  * type); precision, recall and F1 are for the right type.
  */
 export function scoreTable(score: StoredDataset): string {
-  const rows = PERSONAL_TYPES.filter((type) => hasData(score.types[type])).map((type) => {
-    const row = score.types[type];
+  const rows = PERSONAL_TYPES.filter((type) => hasData(rowOf(score, type))).map((type) => {
+    const row = rowOf(score, type);
     const { precision, f1 } = prf(row);
     return [
       type,
@@ -59,6 +59,22 @@ export function scoreTable(score: StoredDataset): string {
       'Over-redactions',
     ],
     rows,
+  );
+}
+
+/**
+ * One row per way of writing values (the generated set's shape block,
+ * Phase 5c). Each value also counts in its type's row of scoreTable.
+ */
+export function shapeTable(shapes: Readonly<Record<string, ShapeScore>>): string {
+  return table(
+    ['Written as', 'Values', 'Redacted (any type)', 'Partly redacted'],
+    Object.entries(shapes).map(([shape, row]) => [
+      shape,
+      String(row.values),
+      ratio(row.redacted, row.values),
+      String(row.partial),
+    ]),
   );
 }
 
@@ -115,7 +131,7 @@ export const README_START = '<!-- eval:start -->';
 export const README_END = '<!-- eval:end -->';
 
 const size = (score: StoredDataset): string => {
-  const values = PERSONAL_TYPES.reduce((n, type) => n + score.types[type].values, 0);
+  const values = PERSONAL_TYPES.reduce((n, type) => n + rowOf(score, type).values, 0);
   return `${score.messages} messages in ${score.cases} cases, ${values} labelled personal values`;
 };
 
@@ -131,6 +147,15 @@ export function readmeBlock(input: ReportInput): string {
     scoreTable(input.generated),
     '',
   ];
+  const shapes = input.generated.shapes ?? {};
+  if (Object.keys(shapes).length > 0) {
+    lines.push(
+      'The same values by the way they are written: the main cases (`main`), then one row per way that is hard on purpose (a line break inside a value, a value split across two messages, two values side by side, digits beside a mobile, a checked value inside an address or key, digits joined by a bracket, passport and voter ID numbers and dates of birth). Each value also counts in the table above.',
+      '',
+      shapeTable(shapes),
+      '',
+    );
+  }
   if (input.heldOut) {
     lines.push(
       `**Held-out adversarial dataset** (drafted with AI assistance in a separate session that did not write the detectors, then reviewed by the author; never run against the detectors before it was committed, and never used for tuning; ${size(input.heldOut)}).`,

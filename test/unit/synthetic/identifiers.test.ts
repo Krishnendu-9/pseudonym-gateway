@@ -11,15 +11,18 @@ import { isValidPan } from '../../../src/detection/pan.js';
 import {
   aadhaarWithTypo,
   cardWithTypo,
+  dateOfBirth,
   ifsc,
   IFSC_BANK_CODES,
   ipAddress,
   panWithTypo,
+  passportNumber,
   personName,
   secret,
   SECRET_KINDS,
   UPI_HANDLES,
   upiId,
+  voterId,
   type SecretKind,
 } from '../../../src/synthetic/identifiers.js';
 import { createRng, type Rng } from '../../../src/synthetic/rng.js';
@@ -107,6 +110,44 @@ describe('upiId', () => {
       const id = upiId(rng, 'unknown');
       return /^[a-z.0-9]+@zz[a-z]{4}$/.test(id) && !known(id);
     });
+  });
+
+  it('mobile-name: a mobile, a dot and a name, at a handle that is not listed', () => {
+    holds((rng) => {
+      const id = upiId(rng, 'mobile-name');
+      return /^[6-9][0-9]{9}\.[a-z]+@zz[a-z]{4}$/.test(id) && !known(id);
+    });
+  });
+});
+
+describe('short personal identifiers', () => {
+  it('passportNumber: a capital letter, then 7 digits not starting with 0', () => {
+    holds((rng) => /^[A-Z][1-9][0-9]{6}$/.test(passportNumber(rng)));
+  });
+
+  it('voterId: 3 capital letters, then 7 digits', () => {
+    holds((rng) => /^[A-Z]{3}[0-9]{7}$/.test(voterId(rng)));
+  });
+
+  it('dateOfBirth: a day 1-28 of a year 1950-2008, in each of its five forms', () => {
+    const FORMS: readonly [string, RegExp, readonly [number, number, number]][] = [
+      ['slash', /^(\d{2})\/(\d{2})\/(\d{4})$/, [1, 2, 3]],
+      ['hyphen', /^(\d{2})-(\d{2})-(\d{4})$/, [1, 2, 3]],
+      ['dot', /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/, [1, 2, 3]],
+      ['iso', /^(\d{4})-(\d{2})-(\d{2})$/, [3, 2, 1]],
+      ['named', /^(\d{1,2}) [A-Z][a-z]+ (\d{4})$/, [1, 0, 2]],
+    ];
+    const seen = new Set<string>();
+    holds((rng) => {
+      const text = dateOfBirth(rng);
+      const form = FORMS.find(([, pattern]) => pattern.test(text));
+      if (!form) return false;
+      seen.add(form[0]);
+      const m = form[1].exec(text)!;
+      const [d, mo, y] = form[2].map((group) => (group === 0 ? 1 : Number(m[group])));
+      return d! >= 1 && d! <= 28 && mo! >= 1 && mo! <= 12 && y! >= 1950 && y! <= 2008;
+    });
+    expect([...seen].sort()).toEqual(['dot', 'hyphen', 'iso', 'named', 'slash']);
   });
 });
 
@@ -196,6 +237,10 @@ it('is deterministic: the same seed gives the same values', () => {
         ipAddress(r, 'v6'),
         secret(r, 'jwt'),
         personName(r),
+        passportNumber(r),
+        voterId(r),
+        dateOfBirth(r),
+        upiId(r, 'mobile-name'),
       ].join('|');
     };
     return make() === make();

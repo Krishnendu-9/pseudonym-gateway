@@ -19,7 +19,13 @@
 
 import { detect } from '../src/detection/detect.js';
 import type { Span } from '../src/detection/normalise.js';
-import { PERSONAL_TYPES, type LabelledCase, type PersonalType, type TruthPiece } from './types.js';
+import {
+  PERSONAL_TYPES,
+  SHAPE_TAG,
+  type LabelledCase,
+  type PersonalType,
+  type TruthPiece,
+} from './types.js';
 
 /** What the scorer needs from a detector: typed spans over the text. */
 export type Detector = (text: string) => readonly (Span & { readonly type: string })[];
@@ -45,10 +51,25 @@ export interface TypeScore {
   notPersonal: number;
 }
 
+/** The shape of the cases that carry no shape tag. */
+export const MAIN_SHAPE = 'main';
+
+/** The privacy side of a TypeScore, for the values written one way (a shape). */
+export interface ShapeScore {
+  values: number;
+  redacted: number;
+  partial: number;
+}
+
 export interface DatasetScore {
   readonly cases: number;
   readonly messages: number;
   readonly types: Readonly<Record<PersonalType, TypeScore>>;
+  /**
+   * By shape (`main`, `line-break`, `short-id`…), in the order the shapes
+   * first appear; only when asked for, and only the generated set asks.
+   */
+  readonly shapes: Readonly<Record<string, ShapeScore>>;
   /**
    * Over-redactions by what was redacted, then by the detection's type. The
    * first key is `plain text` or the label of a NOT slot (`NOT.order`).
@@ -73,13 +94,21 @@ const isPersonalType = (type: string): type is PersonalType =>
 
 const contains = (span: Span, offset: number): boolean => offset >= span.start && offset < span.end;
 
-/** Scores `cases` against a detector (Pseudonym's own `detect` by default). */
-export function score(cases: readonly LabelledCase[], detector: Detector = detect): DatasetScore {
+/**
+ * Scores `cases` against a detector (Pseudonym's own `detect` by default).
+ * With `byShape`, also tallies the values of cases tagged `shape:<name>`.
+ */
+export function score(
+  cases: readonly LabelledCase[],
+  detector: Detector = detect,
+  { byShape = false }: { readonly byShape?: boolean } = {},
+): DatasetScore {
   const types = Object.fromEntries(PERSONAL_TYPES.map((t) => [t, emptyScore()])) as Record<
     PersonalType,
     TypeScore
   >;
   const overRedactions: Record<string, Record<string, number>> = {};
+  const shapes: Record<string, ShapeScore> = {};
   let messages = 0;
 
   for (const labelled of cases) {
@@ -128,18 +157,31 @@ export function score(cases: readonly LabelledCase[], detector: Detector = detec
       }
     }
 
+    // A case with no shape tag is written the usual way: `main`.
+    const tagged = labelled.tags
+      .filter((tag) => tag.startsWith(SHAPE_TAG))
+      .map((tag) => tag.slice(SHAPE_TAG.length));
+    const caseShapes = !byShape ? [] : tagged.length > 0 ? tagged : [MAIN_SHAPE];
     for (const value of values.values()) {
       const row = types[value.type];
       row.values++;
-      if (value.covered === value.required) {
+      const redacted = value.covered === value.required;
+      const partial = !redacted && value.covered > 0;
+      if (redacted) {
         row.redacted++;
         if (value.typed) row.typed++;
-      } else if (value.covered > 0) row.partial++;
+      } else if (partial) row.partial++;
       else row.missed++;
+      for (const shape of caseShapes) {
+        const tally = (shapes[shape] ??= { values: 0, redacted: 0, partial: 0 });
+        tally.values++;
+        if (redacted) tally.redacted++;
+        if (partial) tally.partial++;
+      }
     }
   }
 
-  return { cases: cases.length, messages, types, overRedactions };
+  return { cases: cases.length, messages, types, overRedactions, shapes };
 }
 
 /** The score of the cases carrying each tag (a case with two tags counts under both). */

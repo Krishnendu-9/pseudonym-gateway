@@ -11,11 +11,22 @@
 //   {{EMAIL=priya@example.com}}       a literal the author typed (allowed
 //                                     only where it cannot be a real value)
 //   {{NOT:ORD-######}}  {{NOT=10.0.0.1}}   looks like a value, is not personal
+//   {{EMAIL.pan}}  {{SECRET.ifsc-tail}}  {{UPI.mobile-name}}   a checked value
+//                                     inside a longer one (ADR-003, Phase 5c)
 //
 // This module only parses. lint.ts decides what is allowed, render.ts turns
 // slots into text and labels. The full rules are in HELD-OUT-FORMAT.md.
 
 import { SECRET_KINDS } from '../src/synthetic/identifiers.js';
+
+/**
+ * Values with another, checked value at their start or end: an email
+ * address or UPI ID starting with a PAN, IFSC or mobile, a key ending in an
+ * IFSC or IP address or a mobile (Phase 5c, the ADR-003 containing-span
+ * question).
+ */
+export const EMAIL_CONTAINING = ['pan', 'ifsc', 'mobile'] as const;
+export const SECRET_CONTAINING = ['ifsc-tail', 'ip-tail', 'mobile-tail'] as const;
 import { PERSONAL_TYPES, type TruthType } from './types.js';
 
 export interface Slot {
@@ -133,7 +144,7 @@ export const TYPE_SPECS: Readonly<Record<TruthType, TypeSpec>> = {
     named: true,
   },
   NUMBER: { variants: [], generated: { mask: 'required' }, named: true },
-  EMAIL: { variants: [], generated: { mask: 'never' }, literal: true },
+  EMAIL: { variants: EMAIL_CONTAINING, generated: { mask: 'never' }, literal: true },
   IFSC: {
     length: () => 11,
     variants: ['unknown'],
@@ -141,10 +152,17 @@ export const TYPE_SPECS: Readonly<Record<TruthType, TypeSpec>> = {
     literal: true,
     named: true,
   },
-  UPI: { variants: ['mobile', 'unknown'], generated: { mask: 'never' } },
+  UPI: { variants: ['mobile', 'unknown', 'mobile-name'], generated: { mask: 'never' } },
   IP: { variants: [], literal: true },
-  SECRET: { variants: SECRET_KINDS, variantRequired: true, generated: { mask: 'never' } },
+  SECRET: {
+    variants: [...SECRET_KINDS, ...SECRET_CONTAINING],
+    variantRequired: true,
+    generated: { mask: 'never' },
+  },
   PERSON: { variants: [], literal: true },
+  PASSPORT: { length: () => 8, variants: [], generated: { mask: 'optional' }, named: true },
+  VOTER: { length: () => 10, variants: [], generated: { mask: 'optional' }, named: true },
+  DOB: { variants: [], generated: { mask: 'never' } },
   NOT: { variants: 'any', generated: { mask: 'required' }, literal: true },
 };
 

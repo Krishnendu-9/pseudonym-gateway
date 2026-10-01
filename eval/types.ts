@@ -7,9 +7,10 @@
 // is (ADR-009): scoring and reports work on offsets and counts only.
 
 /**
- * What a labelled value is. The first six are detected today; IFSC, UPI, IP
- * and SECRET get detectors in Phase 5b and PERSON in Phase 6, and are
- * labelled from the start so that "before" is measured too.
+ * What a labelled value is. The first ten are detected today; PERSON gets a
+ * detector in Phase 6, and PASSPORT, VOTER (a voter ID, EPIC) and DOB (a
+ * date of birth) in Phase 5c. Each is labelled before its detector exists,
+ * so that "before" is measured too.
  */
 export const PERSONAL_TYPES = [
   'AADHAAR',
@@ -23,9 +24,19 @@ export const PERSONAL_TYPES = [
   'IP',
   'SECRET',
   'PERSON',
+  'PASSPORT',
+  'VOTER',
+  'DOB',
 ] as const;
 
 export type PersonalType = (typeof PERSONAL_TYPES)[number];
+
+/**
+ * Tags of the generated set's shape block (Phase 5c) start with this:
+ * `shape:line-break`. Only the generated set is scored by shape; a held-out
+ * case's tags are its author's text and are never reported.
+ */
+export const SHAPE_TAG = 'shape:';
 
 /** NOT marks text that looks like a value but is not personal (an order number, a version). */
 export type TruthType = PersonalType | 'NOT';

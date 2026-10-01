@@ -19,7 +19,13 @@ import {
 import { createRng, type Rng } from '../src/synthetic/rng.js';
 import type { RawCase, RawMessage } from './format.js';
 import { renderCase } from './render.js';
-import { PERSONAL_TYPES, type LabelledCase, type PersonalType, type Role } from './types.js';
+import {
+  PERSONAL_TYPES,
+  SHAPE_TAG,
+  type LabelledCase,
+  type PersonalType,
+  type Role,
+} from './types.js';
 
 export const GENERATED_SEED = 20_260_930;
 
@@ -164,6 +170,20 @@ const SLOT: Readonly<Record<PersonalType, (rng: Rng, tongue: Tongue) => string>>
   SECRET: (rng) => `{{SECRET.${rng.pick(SECRET_KINDS)}}}`,
   PERSON: (rng, tongue) =>
     `{{PERSON=${personName(rng, tongue === 'hi' && rng.chance(0.7) ? 'devanagari' : 'latin')}}}`,
+  // Phase 5c: only in the shape block below.
+  PASSPORT: (rng) =>
+    weighted(rng, [
+      [17, '{{PASSPORT}}'],
+      [2, '{{PASSPORT|lower}}'],
+      [1, '{{PASSPORT|invisible}}'],
+    ]),
+  VOTER: (rng) =>
+    weighted(rng, [
+      [17, '{{VOTER}}'],
+      [2, '{{VOTER|lower}}'],
+      [1, '{{VOTER|invisible}}'],
+    ]),
+  DOB: () => '{{DOB}}',
 };
 
 // ---------------------------------------------------------------------------
@@ -293,6 +313,36 @@ const SENTENCES: Readonly<Record<Exclude<PersonalType, 'SECRET'>, ByTongue>> = {
     hinglish: [(s) => `Mera naam ${s} hai.`, (s) => `Main ${s} bol raha hoon.`],
     hi: [(s) => `मेरा नाम ${s} है।`, (s) => `मैं ${s} बोल रही हूँ।`],
   },
+  // Phase 5c. The last sentences of each language name no type.
+  PASSPORT: {
+    en: [
+      (s) => `My passport number is ${s}.`,
+      (s) => `Passport no: ${s}`,
+      (s) => `Please verify ${s} for my visa.`,
+      (s) => `Document ${s} expired last month.`,
+    ],
+    hinglish: [(s) => `Mera passport ${s} hai.`, (s) => `${s} wala document upload kiya.`],
+    hi: [(s) => `मेरा पासपोर्ट नंबर ${s} है।`, (s) => `दस्तावेज़ ${s} की अवधि ख़त्म हो गई।`],
+  },
+  VOTER: {
+    en: [
+      (s) => `Voter ID: ${s}`,
+      (s) => `My EPIC number is ${s}.`,
+      (s) => `ID card ${s} is attached.`,
+    ],
+    hinglish: [(s) => `Mera voter card ${s} hai.`, (s) => `${s} wala card upload kiya.`],
+    hi: [(s) => `मतदाता पहचान पत्र ${s} है।`, (s) => `पहचान पत्र ${s} संलग्न है।`],
+  },
+  DOB: {
+    en: [
+      (s) => `DOB: ${s}`,
+      (s) => `My date of birth is ${s}.`,
+      (s) => `I was born on ${s}.`,
+      (s) => `The age proof says ${s}.`,
+    ],
+    hinglish: [(s) => `Meri janm tithi ${s} hai.`, (s) => `Age proof mein ${s} likha hai.`],
+    hi: [(s) => `जन्म तिथि: ${s}`, (s) => `आयु प्रमाण में ${s} लिखा है।`],
+  },
 };
 
 // A password reads differently from a key or token.
@@ -340,6 +390,9 @@ const FIELD: Readonly<Record<PersonalType, Readonly<Record<Tongue, string>>>> = 
   IP: { en: 'Last login IP', hinglish: 'Login IP', hi: 'IP पता' },
   SECRET: { en: 'API key', hinglish: 'Password', hi: 'पासवर्ड' },
   PERSON: { en: 'Name', hinglish: 'Naam', hi: 'नाम' },
+  PASSPORT: { en: 'Passport no', hinglish: 'Passport', hi: 'पासपोर्ट' },
+  VOTER: { en: 'Voter ID', hinglish: 'Voter card', hi: 'मतदाता पहचान पत्र' },
+  DOB: { en: 'DOB', hinglish: 'Janm tithi', hi: 'जन्म तिथि' },
 };
 
 // ---------------------------------------------------------------------------
@@ -444,9 +497,11 @@ const PLAIN: Readonly<Record<Tongue, readonly ((rng: Rng) => string)[]>> = {
   ],
 };
 
-function otherSentence(tongue: Tongue, rng: Rng): string {
+type Lookalike = (rng: Rng) => string;
+
+function otherSentence(tongue: Tongue, rng: Rng, lookalikes: readonly Lookalike[]): string {
   return rng.chance(0.5)
-    ? rng.pick(NAMED[tongue])(rng.pick(LOOKALIKES)(rng))
+    ? rng.pick(NAMED[tongue])(rng.pick(lookalikes)(rng))
     : rng.pick(PLAIN[tongue])(rng);
 }
 
@@ -476,19 +531,29 @@ interface Plan {
   readonly others: number;
 }
 
-function sentences(plan: Plan, language: Language, rng: Rng): string[] {
+function sentences(
+  plan: Plan,
+  language: Language,
+  rng: Rng,
+  lookalikes: readonly Lookalike[],
+): string[] {
   const tongue = (): Tongue =>
     language === 'mixed' ? rng.pick(['en', 'hinglish', 'hi'] as const) : language;
   return shuffle(
     [
       ...plan.types.map((type) => valueSentence(type, tongue(), rng)),
-      ...Array.from({ length: plan.others }, () => otherSentence(tongue(), rng)),
+      ...Array.from({ length: plan.others }, () => otherSentence(tongue(), rng, lookalikes)),
     ],
     rng,
   );
 }
 
-function record(plan: Plan, language: Language, rng: Rng): string {
+function record(
+  plan: Plan,
+  language: Language,
+  rng: Rng,
+  lookalikes: readonly Lookalike[],
+): string {
   const tongue: Tongue =
     language === 'mixed' ? rng.pick(['en', 'hinglish', 'hi'] as const) : language;
   const fields = plan.types.map((type) => ({
@@ -497,7 +562,7 @@ function record(plan: Plan, language: Language, rng: Rng): string {
   }));
   const extra = Array.from({ length: plan.others }, () => ({
     name: rng.pick(['Ref', 'Order', 'Txn', 'Ticket']),
-    value: rng.pick(LOOKALIKES)(rng),
+    value: rng.pick(lookalikes)(rng),
   }));
   const all = shuffle([...fields, ...extra], rng);
   return weighted(rng, [
@@ -508,9 +573,15 @@ function record(plan: Plan, language: Language, rng: Rng): string {
   ]);
 }
 
-function messageText(kind: Kind, plan: Plan, language: Language, rng: Rng): string {
-  if (kind === 'record') return record(plan, language, rng);
-  const body = sentences(plan, language, rng);
+function messageText(
+  kind: Kind,
+  plan: Plan,
+  language: Language,
+  rng: Rng,
+  lookalikes: readonly Lookalike[] = LOOKALIKES,
+): string {
+  if (kind === 'record') return record(plan, language, rng, lookalikes);
+  const body = sentences(plan, language, rng, lookalikes);
   const frame: Tongue =
     language === 'mixed' ? rng.pick(['en', 'hinglish', 'hi'] as const) : language;
   switch (kind) {
@@ -550,7 +621,7 @@ export function generateRawCases(seed = GENERATED_SEED): RawCase[] {
     rng,
   ).slice(Math.round(messageCount * SHARE_WITHOUT_VALUES));
   const deck = shuffle(
-    PERSONAL_TYPES.flatMap((type) => Array.from({ length: VALUES_PER_TYPE }, () => type)),
+    MAIN_TYPES.flatMap((type) => Array.from({ length: VALUES_PER_TYPE }, () => type)),
     rng,
   );
   const sizes = new Map(withValues.map((index) => [index, 0]));
@@ -571,23 +642,330 @@ export function generateRawCases(seed = GENERATED_SEED): RawCase[] {
     return { types, others: size === 0 ? rng.int(1, 3) : rng.int(0, 2) };
   };
 
-  return kinds.map((kind, i) => {
+  const main = kinds.map((kind, i) => {
     const language = languages[i]!;
     const roles: Role[] = kind === 'chat' ? ['user', 'assistant', 'user'] : ['user'];
     const messages: RawMessage[] = roles.map((role) => {
       const text = messageText(kind, planFor(), language, rng);
       return { role, text, lines: text.split('\n').map(() => 0) };
     });
-    return {
-      id: `G${String(i + 1).padStart(4, '0')}`,
-      tags: [kind, language],
-      line: 0,
-      messages,
-    };
+    return rawCase(i + 1, [kind, language], messages);
   });
+  return [...main, ...shapeCases(seed, main.length + 1)];
 }
 
-/** The generated dataset, rendered: the same 600 messages for the same seed. */
+function rawCase(
+  number: number,
+  tags: readonly string[],
+  messages: readonly RawMessage[],
+): RawCase {
+  return { id: `G${String(number).padStart(4, '0')}`, tags, line: 0, messages };
+}
+
+const message = (text: string, role: Role = 'user'): RawMessage => ({
+  role,
+  text,
+  lines: text.split('\n').map(() => 0),
+});
+
+// ---------------------------------------------------------------------------
+// The shape block (Phase 5c): ways of writing values that the cases above
+// never use, each case tagged `shape:<name>`, so that their recall is
+// published on its own (report.ts) as well as in the per-type table. It has
+// its own random stream, so the 500 cases above render exactly as before.
+
+/** Types planted only in the shape block. */
+export const SHORT_ID_TYPES = ['PASSPORT', 'VOTER', 'DOB'] as const;
+/** Types planted in the main cases, VALUES_PER_TYPE times each. */
+export const MAIN_TYPES = PERSONAL_TYPES.filter(
+  (type) => !(SHORT_ID_TYPES as readonly string[]).includes(type),
+);
+
+export const SHAPES = [
+  'line-break',
+  'message-split',
+  'side-by-side',
+  'digit-beside',
+  'contained',
+  'joined-digits',
+  'short-id',
+] as const;
+export type Shape = (typeof SHAPES)[number];
+
+/** Personal values planted per shape (short-id: VALUES_PER_TYPE of each short ID type). */
+export const SHAPE_VALUES: Readonly<Record<Shape, number>> = {
+  'line-break': 120,
+  'message-split': 60,
+  'side-by-side': 80,
+  'digit-beside': 40,
+  contained: 70,
+  'joined-digits': 30,
+  'short-id': 3 * VALUES_PER_TYPE,
+};
+
+const SHAPE_SALT = 0x5c5c5c5c;
+const BROKEN_TYPES = ['AADHAAR', 'CARD', 'PHONE'] as const;
+type BrokenType = (typeof BROKEN_TYPES)[number];
+
+// One line break inside the value: in place of a space, inside a group,
+// after a separator, with CRLF; some with a typo, so only a keyword helps.
+const LINE_BROKEN: Readonly<Record<BrokenType, readonly string[]>> = {
+  AADHAAR: [
+    '{{AADHAAR:#### ####\n####}}',
+    '{{AADHAAR:####\n#### ####}}',
+    '{{AADHAAR:######\n######}}',
+    '{{AADHAAR:#### ####\r\n####}}',
+    '{{AADHAAR!:#### ####\n####}}',
+  ],
+  CARD: [
+    '{{CARD:#### ####\n#### ####}}',
+    '{{CARD:#### #### ####\n####}}',
+    '{{CARD:########\n########}}',
+    '{{CARD:####-####-\n####-####}}',
+    '{{CARD.amex:#### ######\n#####}}',
+    '{{CARD!:#### ####\n#### ####}}',
+  ],
+  PHONE: [
+    '{{PHONE:+91 #####\n#####}}',
+    '{{PHONE:#####\n#####}}',
+    '{{PHONE:+91\n##########}}',
+    '{{PHONE:##### \n#####}}',
+    '{{PHONE:#####\r\n#####}}',
+  ],
+};
+
+// A value sent in two messages: the masks of its two pieces.
+const SPLIT: Readonly<Record<BrokenType, readonly (readonly [string, string])[]>> = {
+  AADHAAR: [
+    ['#### ####', '####'],
+    ['####', '#### ####'],
+  ],
+  CARD: [
+    ['#### ####', '#### ####'],
+    ['#### #### ####', '####'],
+  ],
+  PHONE: [
+    ['#####', '#####'],
+    ['+91 #####', '#####'],
+  ],
+};
+const SENT_EARLY: Readonly<Record<Tongue, string>> = {
+  en: '(sorry, it got sent too early)',
+  hinglish: '(galti se send ho gaya)',
+  hi: '(गलती से भेज दिया)',
+};
+
+// Two values with only a separator between them.
+const PAIRS: readonly (readonly [string, string])[] = [
+  ['{{PHONE:##### #####}}', '{{PHONE:##### #####}}'],
+  ['{{PHONE}}', '{{PHONE}}'],
+  ['{{AADHAAR:#### #### ####}}', '{{AADHAAR:#### #### ####}}'],
+  ['{{CARD:#### #### #### ####}}', '{{CARD:#### #### #### ####}}'],
+  ['{{AADHAAR:#### #### ####}}', '{{PHONE:##### #####}}'],
+  ['{{PHONE:##### #####}}', '{{NUMBER:############}}'],
+];
+const PAIR_SEPARATORS = [' ', ' - ', '. ', '-'] as const;
+const PAIR_FRAMES: ByTongue = {
+  en: [
+    (p) => `Numbers on file: ${p}.`,
+    (p) => `Please update ${p} in my profile.`,
+    (p) => `Mobile numbers: ${p}`,
+  ],
+  hinglish: [(p) => `${p} dono number band hain.`, (p) => `Mere number ${p} hain.`],
+  hi: [(p) => `मेरे नंबर ${p} हैं।`],
+};
+
+// A spaced mobile with a digit group or a digit-led token beside it (bug-log
+// 32 and 34); the last of each language works today and guards against a
+// regression.
+type Beside = (mobile: string, rng: Rng) => string;
+const DIGIT_BESIDE: Readonly<Record<Tongue, readonly Beside[]>> = {
+  en: [
+    (m, rng) => `Room ${rng.int(1, 9)} ${m} is my number.`,
+    (m) => `Contact ${m} {{NOT.pincode:4#####}} Pune.`,
+    (m) => `Helpline ${m} 24x7.`,
+    (m, rng) => `Call ${m} after ${rng.int(2, 9)} pm.`,
+  ],
+  hinglish: [
+    (m, rng) => `Flat ${rng.int(1, 9)} ${m} pe call karo.`,
+    (m) => `Address Kothrud ${m} {{NOT.pincode:4#####}}`,
+    (m) => `Helpline ${m} 24x7 chalu hai.`,
+    (m, rng) => `${m} ${rng.int(1, 9)} baje ke baad call karo.`,
+  ],
+  hi: [
+    (m, rng) => `कमरा ${rng.int(1, 9)} ${m} मेरा नंबर है।`,
+    (m) => `हेल्पलाइन ${m} 24x7 चालू है।`,
+    (m, rng) => `${m} पर ${rng.int(1, 9)} बजे के बाद फ़ोन करें।`,
+  ],
+};
+
+// A checked value inside a longer one, one frame per language (ADR-003).
+const CONTAINED: readonly (readonly [string, Readonly<Record<Tongue, Sentence>>])[] = [
+  [
+    '{{EMAIL.pan}}',
+    {
+      en: (s) => `Email: ${s}`,
+      hinglish: (s) => `Mera email ${s} hai.`,
+      hi: (s) => `मेरा ईमेल ${s} है।`,
+    },
+  ],
+  [
+    '{{EMAIL.ifsc}}',
+    {
+      en: (s) => `Email: ${s}`,
+      hinglish: (s) => `Mera email ${s} hai.`,
+      hi: (s) => `मेरा ईमेल ${s} है।`,
+    },
+  ],
+  [
+    '{{EMAIL.mobile}}',
+    {
+      en: (s) => `Email: ${s}`,
+      hinglish: (s) => `Mera email ${s} hai.`,
+      hi: (s) => `मेरा ईमेल ${s} है।`,
+    },
+  ],
+  [
+    '{{SECRET.ifsc-tail}}',
+    {
+      en: (s) => `api_key=${s}`,
+      hinglish: (s) => `API key: ${s}`,
+      hi: (s) => `मेरी API key ${s} है।`,
+    },
+  ],
+  [
+    '{{SECRET.ip-tail}}',
+    {
+      en: (s) => `api_key=${s}`,
+      hinglish: (s) => `API key: ${s}`,
+      hi: (s) => `मेरी API key ${s} है।`,
+    },
+  ],
+  [
+    '{{SECRET.mobile-tail}}',
+    {
+      en: (s) => `token: ${s}`,
+      hinglish: (s) => `Token ${s} kaam nahi kar raha.`,
+      hi: (s) => `टोकन ${s} काम नहीं कर रहा।`,
+    },
+  ],
+  [
+    '{{UPI.mobile-name}}',
+    {
+      en: (s) => `UPI: ${s}`,
+      hinglish: (s) => `PhonePe par ${s} pe bhej dena.`,
+      hi: (s) => `मेरा UPI आईडी ${s} है।`,
+    },
+  ],
+];
+
+// Digits joined to a number by a bracket or "+", too few to be a number on
+// their own (Phase 5b probe P9). Labelled as one number.
+const JOINED = [
+  '{{NUMBER:##########(#####}}',
+  '{{NUMBER:# ########(#####}}',
+  '{{NUMBER:##########+###}}',
+];
+const JOINED_FRAMES: ByTongue = {
+  en: [(s) => `Account ${s} is pending.`, (s) => `mobile ${s}`],
+  hinglish: [(s) => `A/c no ${s} band hai.`],
+  hi: [(s) => `खाता ${s} बंद है।`],
+};
+
+// Codes and dates shaped like the short IDs, that are not personal.
+const SHORT_ID_LOOKALIKES: readonly Lookalike[] = [
+  () => '{{NOT.invoice-code:INV#######}}',
+  (rng) => `{{NOT.order-code:${rng.pick(['ORD', 'TXN', 'REF'])}#######}}`,
+  () => '{{NOT.model-code:?#######}}',
+  () => '{{NOT.ticket-code:T#######}}',
+  () => '{{NOT.event-date:1#/0#/19##}}',
+];
+
+const pickTongue = (rng: Rng): Tongue =>
+  weighted<Tongue>(rng, [
+    [5, 'en'],
+    [3, 'hinglish'],
+    [2, 'hi'],
+  ]);
+
+function shapeCases(seed: number, firstNumber: number): RawCase[] {
+  const rng = createRng((seed ^ SHAPE_SALT) >>> 0);
+  const out: RawCase[] = [];
+  const add = (kind: Kind, tongue: Tongue, shape: Shape, messages: readonly RawMessage[]): void => {
+    out.push(rawCase(firstNumber + out.length, [kind, tongue, SHAPE_TAG + shape], messages));
+  };
+  const ticket = (tongue: Tongue, sentence: string): string => {
+    const body = rng.chance(0.5) ? [sentence, otherSentence(tongue, rng, LOOKALIKES)] : [sentence];
+    return `Subject: ${rng.pick(SUBJECTS[tongue])}\n\n${shuffle(body, rng).join(' ')}`;
+  };
+
+  for (let i = 0; i < SHAPE_VALUES['line-break']; i++) {
+    const type = BROKEN_TYPES[i % BROKEN_TYPES.length]!;
+    const tongue = pickTongue(rng);
+    const sentence = rng.pick(SENTENCES[type][tongue])(rng.pick(LINE_BROKEN[type]));
+    add('ticket', tongue, 'line-break', [message(ticket(tongue, sentence))]);
+  }
+  for (let i = 0; i < SHAPE_VALUES['message-split']; i++) {
+    const type = BROKEN_TYPES[i % BROKEN_TYPES.length]!;
+    const tongue = pickTongue(rng);
+    const [first, rest] = rng.pick(SPLIT[type]);
+    add('chat', tongue, 'message-split', [
+      message(`${FIELD[type][tongue]}: {{${type}@v:${first}}}`),
+      message(`{{@v:${rest}}} ${SENT_EARLY[tongue]}`),
+    ]);
+  }
+  for (let i = 0; i < SHAPE_VALUES['side-by-side'] / 2; i++) {
+    const tongue = pickTongue(rng);
+    const [a, b] = PAIRS[i % PAIRS.length]!;
+    const pair = `${a}${rng.pick(PAIR_SEPARATORS)}${b}`;
+    add('ticket', tongue, 'side-by-side', [
+      message(ticket(tongue, rng.pick(PAIR_FRAMES[tongue])(pair))),
+    ]);
+  }
+  for (let i = 0; i < SHAPE_VALUES['digit-beside']; i++) {
+    const tongue = pickTongue(rng);
+    const mobile = rng.chance(0.8) ? '{{PHONE:##### #####}}' : '{{PHONE:+91 ##### #####}}';
+    add('ticket', tongue, 'digit-beside', [
+      message(ticket(tongue, rng.pick(DIGIT_BESIDE[tongue])(mobile, rng))),
+    ]);
+  }
+  for (let i = 0; i < SHAPE_VALUES.contained; i++) {
+    const tongue = pickTongue(rng);
+    const [slot, frames] = CONTAINED[i % CONTAINED.length]!;
+    add('ticket', tongue, 'contained', [message(ticket(tongue, frames[tongue](slot)))]);
+  }
+  for (let i = 0; i < SHAPE_VALUES['joined-digits']; i++) {
+    const tongue = pickTongue(rng);
+    const slot = JOINED[i % JOINED.length]!;
+    add('ticket', tongue, 'joined-digits', [
+      message(ticket(tongue, rng.pick(JOINED_FRAMES[tongue])(slot))),
+    ]);
+  }
+
+  // Short IDs: every one of them VALUES_PER_TYPE times, one to three to a
+  // message, among lookalikes of the same shape.
+  const deck = shuffle(
+    SHORT_ID_TYPES.flatMap((type) => Array.from({ length: VALUES_PER_TYPE }, () => type)),
+    rng,
+  );
+  for (let at = 0; at < deck.length;) {
+    const size = Math.min(rng.int(1, 3), deck.length - at);
+    const tongue = pickTongue(rng);
+    const kind = weighted<Kind>(rng, [
+      [5, 'ticket'],
+      [3, 'email'],
+      [2, 'record'],
+    ]);
+    const plan: Plan = { types: deck.slice(at, at + size), others: rng.int(0, 2) };
+    at += size;
+    add(kind, tongue, 'short-id', [
+      message(messageText(kind, plan, tongue, rng, SHORT_ID_LOOKALIKES)),
+    ]);
+  }
+  return out;
+}
+
+/** The generated dataset, rendered: the same messages for the same seed. */
 export function generateCases(seed = GENERATED_SEED): LabelledCase[] {
   return generateRawCases(seed).map((raw) => renderCase(raw, seed));
 }
