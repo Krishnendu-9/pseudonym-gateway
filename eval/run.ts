@@ -38,9 +38,17 @@ import { checkHeldOut, loadHeldOut } from './held-out.js';
 import { overRedactionTable, readmeBlock, scoreTable, withReadmeBlock } from './report.js';
 import { percent, score, scoreByTag } from './score.js';
 import { PERSONAL_TYPES } from './types.js';
+import { leftoverMutation } from '../scripts/mutation-marker.js';
 
 const BASELINE_PATH = join(import.meta.dirname, 'baseline.json');
 const README_PATH = join(import.meta.dirname, '..', 'README.md');
+
+// Never measure, or write a baseline, while a source file may be mutated.
+const refusal = leftoverMutation(join(import.meta.dirname, '..'), process.env);
+if (refusal) {
+  process.stderr.write(`REFUSED. ${refusal}\n`);
+  process.exit(2);
+}
 
 const args = process.argv.slice(2);
 const update = args.includes('--update');

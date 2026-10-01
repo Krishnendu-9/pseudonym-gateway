@@ -3,5 +3,6 @@ dist/
 coverage/
 .env
 *.log
+.mutation-in-progress.json
 dev_docs/
 .git/

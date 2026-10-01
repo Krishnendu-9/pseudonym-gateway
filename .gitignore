@@ -3,6 +3,9 @@ dist/
 coverage/
 *.log
 
+# Written by scripts/mutate.ts while a mutation is in a source file (bug-log 24)
+.mutation-in-progress.json
+
 # Secrets: ignore every .env file except the example
 .env
 .env.*
