@@ -7,7 +7,15 @@ import { describe, expect, it } from 'vitest';
 import { detect } from '../../../src/detection/detect.js';
 import { isLuhnValid } from '../../../src/detection/luhn.js';
 import type { DetectionType } from '../../../src/detection/types.js';
-import { ifsc, ipAddress, secret, upiId } from '../../../src/synthetic/identifiers.js';
+import {
+  dateOfBirth,
+  ifsc,
+  ipAddress,
+  passportNumber,
+  secret,
+  upiId,
+  voterId,
+} from '../../../src/synthetic/identifiers.js';
 import { obfuscate, styleDigits } from '../../../src/synthetic/obfuscate.js';
 import { createRng, type Rng } from '../../../src/synthetic/rng.js';
 import {
@@ -229,8 +237,18 @@ describe('detect: fails closed inside longer numbers', () => {
 });
 
 /** Booleans for a pair: each value covered whole, and no detection touching both. */
-const pairResult = (a: string, separator: string, b: string): [boolean, boolean, boolean] => {
-  const { text, spans } = compose`Value ${a}${separator}${b} ok.`;
+// `keywordA` and `keywordB` go in front of each value, outside its span:
+// the keyword-only types (ADR-031) are personal only after one.
+const pairResult = (
+  a: string,
+  separator: string,
+  b: string,
+  keywordA = '',
+  keywordB = '',
+): [boolean, boolean, boolean] => {
+  const composed = compose`Value ${keywordA}${a}${separator}${keywordB}${b} ok.`;
+  const { text } = composed;
+  const spans = [composed.spans[1]!, composed.spans[4]!];
   const found = detect(text);
   const covered = (s: { start: number; end: number }): boolean =>
     [...text.slice(s.start, s.end)].every(
@@ -378,6 +396,14 @@ describe('detect: any two values side by side are both covered (bug-log 35, ADR-
     UPI: () => upiId(r, r.pick(['name', 'mobile'] as const)),
     IP: () => ipAddress(r, r.pick(['v4', 'v6'] as const)),
     IFSC: () => ifsc(r),
+    PASSPORT: () => passportNumber(r),
+    VOTER: () => voterId(r),
+    DOB: () => dateOfBirth(r),
+  };
+  const KEYWORDS: Record<string, string> = {
+    PASSPORT: 'Passport no: ',
+    VOTER: 'Voter ID: ',
+    DOB: 'DOB: ',
   };
   const types = Object.keys(makers);
   it.each(types)('%s then every type, with " ", " - ", ". " and "-"', (first) => {
@@ -385,7 +411,13 @@ describe('detect: any two values side by side are both covered (bug-log 35, ADR-
     for (const second of types) {
       for (const separator of [' ', ' - ', '. ', '-']) {
         for (let i = 0; i < 6; i++) {
-          const [a, b] = pairResult(makers[first]!(), separator, makers[second]!());
+          const [a, b] = pairResult(
+            makers[first]!(),
+            separator,
+            makers[second]!(),
+            KEYWORDS[first],
+            KEYWORDS[second],
+          );
           if (!a || !b) {
             const key = `${second} "${separator}" ${a ? '' : 'first'}${b ? '' : 'second'}`;
             results.set(key, (results.get(key) ?? 0) + 1);

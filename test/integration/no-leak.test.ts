@@ -20,10 +20,13 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  dateOfBirth,
   ifsc,
   ipAddress,
+  passportNumber,
   secret,
   upiId,
+  voterId,
   type SecretKind,
 } from '../../src/synthetic/identifiers.js';
 import { obfuscate } from '../../src/synthetic/obfuscate.js';
@@ -49,7 +52,19 @@ import { expandCaptured, leakedForm } from '../support/leak-check.js';
 import { assertTextEqualQuietly } from '../support/quiet-text.js';
 
 type PlantedType =
-  'AADHAAR' | 'CARD' | 'PAN' | 'EMAIL' | 'PHONE' | 'NUMBER' | 'SECRET' | 'UPI' | 'IFSC' | 'IP';
+  | 'AADHAAR'
+  | 'CARD'
+  | 'PAN'
+  | 'EMAIL'
+  | 'PHONE'
+  | 'NUMBER'
+  | 'SECRET'
+  | 'UPI'
+  | 'IFSC'
+  | 'IP'
+  | 'PASSPORT'
+  | 'VOTER'
+  | 'DOB';
 
 interface Planted {
   readonly type: PlantedType;
@@ -67,7 +82,19 @@ const PLANTED_TYPES: readonly PlantedType[] = [
   'UPI',
   'IFSC',
   'IP',
+  'PASSPORT',
+  'VOTER',
+  'DOB',
 ];
+
+// The keyword-only types (ADR-031) are written after one of their keywords:
+// without one they are not personal by design. The keyword is text around
+// the value, not part of it: only the value is looked for in what was sent.
+const KEYWORDS: Partial<Record<PlantedType, readonly string[]>> = {
+  PASSPORT: ['Passport no: ', 'passport ', 'पासपोर्ट '],
+  VOTER: ['Voter ID: ', 'EPIC ', 'मतदाता पहचान पत्र '],
+  DOB: ['DOB: ', 'born on ', 'Date of birth ', 'जन्म तिथि '],
+};
 
 // Secrets in a known format: the ones found without a keyword, which the
 // sentences below do not have.
@@ -152,6 +179,16 @@ function plantValue(rng: Rng, type: PlantedType): string {
       const v = ifsc(rng);
       return disguise(rng.chance(0.2) ? v.toLowerCase() : v);
     }
+    case 'PASSPORT': {
+      const v = passportNumber(rng);
+      return disguise(rng.chance(0.2) ? v.toLowerCase() : v);
+    }
+    case 'VOTER': {
+      const v = voterId(rng);
+      return disguise(rng.chance(0.2) ? v.toLowerCase() : v);
+    }
+    case 'DOB':
+      return disguise(dateOfBirth(rng));
   }
 }
 
@@ -192,7 +229,8 @@ function makeHistory(rng: Rng): History {
     const type = rng.pick(types);
     const value = plantValue(rng, type);
     planted.push({ type, value });
-    return value;
+    const keywords = KEYWORDS[type];
+    return keywords ? `${rng.pick(keywords)}${value}` : value;
   };
   const text = (): string => {
     const count = rng.int(1, 3);

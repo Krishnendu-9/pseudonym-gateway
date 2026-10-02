@@ -60,19 +60,38 @@ describe('restore: bare space form only for AADHAAR and LITERAL (2026-09-29 deci
     },
   );
 
-  it.each(['PAN 1', 'PHONE 1', 'EMAIL 1', 'NUMBER 1'] as const)(
-    'does not restore the bare space form of any other tag (%s)',
-    (text) => {
-      const tag = text.split(' ')[0] as PlaceholderNamespace;
-      const mapping = mappingWith([[tag, 'the-real-value']]);
-      expect(restore(`${text} matters.`, mapping)).toBe(`${text} matters.`);
-    },
-  );
+  // PASSPORT, VOTER and DOB (ADR-031): 'Passport 1 of 2', 'Voter 1', a
+  // form's 'DOB 1'.
+  it.each([
+    'PAN 1',
+    'PHONE 1',
+    'EMAIL 1',
+    'NUMBER 1',
+    'PASSPORT 1',
+    'Passport 1',
+    'VOTER 1',
+    'Voter 1',
+    'DOB 1',
+    'Dob 1',
+  ] as const)('does not restore the bare space form of any other tag (%s)', (text) => {
+    const tag = text.split(' ')[0]!.toUpperCase() as PlaceholderNamespace;
+    const mapping = mappingWith([[tag, 'the-real-value']]);
+    expect(restore(`${text} matters.`, mapping)).toBe(`${text} matters.`);
+  });
 
   it('the bare underscore form of the same tags still restores', () => {
     const mapping = mappingWith([['CARD', '4111111111111111']]);
     expect(restore('Your CARD_1 is on file.', mapping)).toBe('Your 4111111111111111 is on file.');
   });
+
+  it.each(['PASSPORT_1', 'Passport_1', '[passport 1]', 'VOTER_1', 'Voter_1', 'DOB_1', 'Dob_1'])(
+    'restores %s for the keyword-only types (ADR-031)',
+    (text) => {
+      const tag = text.replace(/[^A-Za-z]/g, '').toUpperCase() as PlaceholderNamespace;
+      const mapping = mappingWith([[tag, 'the-real-value']]);
+      expect(restore(`It is ${text} here.`, mapping)).toBe('It is the-real-value here.');
+    },
+  );
 });
 
 describe('restore: unknown or invented placeholders are left as they are', () => {

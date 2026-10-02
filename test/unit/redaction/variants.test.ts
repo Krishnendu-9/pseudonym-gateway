@@ -132,8 +132,8 @@ describe('undecidedFrom', () => {
       }
     }
     expect(notHeld).toEqual([]);
-    expect(MAX_HELD_BACK).toBe(15);
-    expect(`x [${'AADHAAR'}_9999].`.length - undecidedFrom('', 'x [AADHAAR_9999].')).toBe(
+    expect(MAX_HELD_BACK).toBe(16);
+    expect(`x [${'PASSPORT'}_9999].`.length - undecidedFrom('', 'x [PASSPORT_9999].')).toBe(
       MAX_HELD_BACK,
     );
   });

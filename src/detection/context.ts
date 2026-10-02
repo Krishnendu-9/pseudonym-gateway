@@ -59,6 +59,24 @@ const KEYWORDS: Readonly<Partial<Record<DetectionType, readonly string[]>>> = {
   // after a version word, an IPv6 one made of short groups. आईपी is "IP".
   IP: ['ip', 'ips', 'ipv4', 'ipv6', 'inet', 'inet6', 'आईपी'],
   UPI: ['upi', 'vpa', 'bhim', 'gpay', 'google pay', 'phonepe', 'paytm', 'amazon pay', 'यूपीआई'],
+  // The keyword-only types (ADR-031): their shapes alone are never enough.
+  // EPIC is the voter ID card's official name; मतदाता is "voter".
+  PASSPORT: ['passport', 'passports', 'पासपोर्ट'],
+  VOTER: ['voter', 'voters', 'epic', 'मतदाता', 'वोटर'],
+  // "birth" covers "date of birth" and "birth date"; जन्म ("birth") covers
+  // जन्म तिथि, and "janm"/"janam" its Hinglish spellings.
+  DOB: [
+    'dob',
+    'd.o.b',
+    'birth',
+    'birthdate',
+    'birthday',
+    'born',
+    'जन्म',
+    'जन्मतिथि',
+    'janm',
+    'janam',
+  ],
 };
 
 const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

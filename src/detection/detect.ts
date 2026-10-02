@@ -9,6 +9,7 @@ import { aadhaarCandidates } from './aadhaar.js';
 import { cardCandidates } from './card.js';
 import { charBefore, digitRuns, isRunSeparator, widenToRuns } from './digit-runs.js';
 import { hasContext } from './context.js';
+import { dobCandidates } from './dob.js';
 import { emailCandidates } from './email.js';
 import { ifscCandidates } from './ifsc.js';
 import { ipCandidates } from './ip.js';
@@ -16,10 +17,12 @@ import { normalise, type Span } from './normalise.js';
 import { unclaimedNumbers } from './number.js';
 import { resolveOverlaps } from './overlap.js';
 import { panCandidates } from './pan.js';
+import { passportCandidates } from './passport.js';
 import { phoneCandidates } from './phone.js';
 import { resolveCandidates } from './resolve.js';
 import { secretCandidates } from './secret.js';
 import { upiCandidates } from './upi.js';
+import { voterCandidates } from './voter.js';
 import type { Candidate, Detection, DetectionType } from './types.js';
 
 const DETECTORS: readonly ((text: string) => Iterable<Candidate>)[] = [
@@ -27,6 +30,9 @@ const DETECTORS: readonly ((text: string) => Iterable<Candidate>)[] = [
   cardCandidates,
   panCandidates,
   ifscCandidates,
+  voterCandidates,
+  passportCandidates,
+  dobCandidates,
   phoneCandidates,
   upiCandidates,
   emailCandidates,

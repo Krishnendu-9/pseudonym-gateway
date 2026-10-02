@@ -12,9 +12,11 @@ import type { Span } from './normalise.js';
  * ADR-024): the most constrained formats first, the loosest last. IP is
  * first (ADR-026): the only types that can cover exactly an IP address's
  * text are AADHAAR and PHONE (its digits read as a number) and SECRET, and
- * the address is the likelier reading of all three. NUMBER is the safety
- * net for long numbers nothing else claimed (ADR-011), so it always comes
- * last.
+ * the address is the likelier reading of all three. VOTER, PASSPORT and DOB
+ * (ADR-031) come before PHONE: a real calendar date near a birth word is a
+ * likelier reading of the same digits than a merely possible phone number.
+ * NUMBER is the safety net for long numbers nothing else claimed (ADR-011),
+ * so it always comes last.
  */
 export const DETECTION_TYPES = [
   'IP',
@@ -22,6 +24,9 @@ export const DETECTION_TYPES = [
   'CARD',
   'PAN',
   'IFSC',
+  'VOTER',
+  'PASSPORT',
+  'DOB',
   'PHONE',
   'UPI',
   'EMAIL',

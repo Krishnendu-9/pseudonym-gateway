@@ -20,6 +20,7 @@ import { request as httpRequest } from 'node:http';
 import type { LightMyRequestResponse } from 'fastify';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
+import { passportNumber, voterId } from '../../src/synthetic/identifiers.js';
 import { createRng } from '../../src/synthetic/rng.js';
 import { aadhaar, groupDigits, indianMobile, pan } from '../../src/synthetic/values.js';
 import {
@@ -51,6 +52,11 @@ const CANARIES = {
   phone: `+91 ${indianMobile(rng)}`,
   name: 'Canarina Testwala',
   apiKey: 'sk-canary-3f9a8b7c6d5e4f3a2b1c0d9e',
+  // The keyword-only types (ADR-031). A date of birth with its month as a
+  // word, so its squashed form cannot turn up inside a log timestamp.
+  passport: passportNumber(rng),
+  voter: voterId(rng),
+  dob: `${rng.int(1, 28)} March ${rng.int(1950, 2008)}`,
 } as const;
 
 const ALL = Object.values(CANARIES).join(' and ');

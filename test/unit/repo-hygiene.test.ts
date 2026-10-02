@@ -10,7 +10,11 @@
 // private, loopback, link-local, and those no single host owns, by the
 // held-out lint's own rule (eval/lint.ts, isSafeIp). The held-out file is
 // left to that lint: its author may type a short dotted number, and a hit
-// would point into a file the detectors' author must not look at.
+// would point into a file the detectors' author must not look at. Nor a
+// passport or voter ID number on the same line as its keyword (ADR-031):
+// typed, it could be somebody's. A date of birth is not checked: a date
+// with no name beside it identifies nobody, and the tests of its costs type
+// ordinary dates next to birth words on purpose.
 //
 // Failures report file and line only, never the number.
 
@@ -19,10 +23,13 @@ import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { isValidAadhaar } from '../../src/detection/aadhaar.js';
 import { isValidCard } from '../../src/detection/card.js';
+import { hasContext } from '../../src/detection/context.js';
 import { ipCandidates, ipValueKey } from '../../src/detection/ip.js';
+import { passportCandidates } from '../../src/detection/passport.js';
 import { upiCandidates } from '../../src/detection/upi.js';
+import { voterCandidates } from '../../src/detection/voter.js';
 import { isSafeIp } from '../../eval/lint.js';
-import { upiId } from '../../src/synthetic/identifiers.js';
+import { passportNumber, upiId, voterId } from '../../src/synthetic/identifiers.js';
 import { createRng } from '../../src/synthetic/rng.js';
 import { PUBLISHED_TEST_CARDS } from '../fixtures/published-test-cards.js';
 
@@ -62,6 +69,12 @@ const hasPublicIp = (line: string): boolean =>
     const address = line.slice(candidate.start, candidate.end);
     return !isSafeIp(address) && !isSafeIp(ipValueKey(address));
   });
+
+// The keyword is looked for on the same line only.
+const hasIdWithKeyword = (line: string): boolean =>
+  [...passportCandidates(line), ...voterCandidates(line)].some((candidate) =>
+    hasContext(line, candidate, candidate.type),
+  );
 
 const HELD_OUT = join(ROOT, 'eval', 'held-out.txt');
 
@@ -106,6 +119,17 @@ describe('repo hygiene: no real-looking personal values in files', () => {
   it('the UPI check flags an ID put together at run time', () => {
     expect(hasKnownUpiId(`pay ${upiId(createRng(1), 'name')} now`)).toBe(true);
     expect(hasKnownUpiId(`pay ${upiId(createRng(1), 'mobile')} now`)).toBe(true);
+  });
+
+  it('contains no passport or voter ID number next to its keyword (the held-out file has its own lint)', () => {
+    expect(findings(hasIdWithKeyword, [HELD_OUT])).toEqual([]);
+  });
+
+  it('the passport and voter ID check flags numbers put together at run time, only with a keyword', () => {
+    const r = createRng(1);
+    expect(hasIdWithKeyword(`passport ${passportNumber(r)}`)).toBe(true);
+    expect(hasIdWithKeyword(`EPIC ${voterId(r)}`)).toBe(true);
+    expect(hasIdWithKeyword(`model ${passportNumber(r)}`)).toBe(false);
   });
 
   it('contains no IP address outside the ranges nobody can be found at (the held-out file has its own lint)', () => {

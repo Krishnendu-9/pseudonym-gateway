@@ -204,10 +204,10 @@
       },
       "short-id": {
         "values": 459,
-        "redacted": 1,
+        "redacted": 305,
         "partial": 0,
-        "typed": 0,
-        "overRedactions": 0
+        "typed": 304,
+        "overRedactions": 25
       },
       "contact-sheet": {
         "values": 120,
@@ -287,10 +287,10 @@
       },
       "NUMBER": {
         "values": 6,
-        "redacted": 3,
+        "redacted": 5,
         "typed": 3,
         "partial": 0,
-        "missed": 3,
+        "missed": 1,
         "detections": 8,
         "rightType": 3,
         "otherPersonal": 1,
@@ -357,9 +357,9 @@
         "typed": 0,
         "partial": 0,
         "missed": 0,
-        "detections": 0,
+        "detections": 1,
         "rightType": 0,
-        "otherPersonal": 0,
+        "otherPersonal": 1,
         "notPersonal": 0
       },
       "VOTER": {
@@ -368,9 +368,9 @@
         "typed": 0,
         "partial": 0,
         "missed": 0,
-        "detections": 0,
+        "detections": 1,
         "rightType": 0,
-        "otherPersonal": 0,
+        "otherPersonal": 1,
         "notPersonal": 0
       },
       "DOB": {
@@ -379,10 +379,10 @@
         "typed": 0,
         "partial": 0,
         "missed": 0,
-        "detections": 0,
+        "detections": 1,
         "rightType": 0,
         "otherPersonal": 0,
-        "notPersonal": 0
+        "notPersonal": 1
       }
     }
   },
@@ -504,6 +504,14 @@
       "note": "ADR-029: containing span, joined digits, remainders; contained over-redaction 8->9 is a tracking number already redacted, now its own detection",
       "changes": [
         "generated shape contained: over-redactions 8 -> 9"
+      ]
+    },
+    {
+      "date": "2026-10-02",
+      "note": "ADR-031: passport, voter ID and date-of-birth detectors, keyword only; codes and dates of the same shape within 40 characters of a keyword are redacted too",
+      "changes": [
+        "generated shape short-id: over-redactions 0 -> 25",
+        "held-out DOB: over-redactions 0 -> 1"
       ]
     }
   ]

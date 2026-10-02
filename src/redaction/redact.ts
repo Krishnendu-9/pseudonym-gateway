@@ -69,9 +69,9 @@ const overlapsAny = (spans: readonly Span[], start: number, end: number): boolea
 // The identity a value is deduplicated by (ADR-013): the same person, card,
 // PAN, IFSC, email, UPI ID or phone written two different ways in one
 // request still gets one placeholder. UPI IDs, like emails, ignore case:
-// payment apps treat <NAME>@OKAXIS and <name>@okaxis as one ID; so do PANs
-// and IFSCs, which are defined in capitals. `surface` is a
-// detection's original-text slice.
+// payment apps treat <NAME>@OKAXIS and <name>@okaxis as one ID; so do PANs,
+// IFSCs, passport and voter ID numbers, which are defined in capitals.
+// `surface` is a detection's original-text slice.
 function valueKey(type: DetectionType, surface: string): string {
   const normalised = normalise(surface).text;
   switch (type) {
@@ -81,7 +81,14 @@ function valueKey(type: DetectionType, surface: string): string {
       return normalised.replace(/[^0-9]/g, '');
     case 'PAN':
     case 'IFSC':
+    case 'PASSPORT':
+    case 'VOTER':
       return normalised.toUpperCase();
+    case 'DOB':
+      // As written, ignoring case and spacing: "7 march 1991" and
+      // "7 March  1991" are one date. Not a calendar key: 03/07/1991 is
+      // 3 July or 7 March depending on who wrote it (ADR-031).
+      return normalised.toLowerCase().replace(/\s+/g, ' ');
     case 'EMAIL':
     case 'UPI':
       return normalised.toLowerCase();

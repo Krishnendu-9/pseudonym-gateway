@@ -4,13 +4,16 @@
 reaches an LLM, and restores it in the reply.**
 
 > **Status: work in progress (Phase 4 of 8 done; Phase 5, evaluation, under
-> way: its detector part is complete, and every planned detector except
+> way: its detectors and its hard cases (line breaks, values side by side or
+> inside each other, short IDs) are done, and every planned detector except
 > person names is built).** Not ready
 > for production use.
 > Pseudonym runs as a gateway: `POST /v1/chat/completions` (OpenAI format,
 > streaming and non-streaming) redacts emails, phone numbers, Aadhaar, PAN,
 > card numbers, UPI IDs, IFSC codes, IP addresses, API keys in known formats, secrets written after a
-> keyword (`password: …`) and any other number of 9+ digits, forwards the
+> keyword (`password: …`), passport numbers, voter IDs and dates of birth
+> with a word such as "passport", "voter ID" or "DOB" next to them, and any
+> other number of 9+ digits, forwards the
 > request to a local [Ollama](https://ollama.com) model, and restores the
 > values in the answer, including when it arrives as a stream. No-leak tests
 > send planted values through both paths and check none reaches the
@@ -19,7 +22,8 @@ reaches an LLM, and restores it in the reply.**
 > before it and no known format, nor a UPI ID at an app or bank handle
 > Pseudonym does not know with no word such as "UPI" near it, nor an IFSC
 > code whose bank code is not on Pseudonym's list with no word such as
-> "IFSC" near it.
+> "IFSC" near it, nor a passport number, voter ID or date of birth with no
+> such word near it.
 > Detection is measured on two datasets, a generated one and a small
 > held-out adversarial one (see [Measured results](#measured-results)). Pseudonym has been tested against
 > a mock of Ollama built from Ollama's documentation and source, not yet
@@ -88,7 +92,9 @@ What Pseudonym is being built to do:
 - **India-aware detection.** Aadhaar (Verhoeff check digit), PAN, UPI IDs
   (known app and bank handles) and IFSC codes (bank codes from RBI's list)
   alongside emails, phone numbers, card numbers (Luhn check) and IPv4 and
-  IPv6 addresses (a hand-written parser).
+  IPv6 addresses (a hand-written parser). Passport numbers, voter IDs and
+  dates of birth only next to a word naming them: their shapes alone are
+  every other order code and date.
 - **Unicode-hardened.** Digits in any script (full-width, mathematical,
   Devanagari, Bengali, Tamil and every other Unicode decimal digit) are
   normalised, and invisible characters that can hide data (zero-width spaces,
@@ -102,7 +108,7 @@ What Pseudonym is being built to do:
 - **Streaming.** `stream: true` returns OpenAI-style server-sent events
   (with `stream_options.include_usage` if asked). Placeholders split across
   streamed chunks (`[CAR` + `D_1]`) are restored correctly, holding back
-  at most 15 characters and only while the text could still become a
+  at most 16 characters and only while the text could still become a
   placeholder. A property test checks that any way of cutting an answer
   gives exactly the same result as restoring it whole. If the provider
   fails after the stream has started, the client gets what was already
@@ -144,6 +150,9 @@ protect real data.
 | UPI ID                              | a handle on Pseudonym's list of 54 app and bank handles (Google Pay, PhonePe, Paytm, BHIM, banks' own…), compiled from public sources, not NPCI's list; any other handle only near a keyword  | redacted |
 | IFSC code                           | a bank code on Pseudonym's list of 260 (every bank with branches in RBI's list of NEFT-enabled branches, taken from a published copy of RBI's files); any other bank code only near a keyword | redacted |
 | IP address (IPv4 and IPv6)          | parsed by hand: four parts of 0–255, or an IPv6 form (compressed, full, with an IPv4 part); addresses no single host owns (loopback, netmasks, multicast) are left as written                 | redacted |
+| Passport number                     | none possible: a letter and 7 digits, only near "passport" or पासपोर्ट                                                                                                                        | redacted |
+| Voter ID (EPIC)                     | none possible: 3 letters and 7 digits, only near "voter", "EPIC", मतदाता or वोटर                                                                                                              | redacted |
+| Date of birth                       | a real calendar date in a common form, only near "DOB", "birth", "born", "birthday", जन्म or "janm"/"janam"                                                                                   | redacted |
 | Person names                        | local NER model                                                                                                                                                                               | planned  |
 
 Which detected matches count:
@@ -197,6 +206,27 @@ hai`): when the way it is written says it is a value. That is: after `=`;
   looks like a secret, meaning 6 or more characters with a digit or one of
   `@ # $ % ^ & * ! + = ~ | < >`. After a word for a numeric code (OTP, PIN,
   CVV), 3 to 8 digits are enough. "My password is wrong" is left alone.
+- **Passport numbers, voter IDs and dates of birth:** only with a word
+  naming them within 40 characters, before or after: "passport",
+  पासपोर्ट; "voter", "EPIC", मतदाता, वोटर; "DOB", "date of birth",
+  "born", "birthday", जन्म तिथि, "janm tithi". Without one they are sent
+  as written, by design: a letter and 7 digits is also a model number, 3
+  letters and 7 digits an order code (`ORD` and 7 digits), and a date is
+  usually an order or invoice date. A date of birth is a real calendar
+  date written day, month, year (`07/03/1991`, `7.3.1991`, `07-03-91`;
+  month first too, when only that reading is a real date), year first
+  (`1991-03-07`), or with the month as a word (`7 March 1991`,
+  `07-Mar-1991`, `March 7, 1991`). With a keyword nearby, **anything of
+  the same shape within those 40 characters is redacted too**. Measured on
+  200 synthetic messages of each layout, the neighbour was redacted in all
+  200: a joining date after a date of birth (`DOB: … Joined: …`), a
+  ticket code after a passport number (`Passport no: … Ticket: …`), an
+  order code after a voter ID (`Voter ID: … Order: …`), and a date or
+  code after "born", "epic" or "passport" in ordinary prose ("our brand
+  was born in Pune; offer valid till …", "an epic deal: order …",
+  "passport size photo, model …"). Invoice lines, order mails and log
+  lines with no such word, or with it more than 40 characters away, lose
+  nothing (0 in 200 each).
 - **Any stretch of 9 or more digits that no detector claimed**, counted across
   dots, hyphens, dashes, brackets and `+` but not spaces: always, as a generic
   number, together with the letters, digits and underscores it is glued to
@@ -288,9 +318,14 @@ described above (not across a blank line, nor broken over three lines, nor
 inside a digit group of a spaced number, nor written without spaces with
 another number beside it on the same line); nor are emails written as "name at example dot com",
 quoted or IP-literal addresses, or the 16-digit Aadhaar Virtual ID. **Short
-personal identifiers are not caught either:** a passport or voter ID number
-with 7 digits, or a date of birth, has no detector of its own and is below
-the 9 digits the safety net needs (the held-out NUMBER row shows it). An
+personal identifiers need their word:** a passport number, voter ID or date
+of birth with no keyword within 40 characters is sent as written (the
+safety net needs 9 digits). Nor are these caught with one: a passport
+number with a space after its letter, voter IDs in the older state formats,
+a date of birth without its year, with spaces around the separators of a
+numeric date (`07 / 03 / 1991`), with a time glued to it
+(`1991-03-07T10:00`), or with its month named in a language other than
+English. An
 IFSC written with the letter O for its zero (`SBINO001234`) or with a space
 or hyphen after the bank code is not caught. A lone digit and a space
 before a long number (`1 23456789(12345`) leave the lone digit visible: the
@@ -334,9 +369,17 @@ How to read a row:
   measures one known gap; a low number in it is that gap, not the overall
   quality.
 
-PERSON has no detector yet, and neither have passport numbers, voter IDs
-and dates of birth (the shape block's `short-id` row). They are labelled
-and measured from the start so that the "before" is on record. The IP
+PERSON has no detector yet. It is labelled and measured from the start so
+that the "before" is on record, as passport numbers, voter IDs and dates
+of birth were: the shape block's `short-id` row went from 1 of 459
+redacted to 305 when their detectors were added (passport 93, voter ID
+103, date of birth 108 of 153 each with the right type, and one date of
+birth read as a phone number). Its misses are values in sentences that
+name no type ("Document … expired last month", "The age proof says …"),
+which are sent as written by design. Its 25 over-redactions are codes
+and dates of the same shapes within 40 characters of a real value's
+keyword: model, ticket, invoice and order codes (18), dates in the 1900s
+(4), and order dates in 2026 (3). The IP
 row's 4 values of the wrong type are
 addresses written with a prefix length (`/24`) whose digits also read as a
 valid phone number: still redacted, as a phone number, prefix and all. Its
@@ -390,25 +433,28 @@ _Measured on 2026-10-02 (UTC date) by `npm run eval`. This block is generated, a
 | digit-beside     | 40     | 40/40 (100.0%)      | 0               | 40/40 (100.0%)      | 4               |
 | contained        | 70     | 70/70 (100.0%)      | 0               | 70/70 (100.0%)      | 9               |
 | joined-digits    | 30     | 21/30 (70.0%)       | 9               | 6/30 (20.0%)        | 4               |
-| short-id         | 459    | 1/459 (0.2%)        | 0               | 0/459 (0.0%)        | 0               |
+| short-id         | 459    | 305/459 (66.4%)     | 0               | 304/459 (66.2%)     | 25              |
 | contact-sheet    | 120    | 120/120 (100.0%)    | 0               | 120/120 (100.0%)    | 0               |
 | misaligned-sheet | 132    | 132/132 (100.0%)    | 0               | 132/132 (100.0%)    | 0               |
 
 **Held-out adversarial dataset** (drafted with AI assistance in a separate session that did not write the detectors, then reviewed by the author; never run against the detectors before it was committed, and never used for tuning; 58 messages in 54 cases, 79 labelled personal values).
 
-| Type    | Values | Redacted (any type) | Partly redacted | Recall (right type) | Precision (right type) | F1     | Over-redactions |
-| ------- | ------ | ------------------- | --------------- | ------------------- | ---------------------- | ------ | --------------- |
-| AADHAAR | 9      | 8/9 (88.8%)         | 0               | 7/9 (77.7%)         | 7/7 (100.0%)           | 87.5%  | 0               |
-| CARD    | 7      | 4/7 (57.1%)         | 0               | 4/7 (57.1%)         | 4/4 (100.0%)           | 72.7%  | 0               |
-| PAN     | 8      | 7/8 (87.5%)         | 0               | 7/8 (87.5%)         | 7/7 (100.0%)           | 93.3%  | 0               |
-| PHONE   | 19     | 18/19 (94.7%)       | 0               | 18/19 (94.7%)       | 18/19 (94.7%)          | 94.7%  | 1               |
-| EMAIL   | 7      | 6/7 (85.7%)         | 0               | 6/7 (85.7%)         | 6/6 (100.0%)           | 92.3%  | 0               |
-| NUMBER  | 6      | 3/6 (50.0%)         | 0               | 3/6 (50.0%)         | 3/8 (37.5%)            | 42.8%  | 4               |
-| IFSC    | 3      | 3/3 (100.0%)        | 0               | 3/3 (100.0%)        | 3/3 (100.0%)           | 100.0% | 0               |
-| UPI     | 3      | 3/3 (100.0%)        | 0               | 3/3 (100.0%)        | 3/3 (100.0%)           | 100.0% | 0               |
-| IP      | 2      | 2/2 (100.0%)        | 0               | 2/2 (100.0%)        | 2/4 (50.0%)            | 66.6%  | 2               |
-| SECRET  | 5      | 5/5 (100.0%)        | 0               | 5/5 (100.0%)        | 5/5 (100.0%)           | 100.0% | 0               |
-| PERSON  | 10     | 0/10 (0.0%)         | 0               | 0/10 (0.0%)         | -                      | -      | 0               |
+| Type     | Values | Redacted (any type) | Partly redacted | Recall (right type) | Precision (right type) | F1     | Over-redactions |
+| -------- | ------ | ------------------- | --------------- | ------------------- | ---------------------- | ------ | --------------- |
+| AADHAAR  | 9      | 8/9 (88.8%)         | 0               | 7/9 (77.7%)         | 7/7 (100.0%)           | 87.5%  | 0               |
+| CARD     | 7      | 4/7 (57.1%)         | 0               | 4/7 (57.1%)         | 4/4 (100.0%)           | 72.7%  | 0               |
+| PAN      | 8      | 7/8 (87.5%)         | 0               | 7/8 (87.5%)         | 7/7 (100.0%)           | 93.3%  | 0               |
+| PHONE    | 19     | 18/19 (94.7%)       | 0               | 18/19 (94.7%)       | 18/19 (94.7%)          | 94.7%  | 1               |
+| EMAIL    | 7      | 6/7 (85.7%)         | 0               | 6/7 (85.7%)         | 6/6 (100.0%)           | 92.3%  | 0               |
+| NUMBER   | 6      | 5/6 (83.3%)         | 0               | 3/6 (50.0%)         | 3/8 (37.5%)            | 42.8%  | 4               |
+| IFSC     | 3      | 3/3 (100.0%)        | 0               | 3/3 (100.0%)        | 3/3 (100.0%)           | 100.0% | 0               |
+| UPI      | 3      | 3/3 (100.0%)        | 0               | 3/3 (100.0%)        | 3/3 (100.0%)           | 100.0% | 0               |
+| IP       | 2      | 2/2 (100.0%)        | 0               | 2/2 (100.0%)        | 2/4 (50.0%)            | 66.6%  | 2               |
+| SECRET   | 5      | 5/5 (100.0%)        | 0               | 5/5 (100.0%)        | 5/5 (100.0%)           | 100.0% | 0               |
+| PERSON   | 10     | 0/10 (0.0%)         | 0               | 0/10 (0.0%)         | -                      | -      | 0               |
+| PASSPORT | 0      | -                   | 0               | -                   | 0/1 (0.0%)             | -      | 0               |
+| VOTER    | 0      | -                   | 0               | -                   | 0/1 (0.0%)             | -      | 0               |
+| DOB      | 0      | -                   | 0               | -                   | 0/1 (0.0%)             | -      | 1               |
 
 <!-- eval:end -->
 
@@ -416,6 +462,11 @@ The PHONE and NUMBER rows over-redact on purpose: a 10-digit tracking number
 or timestamp is a valid phone number as far as any check can tell, and the
 safety net takes every number of 9 or more digits. For the generated
 dataset `npm run eval` also prints which kinds of lookalike were redacted.
+The held-out set labels no passport number, voter ID or date of birth, so
+its PASSPORT, VOTER and DOB rows only count detections: one PASSPORT and
+one VOTER detection on values labelled as another type, and one date in
+plain text read as a date of birth. In the same run its NUMBER row's
+redacted count rose from 3 to 5.
 
 The counts are recorded in `eval/baseline.json` and act as thresholds: both
 datasets are deterministic, so `npm run eval` fails if any count is worse
@@ -476,6 +527,7 @@ provider-side logging or training on them.
 **Does not protect against:** values the detectors miss (today that includes
 every person's name, an IFSC code with an unknown bank code and no keyword nearby, any secret with neither a known format
 nor a keyword directly before it, a UPI ID at an unknown handle with no
+keyword nearby, a passport number, voter ID or date of birth with no
 keyword nearby, and an IP address inside a host name); anything your application
 logs before
 calling Pseudonym; a compromised Pseudonym host; prompt injection that

@@ -10,7 +10,14 @@ import { describe, expect, it } from 'vitest';
 import { redactMessage } from '../../../src/redaction/redact.js';
 import { PlaceholderMapping } from '../../../src/redaction/mapping.js';
 import { restore } from '../../../src/redaction/restore.js';
-import { ifsc, secret, upiId } from '../../../src/synthetic/identifiers.js';
+import {
+  dateOfBirth,
+  ifsc,
+  passportNumber,
+  secret,
+  upiId,
+  voterId,
+} from '../../../src/synthetic/identifiers.js';
 import { createRng } from '../../../src/synthetic/rng.js';
 import { aadhaar, email, groupDigits, indianMobile, pan } from '../../../src/synthetic/values.js';
 import { assertTextEqualQuietly } from '../../support/quiet-text.js';
@@ -165,6 +172,36 @@ describe('redactMessage: value keys dedupe the same value (ADR-013)', () => {
     expect(restore(redacted, mapping)).toBe(
       'From 192.168.1.10 (192.168.1.10), then 2001:db8::1 and 2001:db8::1, via 192.168.1.10.',
     );
+  });
+
+  it('a passport or voter ID number is one value in any case, restored as first written (ADR-031)', () => {
+    const mapping = new PlaceholderMapping();
+    const p = passportNumber(rng);
+    const v = voterId(rng);
+    const p2 = passportNumber(rng);
+    const v2 = voterId(rng);
+    const text = `Passport ${p} (passport ${p.toLowerCase()}); voter ID ${v}, EPIC ${v.toLowerCase()}. Passport ${p2}, voter ID ${v2}.`;
+    const redacted = redactMessage(text, mapping);
+    assertTextEqualQuietly(
+      redacted,
+      'Passport [PASSPORT_1] (passport [PASSPORT_1]); voter ID [VOTER_1], EPIC [VOTER_1]. Passport [PASSPORT_2], voter ID [VOTER_2].',
+    );
+    const restored = text.replace(p.toLowerCase(), p).replace(v.toLowerCase(), v);
+    assertTextEqualQuietly(restore(redacted, mapping), restored);
+  });
+
+  // Not a calendar key: 03/07/1991 is 3 July or 7 March depending on the
+  // writer, so another spelling of the date is another value.
+  it('a date of birth is one value however it is spaced or cased, not across spellings (ADR-031)', () => {
+    const mapping = new PlaceholderMapping();
+    const r = createRng(7);
+    let d = dateOfBirth(r);
+    while (!/^[0-9]+ [A-Za-z]+ [0-9]{4}$/.test(d)) d = dateOfBirth(r);
+    const [day, month, year] = d.split(' ');
+    const numeric = `${day}.${String(new Date(`${month} 1, 2000`).getMonth() + 1)}.${year}`;
+    const text = `DOB ${d}, born ${day}  ${month!.toUpperCase()} ${year}, DOB ${numeric}.`;
+    const redacted = redactMessage(text, mapping);
+    assertTextEqualQuietly(redacted, 'DOB [DOB_1], born [DOB_1], DOB [DOB_2].');
   });
 
   it('an address no single host owns is left as written (ADR-026)', () => {

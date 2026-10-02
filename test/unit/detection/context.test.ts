@@ -23,6 +23,25 @@ describe('hasContext', () => {
     ['PHONE', 'Call me on '],
     ['PHONE', 'Mob: '],
     ['PHONE', 'WhatsApp '],
+    // The keyword-only types (ADR-031).
+    ['PASSPORT', 'Passport no: '],
+    ['PASSPORT', 'Passports: '],
+    ['PASSPORT', 'पासपोर्ट '],
+    ['VOTER', 'Voter ID: '],
+    ['VOTER', 'EPIC no. '],
+    ['VOTER', 'मतदाता पहचान पत्र '],
+    ['VOTER', 'वोटर कार्ड '],
+    ['DOB', 'DOB: '],
+    ['DOB', 'D.O.B. '],
+    ['DOB', 'Date of birth: '],
+    ['DOB', 'Birth date '],
+    ['DOB', 'Birthdate: '],
+    ['DOB', 'I was born on '],
+    ['DOB', 'Birthday: '],
+    ['DOB', 'Janm tithi '],
+    ['DOB', 'janam tithi '],
+    ['DOB', 'जन्म तिथि '],
+    ['DOB', 'जन्मतिथि '],
   ] as const)('%s: finds a keyword before the value (%j)', (type, before) => {
     expect(contextFor(before, '', type)).toBe(true);
   });
@@ -39,6 +58,17 @@ describe('hasContext', () => {
   it('only counts keywords for the right type', () => {
     expect(contextFor('Card ', '', 'AADHAAR')).toBe(false);
     expect(contextFor('Aadhaar ', '', 'CARD')).toBe(false);
+  });
+
+  // "age proof" names a document that shows a date of birth, but "age" is
+  // in too many sentences with a date in them; "ID card" names any card.
+  it.each([
+    ['DOB', 'Age proof: '],
+    ['DOB', 'Date: '],
+    ['VOTER', 'ID card '],
+    ['PASSPORT', 'Visa '],
+  ] as const)('%s: a nearby word that is not its keyword (%j)', (type, before) => {
+    expect(contextFor(before, '', type)).toBe(false);
   });
 
   it('has no keywords for email (its pattern is evidence enough)', () => {

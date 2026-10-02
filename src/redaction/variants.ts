@@ -26,7 +26,9 @@
 //    oil", "our Number 1 priority", "CARD 1" in a receipt) - restoring it
 //    would rewrite a sentence that was never a placeholder. Decided
 //    2026-09-29 (ADR-013): only AADHAAR (not an English word) and LITERAL
-//    (never occurs in ordinary prose) keep this form.
+//    (never occurs in ordinary prose) keep this form. PASSPORT, VOTER and
+//    DOB (ADR-031) do not: "Passport 1 of 2", "Voter 1" and a form's
+//    "DOB 1" (the first applicant's) are ordinary text.
 
 import { DETECTION_TYPES } from '../detection/types.js';
 import {
@@ -118,9 +120,10 @@ const LONGEST_NAMESPACE = ALL_NAMESPACES.toSorted((a, b) => b.length - a.length)
 
 /**
  * The most text (UTF-16 code units) a stream restorer ever holds back: the
- * longest bracketed placeholder, `[AADHAAR_9999]`, plus the "." after it,
- * while it waits for the character that decides the host rule. 15 with
- * today's namespaces; it grows by itself if a longer tag is added.
+ * longest bracketed placeholder, `[PASSPORT_9999]`, plus the "." after it,
+ * while it waits for the character that decides the host rule. 16 with
+ * today's namespaces (15 until PASSPORT, ADR-031); it grows by itself if a
+ * longer tag is added.
  */
 export const MAX_HELD_BACK = formatPlaceholder(LONGEST_NAMESPACE, MAX_PLACEHOLDER_INDEX).length + 1;
 

@@ -94,12 +94,13 @@ describe('StreamRestorer: gives back text as soon as it is decided', () => {
     expect(outputs(['a\uD835', '\uDC00'])).toEqual(['a', '\u{1D400}', '']);
   });
 
-  it('holds back at most MAX_HELD_BACK (15): a bracketed placeholder and a "."', () => {
-    expect(MAX_HELD_BACK).toBe('[AADHAAR_9999].'.length);
+  // 16 since PASSPORT, the longest tag (ADR-031); 15 with AADHAAR before.
+  it('holds back at most MAX_HELD_BACK (16): a bracketed placeholder and a "."', () => {
+    expect(MAX_HELD_BACK).toBe('[PASSPORT_9999].'.length);
     const restorer = new StreamRestorer(mapping);
-    expect(restorer.push('Ref [AADHAAR_1234].')).toBe('Ref ');
+    expect(restorer.push('Ref [PASSPORT_1234].')).toBe('Ref ');
     expect(restorer.heldBack).toBe(MAX_HELD_BACK);
-    expect(restorer.push(' ok')).toBe('[AADHAAR_1234]. ok'); // index 1234 was never assigned
+    expect(restorer.push(' ok')).toBe('[PASSPORT_1234]. ok'); // index 1234 was never assigned
   });
 });
 

@@ -181,10 +181,11 @@ describe('Unicode', () => {
 // Point 3 of the brief: where IFSC's shape meets the other types, and which
 // one wins (ADR-025 lists these with the reasons).
 describe('IFSC next to the other types', () => {
-  it('priority: IFSC sits between PAN and PHONE', async () => {
+  // The keyword-only types (ADR-031) sit between IFSC and PHONE.
+  it('priority: IFSC sits right after PAN, before PHONE', async () => {
     const { DETECTION_TYPES } = await import('../../../src/detection/types.js');
     expect(DETECTION_TYPES.indexOf('IFSC')).toBe(DETECTION_TYPES.indexOf('PAN') + 1);
-    expect(DETECTION_TYPES.indexOf('IFSC')).toBe(DETECTION_TYPES.indexOf('PHONE') - 1);
+    expect(DETECTION_TYPES.indexOf('IFSC')).toBeLessThan(DETECTION_TYPES.indexOf('PHONE'));
   });
 
   it('PAN: no text is both shapes (a PAN has a letter where an IFSC has its zero)', () => {
