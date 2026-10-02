@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   compare,
   compareAll,
+  compareEcho,
   merge,
   nextBaseline,
   scoresHeldOut,
@@ -10,7 +11,9 @@ import {
   type Measurement,
   type StoredDataset,
 } from '../../../eval/baseline.js';
+import type { EchoScore } from '../../../eval/echo.js';
 import type { DatasetScore, ShapeScore, TypeScore } from '../../../eval/score.js';
+import { HELD_BACK_RULES } from '../../../src/redaction/restore.js';
 import { PERSONAL_TYPES } from '../../../eval/types.js';
 
 const row = (values: number, redacted: number, typed: number, notPersonal: number): TypeScore => ({
@@ -401,5 +404,85 @@ describe('nextBaseline', () => {
   it('a note given for a better measurement is not recorded: there is nothing to justify', () => {
     const better = dataset({ ...BASE.types, AADHAAR: row(10, 9, 9, 3) });
     expect(nextBaseline(BASELINE, measurement(better), 'unneeded').history).toEqual([]);
+  });
+});
+
+describe('compareEcho (ADR-033)', () => {
+  const echoScore = (changes: Partial<EchoScore> & { url?: number } = {}): EchoScore => {
+    const { url = 2, ...rest } = changes;
+    const heldBack = Object.fromEntries(
+      HELD_BACK_RULES.map((rule) => [rule, 0]),
+    ) as EchoScore['heldBack'];
+    return {
+      messages: 10,
+      placeholders: 12,
+      restored: 10,
+      heldBack: { ...heldBack, url },
+      exact: 10,
+      firstForm: 0,
+      broken: 0,
+      ...rest,
+    };
+  };
+  const BEFORE = { main: echoScore(), 'in-markup': echoScore() };
+
+  it('the same counts: nothing to say; placeholders and exact are not thresholds', () => {
+    const now = { main: echoScore({ placeholders: 13, exact: 9 }), 'in-markup': echoScore() };
+    expect(compareEcho('generated', BEFORE, now)).toEqual({ worse: [], better: [], changed: [] });
+    expect(compareEcho('held-out', undefined, undefined).changed).toEqual([]);
+  });
+
+  it('more restored is better; more left by a rule, later forms or broken is worse', () => {
+    const now = {
+      main: echoScore({ restored: 11, url: 3 }),
+      'in-markup': echoScore({ firstForm: 1, broken: 2 }),
+    };
+    expect(compareEcho('generated', BEFORE, now)).toEqual({
+      better: ['generated echo main: restored 10 -> 11'],
+      worse: [
+        'generated echo main: left by url 2 -> 3',
+        'generated echo in-markup: later mentions in their first form 0 -> 1',
+        'generated echo in-markup: not restored correctly 0 -> 2',
+      ],
+      changed: [],
+    });
+    expect(compareEcho('generated', now, BEFORE).better).toHaveLength(3);
+  });
+
+  it('a part that appears, disappears or has other messages is a changed dataset', () => {
+    const now = { main: echoScore({ messages: 11, restored: 0 }), 'short-id': echoScore() };
+    expect(compareEcho('generated', BEFORE, now)).toEqual({
+      worse: [],
+      better: [],
+      changed: [
+        'generated echo main: 10 messages -> 11',
+        'generated echo in-markup: 10 messages -> 0',
+        'generated echo short-id: 0 messages -> 10',
+      ],
+    });
+  });
+
+  it('the first echo is a changed dataset, so its acceptance is recorded with a note', () => {
+    const now: Measurement = {
+      ...measurement(BASE, BASE),
+      generated: { score: BASE, seed: 1, echo: { main: echoScore() } },
+      heldOutEcho: echoScore(),
+    };
+    const before = { ...BASELINE, heldOut: stored(BASE) };
+    expect(compareAll(before, now).changed).toEqual([
+      'generated echo main: 0 messages -> 10',
+      'held-out echo all: 0 messages -> 10',
+    ]);
+    expect(() => nextBaseline(before, now, undefined)).toThrow();
+    const next = nextBaseline(before, now, 'ADR-033: the echo measurement');
+    expect(next.generated.echo).toEqual({ main: echoScore() });
+    expect(next.heldOut!.echo).toEqual({ all: echoScore() });
+    expect(verdict(compareAll(next, now))).toBe('same');
+  });
+
+  it('stores no echo key for a run without one', () => {
+    const next = nextBaseline(undefined, measurement(BASE, BASE), undefined);
+    expect(Object.keys(next.generated)).not.toContain('echo');
+    expect(Object.keys(next.heldOut!)).not.toContain('echo');
   });
 });

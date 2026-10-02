@@ -125,8 +125,9 @@ What Pseudonym is being built to do:
   response, log line or error), each shown able to fail by switching off
   one detector or check at a time; property-based streaming restoration
   tests; an evaluation (`npm run eval`) that scores the detectors on a
-  seeded, generated dataset and on a held-out adversarial one, and fails if
-  any count differs from the recorded baseline.
+  seeded, generated dataset and on a held-out adversarial one, counts what
+  restoration safety leaves unrestored when a model echoes every message,
+  and fails if any count differs from the recorded baseline.
 
 ## Supported data types
 
@@ -364,10 +365,10 @@ How to read a row:
   cases written in ways that are hard on purpose (a line break inside a
   number, a value split across two messages, two values side by side, a
   checked value inside an email address or key, passport and voter ID
-  numbers and dates of birth, contact sheets of mobiles in columns), one
-  row per way of writing. Each row there
-  measures one known gap; a low number in it is that gap, not the overall
-  quality.
+  numbers and dates of birth, contact sheets of mobiles in columns, values
+  inside a URL, a markdown link or an HTML tag), one row per way of
+  writing. Each row there measures one hard layout; a low number in it is
+  that layout's gap, not the overall quality.
 
 PERSON has no detector yet. It is labelled and measured from the start so
 that the "before" is on record, as passport numbers, voter IDs and dates
@@ -423,7 +424,7 @@ _Measured on 2026-10-02 (UTC date) by `npm run eval`. This block is generated, a
 | SECRET  | 153    | 147/153 (96.0%)     | 0               | 147/153 (96.0%)     | 147/147 (100.0%)       | 98.0%  | 0               |
 | PERSON  | 153    | 0/153 (0.0%)        | 0               | 0/153 (0.0%)        | -                      | -      | 0               |
 
-**Generated dataset, shape block** (1111 labelled personal values, in cases apart from the main ones). Each row is a way of writing values that is hard on purpose: a line break inside a value, a value split across two messages, two values side by side, digits beside a mobile, a checked value inside an address or key, digits joined by a bracket, passport and voter ID numbers and dates of birth, and contact sheets of mobiles in columns (aligned, and with one row out of line). These rows measure known gaps one at a time; they are not part of the numbers above.
+**Generated dataset, shape block** (1201 labelled personal values, in cases apart from the main ones). Each row is a way of writing values that is hard on purpose: a line break inside a value, a value split across two messages, two values side by side, digits beside a mobile, a checked value inside an address or key, digits joined by a bracket, passport and voter ID numbers and dates of birth, contact sheets of mobiles in columns (aligned, and with one row out of line), and values inside markup (a URL, a markdown link or image, an HTML tag). These rows measure hard layouts one at a time; they are not part of the numbers above.
 
 | Written as       | Values | Redacted (any type) | Partly redacted | Recall (right type) | Over-redactions |
 | ---------------- | ------ | ------------------- | --------------- | ------------------- | --------------- |
@@ -436,6 +437,7 @@ _Measured on 2026-10-02 (UTC date) by `npm run eval`. This block is generated, a
 | short-id         | 459    | 305/459 (66.4%)     | 0               | 304/459 (66.2%)     | 25              |
 | contact-sheet    | 120    | 120/120 (100.0%)    | 0               | 120/120 (100.0%)    | 0               |
 | misaligned-sheet | 132    | 132/132 (100.0%)    | 0               | 132/132 (100.0%)    | 0               |
+| in-markup        | 90     | 90/90 (100.0%)      | 0               | 90/90 (100.0%)      | 8               |
 
 **Held-out adversarial dataset** (drafted with AI assistance in a separate session that did not write the detectors, then reviewed by the author; never run against the detectors before it was committed, and never used for tuning; 58 messages in 54 cases, 79 labelled personal values).
 
@@ -456,6 +458,25 @@ _Measured on 2026-10-02 (UTC date) by `npm run eval`. This block is generated, a
 | VOTER    | 0      | -                   | 0               | -                   | 0/1 (0.0%)             | -      | 0               |
 | DOB      | 0      | -                   | 0               | -                   | 0/1 (0.0%)             | -      | 1               |
 
+**Echo** (ADR-033): every message redacted, then restored as if the model had repeated it unchanged. A placeholder in a URL, a link or image target, or an HTML attribute value stays a placeholder (restoration safety); each one left is counted under the rule that held it. "Back exactly" restores with those rules off and compares with the original message.
+
+| Echoed unchanged                                    | Generated, main   | Shape block: in-markup | Shape block: other shapes | Held-out      |
+| --------------------------------------------------- | ----------------- | ---------------------- | ------------------------- | ------------- |
+| Messages                                            | 600               | 90                     | 696                       | 58            |
+| Placeholders                                        | 1667              | 98                     | 941                       | 70            |
+| Restored                                            | 1660/1667 (99.5%) | 32/98 (32.6%)          | 932/941 (99.0%)           | 66/70 (94.2%) |
+| Left: in a markdown link or image target            | 0                 | 18                     | 9                         | 0             |
+| Left: after "[label]:"                              | 0                 | 9                      | 0                         | 0             |
+| Left: in a quoted HTML attribute value              | 0                 | 18                     | 0                         | 2             |
+| Left: in a URL (scheme, `mailto:` or host and path) | 7                 | 21                     | 0                         | 2             |
+| Left: rest of a line after an unclosed "<" target   | 0                 | 0                      | 0                         | 0             |
+| Left: rest of the text after an unclosed `="`       | 0                 | 0                      | 0                         | 0             |
+| Left: host rule (`[TYPE_N].x`)                      | 0                 | 0                      | 0                         | 0             |
+| `Type N` text, never restored (ADR-013)             | 0                 | 0                      | 0                         | 0             |
+| Messages back exactly                               | 600               | 90                     | 696                       | 58            |
+| Messages back with a later mention as first written | 0                 | 0                      | 0                         | 0             |
+| Messages not restored correctly                     | 0                 | 0                      | 0                         | 0             |
+
 <!-- eval:end -->
 
 The PHONE and NUMBER rows over-redact on purpose: a 10-digit tracking number
@@ -473,6 +494,25 @@ datasets are deterministic, so `npm run eval` fails if any count is worse
 than recorded, and also if one is better until the record is updated. A
 worse count can only be accepted with a written reason, which is kept in
 that file.
+
+The echo table is the cost of restoration safety in the best case, a model
+that repeats every placeholder exactly. In the generated main cases 7 of
+1,667 placeholders stay placeholders, all IP addresses inside a
+`http://…/login` URL. The `in-markup` shape puts one value in each of ten
+places in a URL, a markdown link or an HTML tag: 66 of its 98 stay
+placeholders, which is the rule doing its job, and the 32 restored are
+link texts and table cells (18), lookalikes in filler sentences (8), and 6
+emails inside a plain URL's query or path. Those six show a detection
+fault, not a restoration one: the email detection takes the URL's host and
+path with it (`https:[EMAIL_1]`), which is more redaction, not less, but
+leaves the model no URL to read (bug-log 49, not fixed yet). In the other
+shapes, 9 placeholders stay because of Pseudonym's own bracket: digits
+joined by a bracket (`1234567890(12345`) become `[NUMBER_1]([NUMBER_2]`,
+and the `](` reads as a link target. The rules added for streaming (an
+unclosed `<` or `="`, the host rule) hold nothing back in the generated
+set, which has no such text. Every message comes back exactly with the
+rules switched off. A model that rewrites or drops placeholders is a
+separate measurement.
 
 How the held-out set was made, stated exactly: it was drafted with AI
 assistance in a separate session that did not write the detectors, and then

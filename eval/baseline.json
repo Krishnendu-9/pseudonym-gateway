@@ -222,6 +222,213 @@
         "partial": 0,
         "typed": 132,
         "overRedactions": 0
+      },
+      "in-markup": {
+        "values": 90,
+        "redacted": 90,
+        "partial": 0,
+        "typed": 90,
+        "overRedactions": 8
+      }
+    },
+    "echo": {
+      "main": {
+        "messages": 600,
+        "placeholders": 1667,
+        "restored": 1660,
+        "heldBack": {
+          "markdown-destination": 0,
+          "reference-label": 0,
+          "html-attribute": 0,
+          "url": 7,
+          "unclosed-angle": 0,
+          "unclosed-quote": 0,
+          "host": 0,
+          "bare-space": 0
+        },
+        "exact": 600,
+        "firstForm": 0,
+        "broken": 0
+      },
+      "line-break": {
+        "messages": 120,
+        "placeholders": 125,
+        "restored": 125,
+        "heldBack": {
+          "markdown-destination": 0,
+          "reference-label": 0,
+          "html-attribute": 0,
+          "url": 0,
+          "unclosed-angle": 0,
+          "unclosed-quote": 0,
+          "host": 0,
+          "bare-space": 0
+        },
+        "exact": 120,
+        "firstForm": 0,
+        "broken": 0
+      },
+      "message-split": {
+        "messages": 120,
+        "placeholders": 2,
+        "restored": 2,
+        "heldBack": {
+          "markdown-destination": 0,
+          "reference-label": 0,
+          "html-attribute": 0,
+          "url": 0,
+          "unclosed-angle": 0,
+          "unclosed-quote": 0,
+          "host": 0,
+          "bare-space": 0
+        },
+        "exact": 120,
+        "firstForm": 0,
+        "broken": 0
+      },
+      "side-by-side": {
+        "messages": 40,
+        "placeholders": 76,
+        "restored": 76,
+        "heldBack": {
+          "markdown-destination": 0,
+          "reference-label": 0,
+          "html-attribute": 0,
+          "url": 0,
+          "unclosed-angle": 0,
+          "unclosed-quote": 0,
+          "host": 0,
+          "bare-space": 0
+        },
+        "exact": 40,
+        "firstForm": 0,
+        "broken": 0
+      },
+      "digit-beside": {
+        "messages": 40,
+        "placeholders": 44,
+        "restored": 44,
+        "heldBack": {
+          "markdown-destination": 0,
+          "reference-label": 0,
+          "html-attribute": 0,
+          "url": 0,
+          "unclosed-angle": 0,
+          "unclosed-quote": 0,
+          "host": 0,
+          "bare-space": 0
+        },
+        "exact": 40,
+        "firstForm": 0,
+        "broken": 0
+      },
+      "contained": {
+        "messages": 70,
+        "placeholders": 79,
+        "restored": 79,
+        "heldBack": {
+          "markdown-destination": 0,
+          "reference-label": 0,
+          "html-attribute": 0,
+          "url": 0,
+          "unclosed-angle": 0,
+          "unclosed-quote": 0,
+          "host": 0,
+          "bare-space": 0
+        },
+        "exact": 70,
+        "firstForm": 0,
+        "broken": 0
+      },
+      "joined-digits": {
+        "messages": 30,
+        "placeholders": 49,
+        "restored": 40,
+        "heldBack": {
+          "markdown-destination": 9,
+          "reference-label": 0,
+          "html-attribute": 0,
+          "url": 0,
+          "unclosed-angle": 0,
+          "unclosed-quote": 0,
+          "host": 0,
+          "bare-space": 0
+        },
+        "exact": 30,
+        "firstForm": 0,
+        "broken": 0
+      },
+      "short-id": {
+        "messages": 231,
+        "placeholders": 330,
+        "restored": 330,
+        "heldBack": {
+          "markdown-destination": 0,
+          "reference-label": 0,
+          "html-attribute": 0,
+          "url": 0,
+          "unclosed-angle": 0,
+          "unclosed-quote": 0,
+          "host": 0,
+          "bare-space": 0
+        },
+        "exact": 231,
+        "firstForm": 0,
+        "broken": 0
+      },
+      "contact-sheet": {
+        "messages": 21,
+        "placeholders": 120,
+        "restored": 120,
+        "heldBack": {
+          "markdown-destination": 0,
+          "reference-label": 0,
+          "html-attribute": 0,
+          "url": 0,
+          "unclosed-angle": 0,
+          "unclosed-quote": 0,
+          "host": 0,
+          "bare-space": 0
+        },
+        "exact": 21,
+        "firstForm": 0,
+        "broken": 0
+      },
+      "misaligned-sheet": {
+        "messages": 24,
+        "placeholders": 116,
+        "restored": 116,
+        "heldBack": {
+          "markdown-destination": 0,
+          "reference-label": 0,
+          "html-attribute": 0,
+          "url": 0,
+          "unclosed-angle": 0,
+          "unclosed-quote": 0,
+          "host": 0,
+          "bare-space": 0
+        },
+        "exact": 24,
+        "firstForm": 0,
+        "broken": 0
+      },
+      "in-markup": {
+        "messages": 90,
+        "placeholders": 98,
+        "restored": 32,
+        "heldBack": {
+          "markdown-destination": 18,
+          "reference-label": 9,
+          "html-attribute": 18,
+          "url": 21,
+          "unclosed-angle": 0,
+          "unclosed-quote": 0,
+          "host": 0,
+          "bare-space": 0
+        },
+        "exact": 90,
+        "firstForm": 0,
+        "broken": 0
       }
     },
     "seed": 20260930
@@ -384,6 +591,26 @@
         "otherPersonal": 0,
         "notPersonal": 1
       }
+    },
+    "echo": {
+      "all": {
+        "messages": 58,
+        "placeholders": 70,
+        "restored": 66,
+        "heldBack": {
+          "markdown-destination": 0,
+          "reference-label": 0,
+          "html-attribute": 2,
+          "url": 2,
+          "unclosed-angle": 0,
+          "unclosed-quote": 0,
+          "host": 0,
+          "bare-space": 0
+        },
+        "exact": 58,
+        "firstForm": 0,
+        "broken": 0
+      }
     }
   },
   "history": [
@@ -512,6 +739,31 @@
       "changes": [
         "generated shape short-id: over-redactions 0 -> 25",
         "held-out DOB: over-redactions 0 -> 1"
+      ]
+    },
+    {
+      "date": "2026-10-02",
+      "note": "ADR-021 amendment (Phase 5d part 3): the shape block gains in-markup, 90 values in URLs, markdown links and HTML tags; detectors unchanged",
+      "changes": [
+        "generated shape in-markup: 0 values -> 90"
+      ]
+    },
+    {
+      "date": "2026-10-02",
+      "note": "ADR-033: the echo measurement is added (first run); detectors and restoration unchanged",
+      "changes": [
+        "generated echo main: 0 messages -> 600",
+        "generated echo line-break: 0 messages -> 120",
+        "generated echo message-split: 0 messages -> 120",
+        "generated echo side-by-side: 0 messages -> 40",
+        "generated echo digit-beside: 0 messages -> 40",
+        "generated echo contained: 0 messages -> 70",
+        "generated echo joined-digits: 0 messages -> 30",
+        "generated echo short-id: 0 messages -> 231",
+        "generated echo contact-sheet: 0 messages -> 21",
+        "generated echo misaligned-sheet: 0 messages -> 24",
+        "generated echo in-markup: 0 messages -> 90",
+        "held-out echo all: 0 messages -> 58"
       ]
     }
   ]

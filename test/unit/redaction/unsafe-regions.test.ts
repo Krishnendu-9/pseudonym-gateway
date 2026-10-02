@@ -309,3 +309,95 @@ describe('unsafeRegions: differential properties (ADR-018)', () => {
     );
   });
 });
+
+describe('UnsafeRegionScanner.ruleAt: which rule made a region unsafe (ADR-033)', () => {
+  const ruleOf = (text: string, placeholder = '[EMAIL_1]'): string | undefined => {
+    const scanner = new UnsafeRegionScanner({ classify: true });
+    scanner.feed(text);
+    const at = text.indexOf(placeholder);
+    return scanner.ruleAt(at, at + placeholder.length);
+  };
+
+  it.each([
+    ['a link target', 'See [here](https://a.example/?d=[EMAIL_1]) now', 'markdown-destination'],
+    ['an image target', '![x](//a.example/[EMAIL_1])', 'markdown-destination'],
+    ['a target with no URL in it', '[call](tel:[EMAIL_1])', 'markdown-destination'],
+    ['a closed angle target', '[x](<a [EMAIL_1]>) b', 'markdown-destination'],
+    ['after "[label]:"', '[ref]: https://a.example/?d=[EMAIL_1]', 'reference-label'],
+    ['a closed angle target after "[label]:"', '[ref]: <a [EMAIL_1]>', 'reference-label'],
+    [
+      'a quoted attribute value',
+      '<a href="https://a.example/?d=[EMAIL_1]">x</a>',
+      'html-attribute',
+    ],
+    ['a single-quoted value', "<div data-x='[EMAIL_1]'>", 'html-attribute'],
+    ['a URL in prose', 'Visit https://a.example/?d=[EMAIL_1] now', 'url'],
+    ['mailto:', 'Write to mailto:[EMAIL_1] today', 'url'],
+    ['a bare host and path', 'Open a.example/u/[EMAIL_1] now', 'url'],
+    ['an angle target the line ends in', '[x](<a [EMAIL_1] b\nnext', 'unclosed-angle'],
+    ['an angle target the text ends in', '[ref]: <a [EMAIL_1]', 'unclosed-angle'],
+    ['a value the text ends in', '<b title="a [EMAIL_1] and so on', 'unclosed-quote'],
+    // The older rule wins where both hold: only what the ADR-018 rules
+    // alone keep counts under them.
+    ['a URL inside an unclosed value', '<a href="https://a.example/?d=[EMAIL_1]', 'url'],
+    ['a URL inside an unclosed angle target', '[x](<https://a.example/?[EMAIL_1]', 'url'],
+    ['a target inside an unclosed value', '<b title="[x]([EMAIL_1]', 'markdown-destination'],
+  ])('%s: %s', (_, text, rule) => {
+    expect(ruleOf(text)).toBe(rule);
+  });
+
+  it('nothing outside a region, and nothing from a scanner that is not classifying', () => {
+    expect(ruleOf('Mail [EMAIL_1] today')).toBeUndefined();
+    const scanner = new UnsafeRegionScanner();
+    scanner.feed('Visit https://a.example/?d=[EMAIL_1] now');
+    expect(scanner.regions()).toHaveLength(1);
+    expect(scanner.ruleAt(0, 40)).toBeUndefined();
+  });
+
+  it('an open construct is unclosed until it closes, then takes its own rule', () => {
+    const scanner = new UnsafeRegionScanner({ classify: true });
+    scanner.feed('<b title="[EMAIL_1]');
+    expect(scanner.ruleAt(10, 19)).toBe('unclosed-quote');
+    scanner.feed('">');
+    expect(scanner.ruleAt(10, 19)).toBe('html-attribute');
+    const angle = new UnsafeRegionScanner({ classify: true });
+    angle.feed('[ref]: <[EMAIL_1]');
+    expect(angle.ruleAt(8, 17)).toBe('unclosed-angle');
+    angle.feed('>');
+    expect(angle.ruleAt(8, 17)).toBe('reference-label');
+  });
+
+  it('a second target inside an open one is part of it, and keeps its rule', () => {
+    expect(ruleOf('[ref]: <a](<[EMAIL_1]>')).toBe('reference-label');
+    expect(ruleOf('[ref]: a](b[EMAIL_1]')).toBe('reference-label');
+    expect(ruleOf('[x](a[ref]:[EMAIL_1]')).toBe('markdown-destination');
+    // A space ends the first target; the label then starts its own.
+    expect(ruleOf('[x](a[ref]: [EMAIL_1]')).toBe('reference-label');
+  });
+
+  it('a label earlier in the text does not change what a later "](" target is', () => {
+    expect(ruleOf('[ref]: a.example and [y]([EMAIL_1])')).toBe('markdown-destination');
+    expect(ruleOf('[ref]: <a> and [y](<[EMAIL_1]>)')).toBe('markdown-destination');
+  });
+
+  it('a second URL inside a URL is counted as a URL', () => {
+    expect(ruleOf('https://a.example/?r=http://b.example/[EMAIL_1] x')).toBe('url');
+  });
+
+  it('classifying changes no region, and every unsafe character, only those, has a rule', () => {
+    assertPropertyQuietly(
+      fc.property(streamedAnswerArb, ({ text, chunks }) => {
+        const scanner = new UnsafeRegionScanner({ classify: true });
+        for (const chunk of chunks) scanner.feed(chunk);
+        const regions = unsafeRegions(text);
+        if (JSON.stringify(scanner.regions()) !== JSON.stringify(regions)) return false;
+        for (let at = 0; at < text.length; at++) {
+          const unsafe = isInUnsafeRegion(regions, at, at + 1);
+          if (unsafe !== (scanner.ruleAt(at, at + 1) !== undefined)) return false;
+        }
+        return true;
+      }),
+      { numRuns: 5_000 },
+    );
+  });
+});

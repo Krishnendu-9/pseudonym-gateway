@@ -316,6 +316,32 @@ describe('the shape block (Phase 5c)', () => {
     );
   });
 
+  it('in-markup: one value per case, 9 in each of ten places in a URL, link or tag', () => {
+    const cases = ofShape('in-markup');
+    expect(valuesByType(cases)).toEqual({ EMAIL: 40, PHONE: 21, PAN: 11, UPI: 10, AADHAAR: 8 });
+    // Where each value sits, read from the text just before and after it.
+    const places: [string, RegExp][] = [
+      ['url query', /track\?id=$/],
+      ['url path', /\/users\/$/],
+      ['link text', /\[$/],
+      ['link target', /\[my profile\]\((?:mailto:|tel:|https:\/\/portal\.example\/kyc\?pan=)$/],
+      ['image', /\?m=$/],
+      ['mailto', /(?<!href=")mailto:$/],
+      ['attribute', /(?:href="mailto:|value="|data-pan=')$/],
+      ['element text', /<td>$/],
+      ['reference definition', /\[profile\]: https:\/\/portal\.example\/\?u=$/],
+      ['img src', /<img src="https:\/\/cdn\.example\/p\.png\?u=$/],
+    ];
+    const found = cases.map((c) => {
+      const m = c.messages[0]!;
+      const values = m.pieces.filter((p) => p.type !== 'NOT');
+      if (c.messages.length !== 1 || values.length !== 1) return 'bad';
+      const before = m.text.slice(0, values[0]!.start);
+      return places.filter(([, pattern]) => pattern.test(before)).map(([name]) => name)[0] ?? '?';
+    });
+    expect(tally(found)).toEqual(Object.fromEntries(places.map(([name]) => [name, 9])));
+  });
+
   it(`short-id: each short ID type ${VALUES_PER_TYPE} times, among lookalikes of its shape`, () => {
     expect(valuesByType(ofShape('short-id'))).toEqual(
       Object.fromEntries(SHORT_ID_TYPES.map((type) => [type, VALUES_PER_TYPE])),

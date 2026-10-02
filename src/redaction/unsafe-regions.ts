@@ -51,6 +51,9 @@
 //    (`x-[CARD_1].example/`);
 //  - an HTML attribute whose value is not a URL at all is still marked
 //    unsafe (any quoted value), the safe side.
+//
+// For the evaluation only, a classifying scanner also says which rule made
+// a region unsafe (`ruleAt`, ADR-033); restoration never asks.
 
 import type { Span } from '../detection/normalise.js';
 
@@ -113,6 +116,41 @@ const isLineTerminator = (c: number): boolean =>
 const MAILTO = 'mailto';
 
 /**
+ * The rule that made a region unsafe, for counting what restoration leaves
+ * unrestored (the echo measurement, ADR-033). Two are only known once the
+ * construct ends: an angle destination with no ">" before the line ends is
+ * `unclosed-angle`, a quoted attribute value with no closing quote before
+ * the text ends is `unclosed-quote` (the ADR-018 rules).
+ */
+export type UnsafeRule =
+  | 'markdown-destination'
+  | 'reference-label'
+  | 'html-attribute'
+  | 'url'
+  | 'unclosed-angle'
+  | 'unclosed-quote';
+
+/**
+ * When a placeholder is inside more than one region, the rule it is
+ * counted under: the outer construct before a URL inside it, and the
+ * ADR-018 rules last, so they count only what no older rule would hold.
+ */
+export const UNSAFE_RULE_ORDER: readonly UnsafeRule[] = [
+  'markdown-destination',
+  'reference-label',
+  'html-attribute',
+  'url',
+  'unclosed-angle',
+  'unclosed-quote',
+];
+
+interface RuleSpan {
+  readonly start: number;
+  end: number;
+  rule: UnsafeRule;
+}
+
+/**
  * Finds unsafe regions in text fed to it piece by piece. Feeding a text in
  * any number of pieces gives the same regions as feeding it whole.
  */
@@ -121,6 +159,22 @@ export class UnsafeRegionScanner {
   readonly #regions: { start: number; end: number }[] = [];
   #position = 0;
   #previous = -1;
+
+  // Only when classifying (ADR-033): one span per construct, with its rule,
+  // never merged. The open ones grow as their characters arrive.
+  readonly #spans: RuleSpan[] | undefined;
+  #destinationVia: UnsafeRule = 'markdown-destination';
+  #plainSpan: RuleSpan | undefined;
+  #angleSpan: RuleSpan | undefined;
+  #angleVia: UnsafeRule = 'markdown-destination';
+  #quoteSpan: RuleSpan | undefined;
+  #urlSpan: RuleSpan | undefined;
+  #pathSpan: RuleSpan | undefined;
+
+  /** With `classify`, also records which rule made each region unsafe (`ruleAt`). */
+  constructor({ classify = false }: { readonly classify?: boolean } = {}) {
+    this.#spans = classify ? [] : undefined;
+  }
 
   // Markdown destinations, shared by "](" and "[label]:" (one grammar).
   #destinationPending = false;
@@ -169,6 +223,35 @@ export class UnsafeRegionScanner {
     return this.#regions.map((region) => ({ ...region }));
   }
 
+  /**
+   * The rule `[start, end)` is counted under (UNSAFE_RULE_ORDER), or
+   * undefined if no region overlaps it or the scanner is not classifying.
+   * Ask once the text has ended to get the final rule of an open construct.
+   * Looks at every span: for counting, never on a request's path.
+   */
+  ruleAt(start: number, end: number): UnsafeRule | undefined {
+    let best: number | undefined;
+    for (const span of this.#spans ?? []) {
+      if (span.start >= end || start >= span.end) continue;
+      const rank = UNSAFE_RULE_ORDER.indexOf(span.rule);
+      if (best === undefined || rank < best) best = rank;
+    }
+    return best === undefined ? undefined : UNSAFE_RULE_ORDER[best];
+  }
+
+  /** A new span from `start` to the current character, if classifying. */
+  #open(start: number, rule: UnsafeRule): RuleSpan | undefined {
+    if (!this.#spans) return undefined;
+    const span = { start, end: this.#position + 1, rule };
+    this.#spans.push(span);
+    return span;
+  }
+
+  /** The current character belongs to `span` (when classifying). */
+  #grow(span: RuleSpan | undefined): void {
+    if (span) span.end = this.#position + 1;
+  }
+
   #mark(start: number, end: number): void {
     let last = this.#regions.at(-1);
     while (last && last.end >= start) {
@@ -187,29 +270,57 @@ export class UnsafeRegionScanner {
 
     // Markdown destinations.
     if (this.#destinationAngle) {
-      if (c === LF) this.#destinationAngle = false;
-      else {
+      if (c === LF) {
+        // Unclosed: the span keeps the rule it opened with.
+        this.#destinationAngle = false;
+        this.#angleSpan = undefined;
+      } else {
         unsafe = true;
-        if (c === GT) this.#destinationAngle = false;
+        this.#grow(this.#angleSpan);
+        if (c === GT) {
+          this.#destinationAngle = false;
+          if (this.#angleSpan) this.#angleSpan.rule = this.#angleVia;
+          this.#angleSpan = undefined;
+        }
       }
     }
     if (this.#destinationPlain) {
-      if (isWhitespace(c)) this.#destinationPlain = false;
-      else unsafe = true;
+      if (isWhitespace(c)) {
+        this.#destinationPlain = false;
+        this.#plainSpan = undefined;
+      } else {
+        unsafe = true;
+        this.#grow(this.#plainSpan);
+      }
     }
     if (this.#destinationPending && !isWhitespace(c)) {
       this.#destinationPending = false;
       unsafe = true;
-      if (c === LT) this.#destinationAngle = true;
-      else this.#destinationPlain = true;
+      // A destination already open goes on: this one is part of it.
+      if (c === LT) {
+        if (!this.#destinationAngle) {
+          this.#angleSpan = this.#open(position, 'unclosed-angle');
+          this.#angleVia = this.#destinationVia;
+        }
+        this.#destinationAngle = true;
+      } else {
+        if (!this.#destinationPlain) this.#plainSpan = this.#open(position, this.#destinationVia);
+        this.#destinationPlain = true;
+      }
     }
-    if (c === LPAREN && previous === RBRACKET) this.#destinationPending = true;
+    if (c === LPAREN && previous === RBRACKET) {
+      this.#destinationPending = true;
+      this.#destinationVia = 'markdown-destination';
+    }
 
     // Reference labels: "[", at least one character (a backslash escapes
     // the next one; no "]" and no line break otherwise), "]", ":".
     if (this.#labelClosed) {
       this.#labelClosed = false;
-      if (c === COLON) this.#destinationPending = true;
+      if (c === COLON) {
+        this.#destinationPending = true;
+        this.#destinationVia = 'reference-label';
+      }
     }
     if (this.#labelOpen) {
       if (this.#labelEscape) {
@@ -233,17 +344,30 @@ export class UnsafeRegionScanner {
 
     // Quoted HTML attribute values, left to right.
     if (this.#quote !== 0) {
-      if (c === this.#quote) this.#quote = 0;
-      else unsafe = true;
+      if (c === this.#quote) {
+        this.#quote = 0;
+        if (this.#quoteSpan) this.#quoteSpan.rule = 'html-attribute';
+        this.#quoteSpan = undefined;
+      } else {
+        unsafe = true;
+        this.#grow(this.#quoteSpan);
+      }
     } else if (this.#equalsPending && (c === DQUOTE || c === SQUOTE)) {
       this.#quote = c;
       this.#equalsPending = false;
+      // Empty until the value's first character; unclosed until its quote.
+      this.#quoteSpan = this.#open(position + 1, 'unclosed-quote');
     } else if (!isWhitespace(c)) this.#equalsPending = c === EQUALS;
 
     // Scheme URLs. The scheme must start at a word boundary with a letter.
     if (this.#url) {
-      if (isUrlChar(c)) unsafe = true;
-      else this.#url = false;
+      if (isUrlChar(c)) {
+        unsafe = true;
+        this.#grow(this.#urlSpan);
+      } else {
+        this.#url = false;
+        this.#urlSpan = undefined;
+      }
     }
     const schemeStep = this.#schemeStep;
     this.#schemeStep = 0;
@@ -252,6 +376,7 @@ export class UnsafeRegionScanner {
       this.#mark(urlStart, position);
       this.#url = true;
       unsafe = true;
+      this.#urlSpan = this.#open(urlStart, 'url');
     }
     this.#mailtoStart = -1;
     if (c === SLASH && (schemeStep === 1 || schemeStep === 2)) this.#schemeStep = schemeStep + 1;
@@ -283,8 +408,13 @@ export class UnsafeRegionScanner {
     // word boundary; the "/" and the path after it are the region, and the
     // host is marked when the "/" arrives.
     if (this.#path) {
-      if (isUrlChar(c)) unsafe = true;
-      else this.#path = false;
+      if (isUrlChar(c)) {
+        unsafe = true;
+        this.#grow(this.#pathSpan);
+      } else {
+        this.#path = false;
+        this.#pathSpan = undefined;
+      }
     }
     if (isAsciiAlnum(c) || c === HYPHEN) {
       if (this.#labelAnchor < 0 && isAsciiAlnum(c) && !isAsciiWord(previous)) {
@@ -304,6 +434,7 @@ export class UnsafeRegionScanner {
         this.#mark(this.#hostChain, position);
         this.#path = true;
         unsafe = true;
+        this.#pathSpan = this.#open(this.#hostChain, 'url');
       }
       this.#hostChain = -1;
       this.#startLabel(position + 1);

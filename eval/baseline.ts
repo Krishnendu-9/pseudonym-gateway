@@ -13,9 +13,16 @@
 // A type added after a baseline was stored (PASSPORT, VOTER and DOB in
 // Phase 5c) is read as an empty row there, so that its values show up as a
 // changed dataset, not as a crash.
+//
+// The echo measurement (ADR-033) is held the same way, part by part:
+// restored placeholders may only go up; what a rule held back, later
+// mentions restored in their first form, and broken round trips may only
+// go down.
 
+import type { EchoScore } from './echo.js';
 import type { DatasetScore, ShapeScore, TypeScore } from './score.js';
 import { PERSONAL_TYPES, type PersonalType } from './types.js';
+import { HELD_BACK_RULES } from '../src/redaction/restore.js';
 
 export interface StoredDataset {
   readonly cases: number;
@@ -23,6 +30,12 @@ export interface StoredDataset {
   readonly types: Readonly<Record<PersonalType, TypeScore>>;
   /** The generated set's values by the way they are written (Phase 5c); absent before. */
   readonly shapes?: Readonly<Record<string, ShapeScore>>;
+  /**
+   * The echo measurement (Phase 5d, ADR-033), by part: the generated set's
+   * `main` cases and each shape; the held-out set as one part, `all`.
+   * Absent before it existed.
+   */
+  readonly echo?: Readonly<Record<string, EchoScore>>;
 }
 
 /** A type's row, or an empty one for a type the stored dataset predates. */
@@ -132,6 +145,56 @@ export function compare(
   return { worse, better, changed };
 }
 
+// The echo counts a threshold is kept on. Restored is the naturalness the
+// user gets; every held-back rule, a later mention restored in its first
+// form, and a broken round trip are costs.
+const ECHO_METRICS: readonly {
+  name: string;
+  higherIsBetter: boolean;
+  of: (score: EchoScore) => number;
+}[] = [
+  { name: 'restored', higherIsBetter: true, of: (s) => s.restored },
+  ...HELD_BACK_RULES.map((rule) => ({
+    name: `left by ${rule}`,
+    higherIsBetter: false,
+    of: (s: EchoScore) => s.heldBack[rule],
+  })),
+  { name: 'later mentions in their first form', higherIsBetter: false, of: (s) => s.firstForm },
+  { name: 'not restored correctly', higherIsBetter: false, of: (s) => s.broken },
+];
+
+/**
+ * Compares one dataset's echo with its stored one. A part that appears or
+ * disappears, or whose message count moved, is a changed dataset: that is
+ * also how the measurement's first run is recorded.
+ */
+export function compareEcho(
+  name: string,
+  stored: Readonly<Record<string, EchoScore>> | undefined,
+  current: Readonly<Record<string, EchoScore>> | undefined,
+): Comparison {
+  const worse: string[] = [];
+  const better: string[] = [];
+  const changed: string[] = [];
+  const parts = new Set([...Object.keys(stored ?? {}), ...Object.keys(current ?? {})]);
+  for (const part of parts) {
+    const before = stored?.[part];
+    const now = current?.[part];
+    if (!before || !now || before.messages !== now.messages) {
+      changed.push(
+        `${name} echo ${part}: ${before?.messages ?? 0} messages -> ${now?.messages ?? 0}`,
+      );
+      continue;
+    }
+    for (const { name: metric, higherIsBetter, of } of ECHO_METRICS) {
+      if (of(before) === of(now)) continue;
+      const line = `${name} echo ${part}: ${metric} ${of(before)} -> ${of(now)}`;
+      (of(now) > of(before) === higherIsBetter ? better : worse).push(line);
+    }
+  }
+  return { worse, better, changed };
+}
+
 /**
  * Whether the held-out set is scored in this run. While it is being written
  * it has no baseline and is only linted; it is measured from the moment its
@@ -154,18 +217,32 @@ export function verdict(comparison: Comparison): Verdict {
   return comparison.better.length > 0 ? 'better' : 'same';
 }
 
-const stored = (score: DatasetScore): StoredDataset => ({
+const stored = (
+  score: DatasetScore,
+  echo: Readonly<Record<string, EchoScore>> | undefined,
+): StoredDataset => ({
   cases: score.cases,
   messages: score.messages,
   types: score.types,
   ...(Object.keys(score.shapes).length > 0 ? { shapes: score.shapes } : {}),
+  ...(echo ? { echo } : {}),
 });
 
 export interface Measurement {
   readonly date: string;
-  readonly generated: { readonly score: DatasetScore; readonly seed: number };
+  readonly generated: {
+    readonly score: DatasetScore;
+    readonly seed: number;
+    /** By part (`main`, then each shape); absent in a run that does not echo. */
+    readonly echo?: Readonly<Record<string, EchoScore>>;
+  };
   readonly heldOut: DatasetScore | undefined;
+  /** The held-out set's echo, one total. */
+  readonly heldOutEcho?: EchoScore;
 }
+
+const heldOutEcho = (now: Measurement): Record<string, EchoScore> | undefined =>
+  now.heldOutEcho ? { all: now.heldOutEcho } : undefined;
 
 /** How a fresh measurement differs from the baseline (everything is new if there is none). */
 export function compareAll(previous: Baseline | undefined, now: Measurement): Comparison {
@@ -178,6 +255,8 @@ export function compareAll(previous: Baseline | undefined, now: Measurement): Co
     { worse: [], better: [], changed: seedChanged },
     compare('generated', previous.generated, now.generated.score),
     compare('held-out', previous.heldOut, now.heldOut),
+    compareEcho('generated', previous.generated.echo, now.generated.echo),
+    compareEcho('held-out', previous.heldOut?.echo, heldOutEcho(now)),
   );
 }
 
@@ -207,8 +286,8 @@ export function nextBaseline(
   }
   return {
     measuredOn: now.date,
-    generated: { ...stored(now.generated.score), seed: now.generated.seed },
-    heldOut: now.heldOut ? stored(now.heldOut) : null,
+    generated: { ...stored(now.generated.score, now.generated.echo), seed: now.generated.seed },
+    heldOut: now.heldOut ? stored(now.heldOut, heldOutEcho(now)) : null,
     history,
   };
 }

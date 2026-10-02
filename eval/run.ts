@@ -1,5 +1,7 @@
-// `npm run eval`: measures the detectors on both datasets, prints the
-// tables, and compares the counts with eval/baseline.json (ADR-021).
+// `npm run eval`: measures the detectors on both datasets, and what
+// restoration does with an unchanged echo of every message (ADR-033),
+// prints the tables, and compares the counts with eval/baseline.json
+// (ADR-021).
 //
 //   npm run eval                          fails if any count differs from the
 //                                         baseline, or the README block is stale
@@ -33,9 +35,12 @@ import {
   type Baseline,
   type Measurement,
 } from './baseline.js';
+import { echo, echoByShape, type EchoScore } from './echo.js';
 import { GENERATED_SEED, generateCases } from './generate.js';
 import { checkHeldOut, loadHeldOut } from './held-out.js';
 import {
+  echoColumns,
+  echoTable,
   overRedactionTable,
   readmeBlock,
   scoreTable,
@@ -92,6 +97,7 @@ write();
 const held = checkHeldOut();
 const measured = scoresHeldOut(previous, args.includes('--with-held-out'));
 let heldOut: Measurement['heldOut'];
+let heldOutEcho: EchoScore | undefined;
 if (!measured) {
   write(
     `## Held-out dataset: ${held.cases.length} cases, ${held.problems.length} lint problem(s); not measured yet`,
@@ -108,6 +114,7 @@ if (!measured) {
 } else {
   const cases = loadHeldOut();
   heldOut = cases.length > 0 ? score(cases) : undefined;
+  heldOutEcho = cases.length > 0 ? echo(cases) : undefined;
   // Tags and lookalike labels are text from the file: shown only on request.
   const authorView = args.includes('--by-tag');
   write(`## Held-out dataset (${cases.length} cases)`);
@@ -130,12 +137,20 @@ if (!measured) {
   }
 }
 
+// The echo: counts by rule only; the held-out set as one total.
+const generatedEcho = echoByShape(generatedCases);
+write('## Echo: each message restored as if the model repeated it unchanged');
+write();
+write(echoTable(echoColumns(generatedEcho, heldOutEcho)));
+write();
+
 const now: Measurement = {
   // The UTC date, and the README says so: a run before 05:30 in India
   // records the day before.
   date: new Date().toISOString().slice(0, 10),
-  generated: { score: generated, seed: GENERATED_SEED },
+  generated: { score: generated, seed: GENERATED_SEED, echo: generatedEcho },
   heldOut,
+  ...(heldOutEcho ? { heldOutEcho } : {}),
 };
 const comparison = compareAll(previous, now);
 for (const line of comparison.worse) write(`WORSE    ${line}`);

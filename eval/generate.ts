@@ -691,6 +691,7 @@ export const SHAPES = [
   'short-id',
   'contact-sheet',
   'misaligned-sheet',
+  'in-markup',
 ] as const;
 export type Shape = (typeof SHAPES)[number];
 
@@ -705,6 +706,7 @@ export const SHAPE_VALUES: Readonly<Record<Shape, number>> = {
   'short-id': 3 * VALUES_PER_TYPE,
   'contact-sheet': 120,
   'misaligned-sheet': 132,
+  'in-markup': 90,
 };
 
 const SHAPE_SALT = 0x5c5c5c5c;
@@ -934,6 +936,48 @@ function contactSheet(
   return { text: lines.join('\n'), planted };
 }
 
+// Values inside markup (Phase 5d, the echo measurement): a URL's query or
+// path, a markdown link's text or target, an image, `mailto:`, an HTML
+// attribute or an element's text, a reference definition. Restoration
+// leaves a placeholder in a URL, a destination or an attribute value
+// unrestored (restoration safety), and restores one in link or element
+// text; each placement gets the same number of values, of the types people
+// put there.
+type Placement = readonly [markup: (slot: string) => string, slots: readonly string[]];
+const IN_MARKUP: readonly Placement[] = [
+  [
+    (s) => `https://support.example/track?id=${s}`,
+    ['{{EMAIL}}', '{{PHONE}}', '{{PAN}}', '{{AADHAAR}}'],
+  ],
+  [(s) => `https://portal.example/users/${s}/orders`, ['{{EMAIL}}', '{{PAN}}', '{{UPI}}']],
+  [(s) => `[${s}](https://portal.example/profile)`, ['{{EMAIL}}', '{{PHONE}}', '{{UPI}}']],
+  [
+    (s) => `[my profile](${s})`,
+    ['mailto:{{EMAIL}}', 'tel:{{PHONE:+91##########}}', 'https://portal.example/kyc?pan={{PAN}}'],
+  ],
+  [
+    (s) => `![receipt](https://cdn.example/receipt.png?m=${s})`,
+    ['{{EMAIL}}', '{{PHONE}}', '{{AADHAAR}}'],
+  ],
+  [(s) => `mailto:${s}`, ['{{EMAIL}}']],
+  [
+    (s) => s,
+    [
+      '<a href="mailto:{{EMAIL}}">write to me</a>',
+      '<input type="tel" value="{{PHONE}}">',
+      "<div data-pan='{{PAN}}'>KYC</div>",
+    ],
+  ],
+  [(s) => `<td>${s}</td>`, ['{{EMAIL}}', '{{PHONE}}', '{{AADHAAR}}']],
+  [(s) => `[profile]: https://portal.example/?u=${s}`, ['{{EMAIL}}', '{{PHONE}}']],
+  [(s) => `<img src="https://cdn.example/p.png?u=${s}" alt="photo">`, ['{{EMAIL}}', '{{UPI}}']],
+];
+const MARKUP_FRAMES: ByTongue = {
+  en: [(m) => `Details: ${m}`, (m) => `Please check ${m} and reply.`],
+  hinglish: [(m) => `Details yahan hain: ${m}`, (m) => `${m} dekh lijiye.`],
+  hi: [(m) => `विवरण: ${m}`, (m) => `कृपया ${m} देखें।`],
+};
+
 const pickTongue = (rng: Rng): Tongue =>
   weighted<Tongue>(rng, [
     [5, 'en'],
@@ -1029,6 +1073,14 @@ function shapeCases(seed: number, firstNumber: number): RawCase[] {
     const sheet = contactSheet(rows, i % 2 === 0 ? 'plus91' : 'missing', tongue, rng);
     planted += sheet.planted;
     add('record', tongue, 'misaligned-sheet', [message(sheet.text)]);
+  }
+  // Markup comes after the sheets, for the same reason.
+  for (let i = 0; i < SHAPE_VALUES['in-markup']; i++) {
+    const tongue = pickTongue(rng);
+    const [markup, slots] = IN_MARKUP[i % IN_MARKUP.length]!;
+    const slot = slots[Math.floor(i / IN_MARKUP.length) % slots.length]!;
+    const sentence = rng.pick(MARKUP_FRAMES[tongue])(markup(slot));
+    add('ticket', tongue, 'in-markup', [message(ticket(tongue, sentence))]);
   }
   return out;
 }

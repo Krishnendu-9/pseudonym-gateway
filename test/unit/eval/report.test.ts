@@ -2,14 +2,19 @@ import { format } from 'prettier';
 import { describe, expect, it } from 'vitest';
 import type { StoredDataset } from '../../../eval/baseline.js';
 import {
+  echoColumns,
+  echoTable,
   overRedactionTable,
   README_END,
   README_START,
   readmeBlock,
   scoreTable,
   shapeTable,
+  sumEcho,
   withReadmeBlock,
 } from '../../../eval/report.js';
+import type { EchoScore } from '../../../eval/echo.js';
+import { HELD_BACK_RULES } from '../../../src/redaction/restore.js';
 import type { DatasetScore, TypeScore } from '../../../eval/score.js';
 import { PERSONAL_TYPES } from '../../../eval/types.js';
 
@@ -209,5 +214,85 @@ describe('withReadmeBlock', () => {
     expect(withReadmeBlock('no markers', block)).toBeUndefined();
     expect(withReadmeBlock(`${README_START} only`, block)).toBeUndefined();
     expect(withReadmeBlock(`${README_END} ${README_START}`, block)).toBeUndefined();
+  });
+});
+
+describe('the echo table (ADR-033)', () => {
+  const echo = (scale: number, url = 0): EchoScore => {
+    const heldBack = Object.fromEntries(
+      HELD_BACK_RULES.map((rule) => [rule, 0]),
+    ) as EchoScore['heldBack'];
+    return {
+      messages: 4 * scale,
+      placeholders: 5 * scale,
+      restored: 5 * scale - url,
+      heldBack: { ...heldBack, url, host: scale },
+      exact: 4 * scale - 1,
+      firstForm: 1,
+      broken: 0,
+    };
+  };
+  const generated = {
+    main: echo(1),
+    'line-break': echo(2),
+    'in-markup': echo(3, 2),
+    sheet: echo(4),
+  };
+
+  it('sumEcho adds every count, rule by rule', () => {
+    const sum = sumEcho([echo(2), echo(4)]);
+    expect(sum).toMatchObject({
+      messages: 24,
+      placeholders: 30,
+      restored: 30,
+      exact: 22,
+      firstForm: 2,
+    });
+    expect(sum.heldBack).toMatchObject({ host: 6, url: 0, 'bare-space': 0 });
+  });
+
+  it('columns: main, in-markup, the other shapes added up, then the held-out set', () => {
+    const columns = echoColumns(generated, echo(5));
+    expect(columns.map(([name]) => name)).toEqual([
+      'Generated, main',
+      'Shape block: in-markup',
+      'Shape block: other shapes',
+      'Held-out',
+    ]);
+    expect(columns[2]![1]).toEqual(sumEcho([echo(2), echo(4)]));
+    expect(echoColumns({}, undefined)).toEqual([]);
+  });
+
+  it('one row per count, a column per part, restored as a share of the placeholders', async () => {
+    const table = echoTable(echoColumns(generated, undefined));
+    const rows = table.split('\n');
+    expect(rows[0]).toMatch(
+      /^\| Echoed unchanged +\| Generated, main \| Shape block: in-markup \|/,
+    );
+    expect(rows.find((r) => r.startsWith('| Restored'))).toMatch(
+      /\| 5\/5 \(100\.0%\) +\| 13\/15 \(86\.6%\)/,
+    );
+    expect(rows.find((r) => r.startsWith('| Left: in a URL'))).toMatch(/\| 0 +\| 2 +\| 0 +\|$/);
+    expect(rows).toHaveLength(2 + 3 + 8 + 3);
+    const markdown = `# Title\n\n${table}\n`;
+    expect(await format(markdown, { parser: 'markdown' })).toBe(markdown);
+  });
+
+  it('the README block shows it after the held-out table, only once an echo is stored', async () => {
+    const input = { measuredOn: '2026-10-02', generated: { ...SCORE, seed: 42 }, heldOut: null };
+    expect(readmeBlock(input)).not.toContain('**Echo**');
+    const heldOut = {
+      ...dataset({ PAN: { values: 2, redacted: 2, typed: 2 } }),
+      echo: { all: echo(5) },
+    };
+    const block = readmeBlock({
+      ...input,
+      generated: { ...input.generated, echo: generated },
+      heldOut,
+    });
+    expect(block).toContain(`${scoreTable(heldOut)}\n\n**Echo** (ADR-033)`);
+    expect(block).toContain(`${echoTable(echoColumns(generated, echo(5)))}\n\n${README_END}`);
+    const markdown = `# Title\n\n${block}\n\nAfter.\n`;
+    expect(await format(markdown, { parser: 'markdown' })).toBe(markdown);
   });
 });
