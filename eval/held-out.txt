@@ -243,3 +243,111 @@ Testing checkout with {{CARD=4111 1111 1111 1111}}, is that the Visa test card?
 === H054 | hindi, bank-account, ifsc
 @user
 मेरा खाता संख्या {{NUMBER:###########}} है और IFSC {{IFSC}}
+
+%% Phase 6 additions: person names.
+%% Same provenance as the rest of this file: drafted with AI assistance in a
+%% separate session that did not write the detectors, then reviewed by the
+%% author. Blind: written before any name model was run.
+
+=== H055 | person, greeting, no-cue
+@user
+Hi {{PERSON=Ananya Bose}}, Tuesday works for me. I'll ask {{PERSON=Rahul}} to collect the parcel.
+
+=== H056 | person-lookalike, nothing-personal
+@user
+Our Pune office closes in May and reopens in June. Ask the Tata team whether the Swift booking is still open.
+
+=== H057 | person, south-india, initials
+@user
+Please add {{PERSON=K. S. Ramesh}} and {{PERSON=Lakshmi Venkataraman}} to the attendee list for Thursday.
+
+=== H058 | person, devanagari, hindi
+@user
+कृपया {{PERSON=सुनीता देवी}} का फॉर्म अपडेट कर दीजिए, पता वही पुराना है।
+
+=== H059 | person, hinglish, no-cue
+@user
+kal {{PERSON=Imran}} aayega office, usko bata dena meeting 4 baje hai
+
+=== H060 | person, sign-off
+@user
+Draft a reply to this:
+
+Thanks for your patience.
+Regards,
+{{PERSON=Meera Pillai}}
+Customer Support
+
+=== H061 | person, honorific
+@user
+Shri {{PERSON=Ram Prasad Yadav}} and Smt. {{PERSON=Kamala Yadav}} will attend. Dr {{PERSON=Faizal Ahmed}} is the referring physician.
+
+=== H062 | person, form-field
+@user
+Applicant name: {{PERSON=Shabana Qureshi}}
+Father's name: {{PERSON=Abdul Qureshi}}
+Status: pending
+
+=== H063 | person, mid-sentence
+@user
+The escalation was handled by {{PERSON=Harpreet Singh Gill}} after the first agent dropped the call.
+
+=== H064 | person, mixed-origin
+@user
+{{PERSON=Joseph D'Souza}} from Mangalore and {{PERSON=Sarah Mitchell}} from the London office are both on the thread.
+
+=== H065 | person, lowercase, hinglish
+@user
+arre {{PERSON=pooja}} ne bola tha ki {{PERSON=vikram sharma}} already paid kar diya
+
+=== H066 | person, uppercase, form-field
+@user
+NAME: {{PERSON=DEEPAK CHAUDHARY}}
+BRANCH: ANDHERI WEST
+
+=== H067 | person, adjacent-values, list
+@user
+Attendees: {{PERSON=Nikhil Rao}}, {{PERSON=Fatima Sheikh}}, {{PERSON=Thomas Varghese}}, {{PERSON=Ritu}}
+
+=== H068 | person, phone, email
+@user
+Please update the record for {{PERSON=Sanjana Iyer}}: new mobile {{PHONE}}, email {{EMAIL}}.
+
+=== H069 | person, public-figure
+@user
+Summarise the main ideas in {{PERSON=Mahatma Gandhi}}'s writing on non-violence for a school essay.
+
+=== H070 | person, common-word-name
+@user
+{{PERSON=Asha}} and {{PERSON=Prem Chopra}} are reviewing it. There is still some hope and joy left in the team.
+
+=== H071 | person, csv, adjacent-values
+@user
+name,city,mobile
+{{PERSON=Rohini Deshmukh}},Nagpur,{{PHONE}}
+{{PERSON=Zubair Khan}},Hyderabad,{{PHONE}}
+
+=== H072 | person, honorific, hinglish, glued
+@user
+{{PERSON=Mehta}}ji ne kaha hai ki {{PERSON=Jignesh}}bhai se baat kar lo
+
+=== H073 | person, mixed-script
+@user
+{{PERSON=Arjun Nair}} ko bol dena, aur {{PERSON=प्रिया वर्मा}} ka form bhi pending hai.
+
+=== H074 | person, person-lookalike
+@user
+We are closed for Ganesh Chaturthi and Diwali. {{PERSON=Krishna Menon}} will handle anything urgent.
+
+=== H075 | nothing-personal, code
+@user
+Why does this throw?
+
+const userProfile = new UserProfile(config);
+logger.warn("UserProfile init failed", error);
+
+=== H076 | person, quoted-reply
+@user
+> {{PERSON=Divya}} wrote:
+> Please confirm with {{PERSON=Sameer Gupta}} before raising the invoice.
+Confirmed, going ahead.
