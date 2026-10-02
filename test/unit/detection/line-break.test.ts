@@ -333,14 +333,28 @@ describe('phone wrapped onto the next line: always needs a keyword', () => {
     ]);
   });
 
-  // A phone found inside the window is not enough: "12" plus the mobile on
+  // A window holding a whole valid phone is skipped: "12" plus the mobile on
   // the next line would contain the mobile and replace it (ADR-029), taking
-  // the flat number with it (mutation P5).
+  // the flat number with it (bug-log 41, mutation H1).
   it('does not take a number on the line before a whole mobile', () => {
     const { text, spans } =
       compose`Flat 12\n${groupDigits(indianMobile(rng), [5, 5], ' ')} is my mobile`;
     expect(detect(text).map((d) => [d.type, d.start, d.end])).toEqual([
       ['PHONE', spans[0]!.start, spans[0]!.end],
+    ]);
+  });
+
+  // A window is a phone only when the whole window is one number, not when
+  // libphonenumber finds one somewhere inside it (mutation P5). A window
+  // starting with "+" is not skipped by the rule above, so this one reaches
+  // the check: the second line is a possible number on its own, and the
+  // window would otherwise stretch it over "+12345".
+  it('is the whole window or nothing: a number inside it does not stretch it', () => {
+    const { text, spans } = compose`Call +12345\n${'00000-11111'} ok`;
+    const wrapped = [...phoneCandidates(text)].filter((c) => c.start < text.indexOf('\n'));
+    expect(wrapped).toEqual([]);
+    expect(detect(text).map((d) => [d.type, d.start, d.end, d.validated])).toEqual([
+      ['PHONE', spans[0]!.start, spans[0]!.end, false],
     ]);
   });
 
