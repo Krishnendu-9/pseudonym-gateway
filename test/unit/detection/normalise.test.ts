@@ -4,17 +4,30 @@ import { normalise, type NormalisedText, type Span } from '../../../src/detectio
 import { INVISIBLES, obfuscate } from '../../../src/synthetic/obfuscate.js';
 import { createRng } from '../../../src/synthetic/rng.js';
 import { aadhaar, cardNumber, groupDigits } from '../../../src/synthetic/values.js';
-import { allDecimalDigits, decimalDigitValue } from '../../support/decimal-digits.js';
+import {
+  allDecimalDigits,
+  decimalDigitValue,
+  newerUnicodeBlocks,
+} from '../../support/decimal-digits.js';
 import { assertPropertyQuietly, seedArb } from '../../support/quiet-property.js';
 
 // The oracle: what normalise(s).text must equal. Whole-string NFKC is easy to
 // trust; normalise() works cluster by cluster so it can keep an offset map.
 // Digit values come from walking the Unicode data, not from the generated table.
+// The one exception: on a Node older than the table, a block this Node has
+// never heard of (all ten code points unassigned, checked in
+// decimal-digit-zeros.test.ts) is mapped by normalise(), so it is here too.
+const digitValue = (d: string): string => {
+  const cp = d.codePointAt(0)!;
+  if (/\p{Nd}/u.test(d)) return String(decimalDigitValue(cp));
+  const zero = newerUnicodeBlocks().find((z) => z <= cp && cp <= z + 9);
+  return zero === undefined ? d : String(cp - zero);
+};
 const reference = (s: string): string =>
   s
     .replace(/\p{Default_Ignorable_Code_Point}/gu, '')
     .normalize('NFKC')
-    .replace(/\p{Nd}/gu, (d) => String(decimalDigitValue(d.codePointAt(0)!)));
+    .replace(/\p{Nd}|\p{Cn}/gu, digitValue);
 
 const codePoints = (min: number, max: number) =>
   fc.integer({ min, max }).map((c) => String.fromCodePoint(c));
@@ -169,6 +182,9 @@ describe('normalise: examples', () => {
     ['Arabic-Indic', 0x0660],
     ['Extended Arabic-Indic (Urdu)', 0x06f0],
     ['Thai', 0x0e50],
+    // Unicode 17.0 (Node 22.22.1 and later): mapped on older Nodes too, from
+    // the table (bug-log 44).
+    ['Tolong Siki (Kurukh)', 0x11de0],
   ])('turns %s digits into ASCII', (_script, zero) => {
     const digits = String.fromCodePoint(...Array.from({ length: 10 }, (_, d) => zero + d));
     expect(normalise(`no. ${digits}.`).text).toBe('no. 0123456789.');
