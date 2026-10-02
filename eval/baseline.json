@@ -415,12 +415,12 @@
       "in-markup": {
         "messages": 90,
         "placeholders": 98,
-        "restored": 32,
+        "restored": 26,
         "heldBack": {
           "markdown-destination": 18,
           "reference-label": 9,
           "html-attribute": 18,
-          "url": 21,
+          "url": 27,
           "unclosed-angle": 0,
           "unclosed-quote": 0,
           "host": 0,
@@ -764,6 +764,14 @@
         "generated echo misaligned-sheet: 0 messages -> 24",
         "generated echo in-markup: 0 messages -> 90",
         "held-out echo all: 0 messages -> 58"
+      ]
+    },
+    {
+      "date": "2026-10-02",
+      "note": "ADR-034: an email's local part stops at /, = and ?; six emails inside a plain URL are now held by the URL rule instead of restored as https:[EMAIL_1]",
+      "changes": [
+        "generated echo in-markup: restored 32 -> 26",
+        "generated echo in-markup: left by url 21 -> 27"
       ]
     }
   ]

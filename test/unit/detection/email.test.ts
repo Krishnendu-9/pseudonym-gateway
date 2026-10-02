@@ -54,6 +54,29 @@ describe('email detection', () => {
     expect(emails(text)[0] ?? null).toBe(first);
   });
 
+  // Bug-log 49: "/", "=" and "?" end the local part, so an address in a URL
+  // is taken alone and the URL around it stays a URL.
+  it.each([
+    ['a URL query', 'https://support.example/track?id=priya@example.com'],
+    ['a URL query, more after it', 'https://a.example/?email=priya@example.com&x=1'],
+    ['a URL path', 'https://portal.example/users/priya@example.com/orders'],
+    ['a key=value pair', 'user=priya@example.com'],
+    ['a question mark before it', 'Is it?priya@example.com'],
+  ])('takes the address alone in %s', (_name, text) => {
+    expect(emails(text)).toEqual(['priya@example.com']);
+  });
+
+  // The cost of the rule above (ADR-034), pinned so it stays visible: RFC
+  // 5322 allows these three characters in a local part, and an address that
+  // uses one is redacted only from the character after it.
+  it.each([
+    ['a/b@example.com', 'b@example.com'],
+    ['a=b@example.com', 'b@example.com'],
+    ['a?b@example.com', 'b@example.com'],
+  ])('sends what is before "/", "=" or "?" in %s (known cost)', (address, found) => {
+    expect(emails(`Write to ${address} today`)).toEqual([found]);
+  });
+
   it('finds both addresses in a comma-separated list', () => {
     expect(emails('a@example.com,b@example.org')).toEqual(['a@example.com', 'b@example.org']);
   });

@@ -318,7 +318,13 @@ safety net); a number wrapped onto the next line is caught only in the forms
 described above (not across a blank line, nor broken over three lines, nor
 inside a digit group of a spaced number, nor written without spaces with
 another number beside it on the same line); nor are emails written as "name at example dot com",
-quoted or IP-literal addresses, or the 16-digit Aadhaar Virtual ID. **Short
+quoted or IP-literal addresses, or the 16-digit Aadhaar Virtual ID. **An
+address with `/`, `=` or `?` in its local part** (allowed by the email
+standard, RFC 5322, but not issued by mail providers) is redacted only from
+the character after the last of them: `a/b@example.com` sends `a/`. This
+is a deliberate trade, so that an address inside a URL
+(`https://a.example/?id=priya@example.com`) is redacted alone and the URL
+stays a URL. **Short
 personal identifiers need their word:** a passport number, voter ID or date
 of birth with no keyword within 40 characters is sent as written (the
 safety net needs 9 digits). Nor are these caught with one: a passport
@@ -464,11 +470,11 @@ _Measured on 2026-10-02 (UTC date) by `npm run eval`. This block is generated, a
 | --------------------------------------------------- | ----------------- | ---------------------- | ------------------------- | ------------- |
 | Messages                                            | 600               | 90                     | 696                       | 58            |
 | Placeholders                                        | 1667              | 98                     | 941                       | 70            |
-| Restored                                            | 1660/1667 (99.5%) | 32/98 (32.6%)          | 932/941 (99.0%)           | 66/70 (94.2%) |
+| Restored                                            | 1660/1667 (99.5%) | 26/98 (26.5%)          | 932/941 (99.0%)           | 66/70 (94.2%) |
 | Left: in a markdown link or image target            | 0                 | 18                     | 9                         | 0             |
 | Left: after "[label]:"                              | 0                 | 9                      | 0                         | 0             |
 | Left: in a quoted HTML attribute value              | 0                 | 18                     | 0                         | 2             |
-| Left: in a URL (scheme, `mailto:` or host and path) | 7                 | 21                     | 0                         | 2             |
+| Left: in a URL (scheme, `mailto:` or host and path) | 7                 | 27                     | 0                         | 2             |
 | Left: rest of a line after an unclosed "<" target   | 0                 | 0                      | 0                         | 0             |
 | Left: rest of the text after an unclosed `="`       | 0                 | 0                      | 0                         | 0             |
 | Left: host rule (`[TYPE_N].x`)                      | 0                 | 0                      | 0                         | 0             |
@@ -499,13 +505,13 @@ The echo table is the cost of restoration safety in the best case, a model
 that repeats every placeholder exactly. In the generated main cases 7 of
 1,667 placeholders stay placeholders, all IP addresses inside a
 `http://…/login` URL. The `in-markup` shape puts one value in each of ten
-places in a URL, a markdown link or an HTML tag: 66 of its 98 stay
-placeholders, which is the rule doing its job, and the 32 restored are
-link texts and table cells (18), lookalikes in filler sentences (8), and 6
-emails inside a plain URL's query or path. Those six show a detection
-fault, not a restoration one: the email detection takes the URL's host and
-path with it (`https:[EMAIL_1]`), which is more redaction, not less, but
-leaves the model no URL to read (bug-log 49, not fixed yet). In the other
+places in a URL, a markdown link or an HTML tag: 72 of its 98 stay
+placeholders, which is the rule doing its job, and the 26 restored are
+link texts and table cells (18) and lookalikes in filler sentences (8).
+The first measurement found 6 more restored: emails in a plain URL's query
+or path, which the email detection took together with the URL's host and
+path (`https:[EMAIL_1]`), so the URL rule saw no URL. An address's local
+part now stops at `/`, `=` and `?` (bug-log 49, below). In the other
 shapes, 9 placeholders stay because of Pseudonym's own bracket: digits
 joined by a bracket (`1234567890(12345`) become `[NUMBER_1]([NUMBER_2]`,
 and the `](` reads as a link target. The rules added for streaming (an
@@ -569,7 +575,8 @@ provider-side logging or training on them.
 every person's name, an IFSC code with an unknown bank code and no keyword nearby, any secret with neither a known format
 nor a keyword directly before it, a UPI ID at an unknown handle with no
 keyword nearby, a passport number, voter ID or date of birth with no
-keyword nearby, and an IP address inside a host name); anything your application
+keyword nearby, an IP address inside a host name, and the part of an email
+address before a `/`, `=` or `?` in its local part); anything your application
 logs before
 calling Pseudonym; a compromised Pseudonym host; prompt injection that
 manipulates answers (only the URL-exfiltration path is mitigated).

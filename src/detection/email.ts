@@ -31,7 +31,15 @@
 import { charBefore } from './digit-runs.js';
 import type { Candidate } from './types.js';
 
-const LOCAL_CHAR = "[\\p{L}\\p{N}\\p{M}!#$%&'*+/=?^_`{|}~-]";
+// RFC 5322's local-part characters, except "/", "=" and "?" (bug-log 49,
+// ADR-034): with them, an address in a URL's query or path took the URL
+// with it (`https:[EMAIL_1]` for `https://a.example/?id=<address>`), and
+// the URL rule of restoration safety could no longer see a URL. A
+// deliberate fail-open trade: an address that really uses one of the three
+// (`a/b@example.com`) is redacted only from the character after it, and
+// what is before it is sent. Providers do not issue such addresses; URLs
+// with an address in them are common.
+const LOCAL_CHAR = "[\\p{L}\\p{N}\\p{M}!#$%&'*+^_`{|}~-]";
 const LABEL = '[\\p{L}\\p{N}\\p{M}](?:[\\p{L}\\p{N}\\p{M}-]*[\\p{L}\\p{N}\\p{M}])?';
 // Top-level domain: punycode, or letters (a Devanagari TLD needs its vowel
 // signs, \p{M}). Punycode is tried first, or "xn--p1ai" would stop at "xn".
