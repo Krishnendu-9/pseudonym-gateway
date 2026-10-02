@@ -92,7 +92,10 @@ function valueKey(type: DetectionType, surface: string): string {
     case 'IP':
       return ipValueKey(normalised);
     case 'PHONE': {
-      const parsed = parsePhoneNumberFromString(normalised, { defaultCountry: 'IN' });
+      // A number wrapped onto the next line (ADR-030) is the same number:
+      // libphonenumber parses nothing with a line break in it.
+      const oneLine = normalised.replace(/[\r\n]/g, ' ');
+      const parsed = parsePhoneNumberFromString(oneLine, { defaultCountry: 'IN' });
       return parsed ? parsed.number : normalised;
     }
   }

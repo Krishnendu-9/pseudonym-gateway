@@ -244,6 +244,24 @@ three 5-digit amounts 1 → 151; two rows of a row number and two amounts
 before this (763 in 200 tables, unchanged). Amounts written with commas
 (`65,000`, `1,25,000`) and plain 6-digit amounts are not affected.
 
+**Numbers wrapped onto the next line** (`2345 6789`, a line break, `0123`)
+are read as one number when only one line break (LF or CRLF, with at most
+two spaces or separators around it) is between the two halves. Aadhaar and
+card numbers count as they do on one line: they must pass their checks, or
+have a word such as "Aadhaar" or "card" nearby. A phone number wrapped
+like this always needs a word such as "mobile" or "call" nearby, because
+two lines of five digits are as often two amounts as one mobile. Another
+number beside the wrapped one on one of its lines (`Room 3 2345 6789`, a
+line break, `0123`) does not stop it being found. Lists of codes pay for
+it: the end of one line and the start of the next often pass the checks.
+Measured on 200 synthetic messages of each layout (detections in text with
+nothing personal; before → now): two 4-digit codes per line 0 → 124, in 98
+of the 200 messages; three 4-digit codes per line 96 → 155; one 6-digit
+number per line 0 → 70, in 55 messages; one 5-digit number per line with
+"phone" in the first line 0 → 539, in all 200. Statements, logs, addresses,
+numbered steps, dates and amounts written with commas, one per line, are
+not affected (0 before and after).
+
 **Secrets are found in two ways and no third.** There is no entropy
 scanning: a random-looking string with no known prefix and no credential
 word directly before it is sent as written. So are a password made only of
@@ -263,9 +281,12 @@ Aadhaar or phone numbers (with 9+ digits the whole token is still caught, as
 a generic number); a number written
 in space-separated groups that fails its checks (an Aadhaar or card with a
 typo) is caught only with a keyword nearby, because spaces do not join digits
-for the safety net; a number with a **line break** between its digit groups
-(or split across two messages) is not caught at all, since each part is too
-short for the safety net; nor are emails written as "name at example dot com",
+for the safety net; a number **split across two messages** is not caught at
+all (each message is checked on its own, and each part is too short for the
+safety net); a number wrapped onto the next line is caught only in the forms
+described above (not across a blank line, nor broken over three lines, nor
+inside a digit group of a spaced number, nor written without spaces with
+another number beside it on the same line); nor are emails written as "name at example dot com",
 quoted or IP-literal addresses, or the 16-digit Aadhaar Virtual ID. **Short
 personal identifiers are not caught either:** a passport or voter ID number
 with 7 digits, or a date of birth, has no detector of its own and is below
@@ -341,7 +362,7 @@ four) was touched.
 
 <!-- eval:start -->
 
-_Measured on 2026-10-01 (UTC date) by `npm run eval`. This block is generated, and the run fails if it is out of date._
+_Measured on 2026-10-02 (UTC date) by `npm run eval`. This block is generated, and the run fails if it is out of date._
 
 **Generated dataset, main cases** (seed 20260930; 600 messages in 500 cases, 1683 labelled personal values). Its generator and the detectors share an author, so it mostly shows regressions.
 
@@ -363,7 +384,7 @@ _Measured on 2026-10-01 (UTC date) by `npm run eval`. This block is generated, a
 
 | Written as       | Values | Redacted (any type) | Partly redacted | Recall (right type) | Over-redactions |
 | ---------------- | ------ | ------------------- | --------------- | ------------------- | --------------- |
-| line-break       | 120    | 11/120 (9.1%)       | 7               | 11/120 (9.1%)       | 12              |
+| line-break       | 120    | 113/120 (94.1%)     | 0               | 112/120 (93.3%)     | 12              |
 | message-split    | 60     | 0/60 (0.0%)         | 2               | 0/60 (0.0%)         | 0               |
 | side-by-side     | 80     | 80/80 (100.0%)      | 0               | 66/80 (82.5%)       | 5               |
 | digit-beside     | 40     | 40/40 (100.0%)      | 0               | 40/40 (100.0%)      | 4               |

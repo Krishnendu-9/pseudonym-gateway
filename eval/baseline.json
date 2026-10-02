@@ -1,5 +1,5 @@
 {
-  "measuredOn": "2026-10-01",
+  "measuredOn": "2026-10-02",
   "generated": {
     "cases": 500,
     "messages": 600,
@@ -162,9 +162,9 @@
     "shapes": {
       "line-break": {
         "values": 120,
-        "redacted": 11,
-        "partial": 7,
-        "typed": 11,
+        "redacted": 113,
+        "partial": 0,
+        "typed": 112,
         "overRedactions": 12
       },
       "message-split": {

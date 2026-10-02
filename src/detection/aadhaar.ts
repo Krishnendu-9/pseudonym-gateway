@@ -3,9 +3,12 @@
 // first 11. Any other 12-digit number is an unvalidated candidate, accepted
 // only with a keyword such as "aadhaar" nearby (ADR-010).
 //
+// One wrapped onto the next line ("2345 6789", newline, "0123") follows the
+// same rule (ADR-030).
+//
 // The 16-digit Aadhaar Virtual ID is not detected yet.
 
-import { digitWindows, standsAlone } from './digit-runs.js';
+import { digitWindows, lineJoinedWindows, standsAlone, wrapsAlone } from './digit-runs.js';
 import type { Candidate } from './types.js';
 import { isVerhoeffValid } from './verhoeff.js';
 
@@ -19,6 +22,10 @@ export function isValidAadhaar(digits: string): boolean {
 export function* aadhaarCandidates(text: string): Generator<Candidate> {
   for (const w of digitWindows(text, 12, 12)) {
     if (!standsAlone(w, AADHAAR_LAYOUTS)) continue;
+    yield { type: 'AADHAAR', start: w.start, end: w.end, validated: isValidAadhaar(w.digits) };
+  }
+  for (const w of lineJoinedWindows(text, 12, 12)) {
+    if (!wrapsAlone(w, AADHAAR_LAYOUTS)) continue;
     yield { type: 'AADHAAR', start: w.start, end: w.end, validated: isValidAadhaar(w.digits) };
   }
 }

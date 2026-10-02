@@ -71,6 +71,34 @@ describe('redactMessage: value keys dedupe the same value (ADR-013)', () => {
     assertTextEqualQuietly(redacted, 'Ref [AADHAAR_1] matches [AADHAAR_1]');
   });
 
+  // ADR-030: a value wrapped onto the next line is the same value, and
+  // restores with its line break; like every deduplicated value, both
+  // placeholders restore to the first surface form.
+  it.each([
+    ['LF', '\n'],
+    ['CRLF', '\r\n'],
+    ['a space and LF', ' \n'],
+  ])('a mobile wrapped with %s is the same value as on one line', (_, lineBreak) => {
+    const mapping = new PlaceholderMapping();
+    const mobile = indianMobile(rng);
+    const wrapped = `${mobile.slice(0, 5)}${lineBreak}${mobile.slice(5)}`;
+    const text = `Call me on ${wrapped} or ${mobile}.`;
+    const redacted = redactMessage(text, mapping);
+    assertTextEqualQuietly(redacted, 'Call me on [PHONE_1] or [PHONE_1].');
+    expect(mapping.lookup('PHONE', 1)?.value === wrapped).toBe(true);
+    expect(restore(redacted, mapping) === `Call me on ${wrapped} or ${wrapped}.`).toBe(true);
+  });
+
+  it('an Aadhaar wrapped onto the next line is the same value as on one line', () => {
+    const mapping = new PlaceholderMapping();
+    const digits = aadhaar(rng);
+    const wrapped = `${groupDigits(digits.slice(0, 8), [4, 4], ' ')}\n${digits.slice(8)}`;
+    const text = `Ref ${wrapped} matches ${groupDigits(digits, [4, 4, 4], ' ')}`;
+    const redacted = redactMessage(text, mapping);
+    assertTextEqualQuietly(redacted, 'Ref [AADHAAR_1] matches [AADHAAR_1]');
+    expect(restore(redacted, mapping) === `Ref ${wrapped} matches ${wrapped}`).toBe(true);
+  });
+
   // libphonenumber's own POSSIBLE search (phone.ts) is more permissive than
   // parsePhoneNumberFromString: an unusual, unvalidated shape like this one
   // (found by detect(), context "call" nearby) is a PHONE candidate that

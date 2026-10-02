@@ -13,6 +13,10 @@
 // part, but a list of small numbers does not add up to 12-digit windows by
 // accident.
 //
+// A run never crosses a line break: two runs on neighbouring lines are tried
+// as one number only by `crossLineWindows` (ADR-030), whose windows always
+// take the whole run on at least one of the two lines.
+//
 // This runs on normalised text, where every decimal digit is already ASCII.
 
 import type { Span } from './normalise.js';
@@ -122,6 +126,120 @@ export function* digitWindows(
       }
     }
   }
+}
+
+// A number wrapped onto the next line (ADR-030): one line break, LF or CRLF,
+// with at most two separators before it ("4111-1111-", newline) and two
+// spaces after it. Nothing else may sit between the two runs.
+const LINE_BREAK_GAP = new RegExp(`^${SEPARATOR}{0,2}\\r?\\n {0,2}$`);
+
+/**
+ * Pairs of whole digit runs with one line break between them (ADR-030):
+ * `[first, second]`, each a run as `digitRuns` finds it, in text order. A
+ * run can be in two pairs (as the second of one and the first of the next).
+ */
+export function* lineJoins(text: string): Generator<readonly [Span, Span]> {
+  const runs = digitRuns(text);
+  for (let i = 0; i + 1 < runs.length; i++) {
+    const [first, second] = [runs[i]!, runs[i + 1]!];
+    if (LINE_BREAK_GAP.test(text.slice(first.end, second.start))) yield [first, second];
+  }
+}
+
+/** A window across one line break (crossLineWindows). */
+export interface LineWindow extends DigitWindow {
+  /** The window starts at the first group of the first line's run. */
+  readonly startsRun: boolean;
+  /** The window ends at the last group of the second line's run. */
+  readonly endsRun: boolean;
+}
+
+/**
+ * Windows of `minDigits` to `maxDigits` digits across one line break
+ * (ADR-030): the last groups of one line's run and the first groups of the
+ * next line's, with at least one of the two runs taken whole. A wrapped
+ * value then still counts with a number beside it on one of its lines
+ * (`"Room 3 2345 6789"`, newline, `"0123"`). `wholeRun` means both runs are
+ * whole. No glue checks: `lineJoinedWindows` adds them.
+ */
+export function* crossLineWindows(
+  text: string,
+  minDigits: number,
+  maxDigits: number,
+): Generator<LineWindow> {
+  for (const [first, second] of lineJoins(text)) {
+    const before = groupsOf(text, first);
+    const after = groupsOf(text, second);
+    let tail = '';
+    const tailSizes: number[] = [];
+    for (let i = before.length - 1; i >= 0 && tail.length < maxDigits; i--) {
+      const group = before[i]!;
+      tail = text.slice(group.start, group.end) + tail;
+      tailSizes.unshift(group.end - group.start);
+      let digits = tail;
+      const sizes = [...tailSizes];
+      for (let j = 0; j < after.length; j++) {
+        const next = after[j]!;
+        digits += text.slice(next.start, next.end);
+        sizes.push(next.end - next.start);
+        if (digits.length > maxDigits) break;
+        const startsRun = i === 0;
+        const endsRun = j === after.length - 1;
+        if (digits.length < minDigits || !(startsRun || endsRun)) continue;
+        yield {
+          start: group.start,
+          end: next.end,
+          digits,
+          groups: [...sizes],
+          wholeRun: startsRun && endsRun,
+          startsRun,
+          endsRun,
+        };
+      }
+    }
+  }
+}
+
+/** Every digit group in `text[span]`, as spans of `text`. */
+function groupsOf(text: string, span: Span): Span[] {
+  return [...text.slice(span.start, span.end).matchAll(DIGIT_GROUP)].map((group) => ({
+    start: span.start + group.index,
+    end: span.start + group.index + group[0].length,
+  }));
+}
+
+/**
+ * `crossLineWindows`, with the same glue rules as `digitWindows` where a
+ * window reaches the outer end of a run.
+ */
+export function* lineJoinedWindows(
+  text: string,
+  minDigits: number,
+  maxDigits: number,
+): Generator<DigitWindow> {
+  for (const window of crossLineWindows(text, minDigits, maxDigits)) {
+    if (window.startsRun && GLUED_BEFORE.test(charBefore(text, window.start))) continue;
+    if (window.endsRun && GLUED_AFTER.test(charAt(text, window.end))) continue;
+    yield window;
+  }
+}
+
+/**
+ * True if a window across a line break can be a number on its own: it is
+ * grouped like one of `layouts`, or it is the whole of both runs as two
+ * unbroken groups, one on each line (a number written without spaces and
+ * wrapped). Like a window inside a longer run on one line, one that is only
+ * part of a run must have one of the type's usual groupings.
+ */
+export function wrapsAlone(window: DigitWindow, layouts: readonly (readonly number[])[]): boolean {
+  return (
+    (window.wholeRun && window.groups.length === 2) ||
+    layouts.some(
+      (layout) =>
+        layout.length === window.groups.length &&
+        layout.every((size, i) => size === window.groups[i]),
+    )
+  );
 }
 
 /**

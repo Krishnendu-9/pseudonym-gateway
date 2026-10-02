@@ -2,7 +2,7 @@
 // when the Luhn check passes and the number starts with a known issuer
 // prefix (IIN) at a length that issuer uses. Any other 13-19 digit number is
 // an unvalidated candidate, accepted only with a keyword such as "card"
-// nearby.
+// nearby. One wrapped onto the next line follows the same rule (ADR-030).
 //
 // The issuer table is written from https://en.wikipedia.org/wiki/Payment_card_number
 // independently of the synthetic generator's table (src/synthetic/values.ts),
@@ -10,7 +10,7 @@
 // Maestro is left out on purpose: its prefixes (50, 56-69) cover almost every
 // number starting with 5 or 6, which would make the prefix check meaningless.
 
-import { digitWindows, standsAlone } from './digit-runs.js';
+import { digitWindows, lineJoinedWindows, standsAlone, wrapsAlone } from './digit-runs.js';
 import { isLuhnValid } from './luhn.js';
 import type { Candidate } from './types.js';
 
@@ -109,6 +109,10 @@ export function isValidCard(digits: string): boolean {
 export function* cardCandidates(text: string): Generator<Candidate> {
   for (const w of digitWindows(text, 13, 19)) {
     if (!standsAlone(w, CARD_LAYOUTS)) continue;
+    yield { type: 'CARD', start: w.start, end: w.end, validated: isValidCard(w.digits) };
+  }
+  for (const w of lineJoinedWindows(text, 13, 19)) {
+    if (!wrapsAlone(w, CARD_LAYOUTS)) continue;
     yield { type: 'CARD', start: w.start, end: w.end, validated: isValidCard(w.digits) };
   }
 }

@@ -85,19 +85,33 @@ const SECRET_KINDS: readonly SecretKind[] = [
 
 // A value in one of the ways real text writes it. Every form here is one the
 // detectors are specified to catch (validated values; NUMBER is 9+ digits).
+// Aadhaar, card and phone numbers are sometimes wrapped onto the next line
+// (ADR-030); a wrapped phone needs its keyword, so it is planted with one.
+// Not an Aadhaar wrapped as two unbroken groups (6 / 6): with a number beside
+// it, which the histories add, that is a known gap (ADR-030).
 function plantValue(rng: Rng, type: PlantedType): string {
   const disguise = (text: string): string => (rng.chance(0.25) ? obfuscate(text, rng) : text);
+  const lineBreak = (): string => rng.pick(['\n', '\r\n', ' \n']);
   switch (type) {
     case 'AADHAAR': {
       const v = aadhaar(rng);
       return disguise(
-        rng.pick([v, groupDigits(v, [4, 4, 4], ' '), groupDigits(v, [4, 4, 4], '-')]),
+        rng.pick([
+          v,
+          groupDigits(v, [4, 4, 4], ' '),
+          groupDigits(v, [4, 4, 4], '-'),
+          `${groupDigits(v.slice(0, 8), [4, 4], ' ')}${lineBreak()}${v.slice(8)}`,
+        ]),
       );
     }
     case 'CARD': {
       const v = cardNumber(rng);
       const sizes = v.length === 15 ? [4, 6, 5] : [4, 4, 4, 4];
-      return disguise(rng.pick([v, groupDigits(v, sizes, ' '), groupDigits(v, sizes, '-')]));
+      const wrapAt = v.length === 15 ? 10 : 8;
+      const wrapped = `${groupDigits(v.slice(0, wrapAt), sizes.slice(0, 2), ' ')}${lineBreak()}${groupDigits(v.slice(wrapAt), sizes.slice(2), ' ')}`;
+      return disguise(
+        rng.pick([v, groupDigits(v, sizes, ' '), groupDigits(v, sizes, '-'), wrapped]),
+      );
     }
     case 'PAN': {
       const v = pan(rng);
@@ -115,6 +129,7 @@ function plantValue(rng: Rng, type: PlantedType): string {
           `+91-${v}`,
           `0${v}`,
           `+91${v}`,
+          `Mobile: ${v.slice(0, 5)}${lineBreak()}${v.slice(5)}`,
         ]),
       );
     }
@@ -314,6 +329,9 @@ describe('no-leak: nothing planted reaches the provider', () => {
     const pairs = histories.reduce((n, h) => n + h.neighbours.pairs, 0);
     expect(besides).toBeGreaterThan(50);
     expect(pairs).toBeGreaterThan(50);
+    const wrapped = histories.flatMap((h) => h.planted).filter((p) => p.value.includes('\n'));
+    expect(new Set(wrapped.map((p) => p.type))).toEqual(new Set(['AADHAAR', 'CARD', 'PHONE']));
+    expect(wrapped.length).toBeGreaterThan(30);
     const bodies = histories.map((h) => h.body);
     expect(bodies.some((b) => b.stop !== undefined)).toBe(true);
     expect(bodies.some((b) => b.user !== undefined)).toBe(true);
@@ -400,7 +418,7 @@ describe('no-leak: streaming', () => {
       if (!streamed.done || streamed.error) throw new Error('a stream did not finish cleanly');
       assertTextEqualQuietly(streamed.content, history.lastUserText);
     }
-    // The cuts really did land inside placeholders, many times over (199
+    // The cuts really did land inside placeholders, many times over (233
     // with these seeds).
     expect(cutsInsidePlaceholders).toBeGreaterThan(150);
   });
