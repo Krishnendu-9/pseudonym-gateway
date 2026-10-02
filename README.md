@@ -609,6 +609,27 @@ generated set, 1,998 messages), at most 60 ms per KiB of text, at most
 1.5 GiB of memory. Every model runs locally; names never leave the
 machine.
 
+**The chosen configuration, B and F together, on both datasets:**
+
+| Dataset                                                   | Names found         | 95% interval | Precision       |
+| --------------------------------------------------------- | ------------------- | ------------ | --------------- |
+| Generated, names block                                    | **501/612 (81.8%)** | 78.6–84.7%   | 661/933 (70.8%) |
+| **Held-out** (separate session, run once, never tuned on) | **41/45 (91.1%)**   | 79.3–96.5%   | 41/46 (89.1%)   |
+
+The held-out figure is the one to quote: the generated set and the
+detector configuration share an author, while the held-out set was
+drafted with AI assistance in a separate session that did not write the
+detectors, then reviewed by the author. It came out higher than the
+generated one, but with 45 names its interval overlaps the generated
+one, so the two are consistent rather than different. One known reason
+it can be higher: on the generated set the name list in F can never
+match, because the test names come from the other half of the same
+Wikidata lists by design, while real names in the held-out set can be on
+that list. Precision is not comparable between the two: the generated
+set plants name lookalikes on purpose. These are measurements of the
+configuration Phase 6 will build. The gateway does not detect names yet,
+so the evaluation tables above still show PERSON at 0.
+
 | Candidate                                 | Names found (612)                 | False positives per 1,000 words | ms per KiB | Memory      | Fails           |
 | ----------------------------------------- | --------------------------------- | ------------------------------- | ---------- | ----------- | --------------- |
 | A: `bert-base-NER` (English)              | 293 (47.8%)                       | 0.99                            | 416        | 245 MiB     | speed           |
@@ -630,8 +651,8 @@ limits, so the one with the highest recall, B and F together (81.8%), is
 what Phase 6 builds, **off by default** behind `PSEUDONYM_NAMES`. It
 fails the false-positive limit by 5.85 times (about one wrongly redacted
 word in every 170) and the speed limit. Names in all lower case are
-almost never found (3 of 59). The held-out set has not been run on it
-yet. Until Phase 6 is built, names are not detected.
+almost never found (3 of 59). Until Phase 6 is built, names are not
+detected.
 
 **Observed after the measurement, not before:** B alone meets both
 accuracy requirements (62.5% of names, 0.96 false positives per 1,000
