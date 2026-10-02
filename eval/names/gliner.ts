@@ -2,11 +2,13 @@
 // ported from GLiNER.js 0.0.19 (MIT): src/lib/processor.ts, decoder.ts and
 // model.ts, SpanModel with flat (non-overlapping) decoding.
 //
-// The prompt is `<<ENT>> person <<SEP>>`, then the text's words. Each
+// The prompt is `<<ENT>> person <<SEP>>` (one `<<ENT>>` and label per label
+// asked for), then the text's words. Each
 // element is encoded on its own; the first token of each text word is
 // marked in `words_mask` with the word's number (from 1). Every span of 1
 // to `maxWidth` words is scored; a span's score is the sigmoid of its
-// logit. Spans are chosen greedily by score with no overlaps.
+// logit, per label. Spans of any label are chosen greedily by score with
+// no overlaps (the same words under two labels overlap).
 //
 // Long texts are cut into windows of at most `maxWords` words and
 // `maxTokens` tokens, without overlap, as GLiNER.js does.
@@ -17,8 +19,10 @@ import type { EncodedWord } from './token-classification.js';
 export interface GlinerSetup {
   readonly clsId: number;
   readonly sepId: number;
-  /** The prompt's tokens: <<ENT>>, the label's tokens, <<SEP>>. */
+  /** The prompt's tokens (glinerPrompt): <<ENT>> and a label's tokens per label, then <<SEP>>. */
   readonly prompt: readonly number[];
+  /** How many labels the prompt holds: the logits have one column per label. */
+  readonly labels: number;
   readonly maxWidth: number;
   readonly maxWords: number;
   readonly maxTokens: number;
@@ -37,7 +41,21 @@ export interface GlinerFeeds {
   readonly spanMask: readonly boolean[];
 }
 
-/** Runs the model on one window; returns logits [words, maxWidth, 1 label]. */
+/** A span with the index of its label in the prompt. */
+export interface GlinerSpan extends ScoredSpan {
+  readonly label: number;
+}
+
+/** The prompt's tokens: for each label, <<ENT>> and the label's tokens; then <<SEP>>. */
+export function glinerPrompt(
+  ent: readonly number[],
+  sep: readonly number[],
+  labels: readonly (readonly number[])[],
+): number[] {
+  return [...labels.flatMap((label) => [...ent, ...label]), ...sep];
+}
+
+/** Runs the model on one window; returns logits [words, maxWidth, labels]. */
 export type RunSpans = (feeds: GlinerFeeds) => Promise<Float32Array>;
 
 export function feeds(words: readonly EncodedWord[], setup: GlinerSetup): GlinerFeeds {
@@ -118,12 +136,14 @@ export function decode(
   logits: Float32Array,
   words: readonly EncodedWord[],
   setup: GlinerSetup,
-): ScoredSpan[] {
-  const found: { first: number; last: number; score: number }[] = [];
+): GlinerSpan[] {
+  const found: { first: number; last: number; score: number; label: number }[] = [];
   for (let i = 0; i < words.length; i++) {
     for (let j = 0; j < setup.maxWidth && i + j < words.length; j++) {
-      const score = sigmoid(logits[i * setup.maxWidth + j]!);
-      if (score >= setup.floor) found.push({ first: i, last: i + j, score });
+      for (let label = 0; label < setup.labels; label++) {
+        const score = sigmoid(logits[(i * setup.maxWidth + j) * setup.labels + label]!);
+        if (score >= setup.floor) found.push({ first: i, last: i + j, score, label });
+      }
     }
   }
   found.sort((a, b) => b.score - a.score);
@@ -133,16 +153,21 @@ export function decode(
   }
   return kept
     .sort((a, b) => a.first - b.first)
-    .map((k) => ({ start: words[k.first]!.start, end: words[k.last]!.end, score: k.score }));
+    .map((k) => ({
+      start: words[k.first]!.start,
+      end: words[k.last]!.end,
+      score: k.score,
+      label: k.label,
+    }));
 }
 
-/** Every name in the text: the model run window by window. */
+/** Every span the model finds in the text, window by window. */
 export async function glinerSpans(
   words: readonly EncodedWord[],
   setup: GlinerSetup,
   run: RunSpans,
-): Promise<ScoredSpan[]> {
-  const out: ScoredSpan[] = [];
+): Promise<GlinerSpan[]> {
+  const out: GlinerSpan[] = [];
   for (const { from, to } of glinerWindows(words, setup)) {
     const window = words.slice(from, to);
     out.push(...decode(await run(feeds(window, setup)), window, setup));

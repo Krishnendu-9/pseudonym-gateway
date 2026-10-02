@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   decode,
   glinerFedTokens,
+  glinerPrompt,
   feeds,
   glinerSpans,
   glinerWindows,
@@ -14,6 +15,7 @@ const SETUP: GlinerSetup = {
   clsId: 1,
   sepId: 2,
   prompt: [900, 50, 51, 901],
+  labels: 1,
   maxWidth: 3,
   maxWords: 4,
   maxTokens: 14,
@@ -95,7 +97,7 @@ describe('decode', () => {
       ...SETUP,
       floor: 0.5,
     });
-    expect(found).toEqual([{ start: 0, end: 5, score: 0.5 }]);
+    expect(found).toEqual([{ start: 0, end: 5, score: 0.5, label: 0 }]);
   });
 
   it('drops spans under the floor', () => {
@@ -134,5 +136,29 @@ describe('glinerFedTokens', () => {
       expect([sizes.join(','), glinerFedTokens(words, SETUP)]).toEqual([sizes.join(','), sent]);
     }
     expect(glinerFedTokens(encoded([1, 1, 1, 1, 1, 1]), SETUP)).toBe(18);
+  });
+});
+
+describe('glinerPrompt', () => {
+  it('puts <<ENT>> before each label, then <<SEP>>', () => {
+    expect(glinerPrompt([900], [901], [[50, 51], [60]])).toEqual([900, 50, 51, 900, 60, 901]);
+  });
+});
+
+describe('decode with several labels', () => {
+  it('reads one column per label and keeps the best label of overlapping spans', () => {
+    const three = { ...SETUP, labels: 3 };
+    const words = encoded([1, 1]);
+    // Logits [2 words, 3 widths, 3 labels], all far below the floor except:
+    // word 0 alone as label 2 (0.9) and as label 1 (0.7); word 1 alone as label 0 (0.6).
+    const logits = new Float32Array(2 * 3 * 3).fill(-20);
+    logits[(0 * 3 + 0) * 3 + 2] = logit(0.9);
+    logits[(0 * 3 + 0) * 3 + 1] = logit(0.7);
+    logits[(1 * 3 + 0) * 3 + 0] = logit(0.6);
+    const found = decode(logits, words, three);
+    expect(found.map((s) => [s.start, s.end, s.label, Math.round(s.score * 100)])).toEqual([
+      [0, 5, 2, 90],
+      [10, 15, 0, 60],
+    ]);
   });
 });

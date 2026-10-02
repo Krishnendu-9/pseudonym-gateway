@@ -43,12 +43,15 @@ import { loadHeldOut } from '../eval/held-out.js';
 import { listSpans } from '../eval/names/gazetteer.js';
 import {
   glinerFedTokens,
+  glinerPrompt,
   glinerSpans,
   type GlinerFeeds,
   type GlinerSetup,
+  type GlinerSpan,
 } from '../eval/names/gliner.js';
 import { LATENCY_SIZES_KIB, median, perKiB, tokensByScript } from '../eval/names/latency.js';
 import { isContextRefusal, locate, namesMessages, parseNames } from '../eval/names/llm.js';
+import { compareCard, parseCard } from '../eval/names/gliner-card.js';
 import { fpPer1000, measure, share, type Metrics } from '../eval/names/measure.js';
 import { choosePoint, decide, failedLimits, LIMITS, type Measured } from '../eval/names/rule.js';
 import { detectionsAt, grid, merge, type Point, type ScoredSpan } from '../eval/names/spans.js';
@@ -98,6 +101,8 @@ const { values: args } = parseArgs({
     point: { type: 'string' },
     smoke: { type: 'boolean', default: false },
     latency: { type: 'boolean', default: false },
+    'gliner-card': { type: 'boolean', default: false },
+    'gliner-file': { type: 'string', default: 'model_quantized.onnx' },
   },
 });
 
@@ -216,7 +221,22 @@ async function bertCandidate(id: 'A' | 'B'): Promise<Loaded> {
   };
 }
 
-async function glinerCandidate(): Promise<Loaded> {
+/** D, with its spans' labels as well (the model-card check asks for several). */
+interface GlinerLoaded extends Loaded {
+  readonly spans: (text: string) => Promise<GlinerSpan[]>;
+}
+
+/**
+ * Candidate D. The comparison asks for one label, "person", with the int8
+ * model and the grid's floor; the model-card check (--gliner-card) passes
+ * the card's labels, its threshold and, to tell the port from the
+ * quantisation, a full-precision file.
+ */
+async function glinerCandidate({
+  labels = ['person'],
+  file = 'model_quantized.onnx',
+  floor = Math.min(...grid().map((p) => p.mid ?? p.high)),
+}: { labels?: readonly string[]; file?: string; floor?: number } = {}): Promise<GlinerLoaded> {
   const { ort, Tokenizer } = runtime();
   const dir = join(resolve(args.runtime), MODEL_DIRS.D);
   const tokenizer = new Tokenizer(
@@ -227,16 +247,17 @@ async function glinerCandidate(): Promise<Loaded> {
     max_width: number;
     max_len: number;
   };
-  const session = await ort.InferenceSession.create(join(dir, 'onnx', 'model_quantized.onnx'));
+  const session = await ort.InferenceSession.create(join(dir, 'onnx', file));
   const ids = (text: string): number[] => tokenizer.encode(text, { add_special_tokens: false }).ids;
   const setup: GlinerSetup = {
     clsId: ids('[CLS]')[0]!,
     sepId: ids('[SEP]')[0]!,
-    prompt: [...ids('<<ENT>>'), ...ids('person'), ...ids('<<SEP>>')],
+    prompt: glinerPrompt(ids('<<ENT>>'), ids('<<SEP>>'), labels.map(ids)),
+    labels: labels.length,
     maxWidth: gliner.max_width,
     maxWords: gliner.max_len,
     maxTokens: 512,
-    floor: Math.min(...grid().map((p) => p.mid ?? p.high)),
+    floor,
   };
   const run = async (f: GlinerFeeds): Promise<Float32Array> => {
     const n = f.inputIds.length;
@@ -251,8 +272,11 @@ async function glinerCandidate(): Promise<Loaded> {
     });
     return result.logits!.data;
   };
+  const spans = (text: string): Promise<GlinerSpan[]> =>
+    glinerSpans(encodeWords(tokenizer, glinerWords(text)), setup, run);
   return {
-    find: async (text) => glinerSpans(encodeWords(tokenizer, glinerWords(text)), setup, run),
+    find: spans,
+    spans,
     count: (text) => {
       const words = encodeWords(tokenizer, glinerWords(text));
       return {
@@ -845,6 +869,31 @@ if (args.child) {
   const results = ids.map((id) => readJson(childFile(`latency-${id}`)) as LatencyResult);
   latencyReport(results);
   writeFileSync(join(out, 'latency-summary.json'), JSON.stringify(results, null, 2));
+} else if (args['gliner-card']) {
+  // D's port against the example on GLiNER's model card (the user's
+  // decision, 2026-10-03). The card is fetched, pinned to a commit, and
+  // never stored; only labels and outcomes are printed.
+  const repo = 'urchade/gliner_multi_pii-v1';
+  const info = (await (await fetch(`https://huggingface.co/api/models/${repo}`)).json()) as {
+    sha: string;
+  };
+  const readme = await (
+    await fetch(`https://huggingface.co/${repo}/raw/${info.sha}/README.md`)
+  ).text();
+  const card = parseCard(readme) ?? fail('the model card has no example in the expected layout');
+  // GLiNER's predict_entities: threshold 0.5, flat (no overlaps), as the card ran it.
+  const d = await glinerCandidate({ labels: card.labels, file: args['gliner-file'], floor: 0.5 });
+  const found = (await d.spans(card.text)).map((s) => ({
+    text: card.text.slice(s.start, s.end),
+    label: card.labels[s.label]!,
+  }));
+  const verdict = compareCard(card.expected, found);
+  const write = (line = ''): void => void process.stdout.write(`${line}\n`);
+  write(`GLiNER card check: ${repo}@${info.sha.slice(0, 12)}, ${args['gliner-file']}`);
+  write(`${card.labels.length} labels, ${card.expected.length} expected entities`);
+  for (const row of verdict.rows) write(`  ${row.label}: ${row.result}`);
+  write(`  not on the card: ${verdict.extra.length === 0 ? 'none' : verdict.extra.join(', ')}`);
+  write(verdict.reproduced ? 'REPRODUCED' : 'NOT REPRODUCED');
 } else if (args.smoke) {
   // Not a measurement: every candidate once, in this process, on a fixed
   // sentence written for this check.
