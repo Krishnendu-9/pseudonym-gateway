@@ -173,6 +173,26 @@ The other rules are about the slots themselves (`bad-slot`,
 `unknown-name`, `mask-required`, `literal-required`…). Each message says
 what is expected.
 
+## Not expressible yet
+
+Four things people really write cannot be written as cases in this
+format. They stay documented gaps: none is measured by either dataset, and
+none is detected (README, known gaps).
+
+| What                           | Example of the shape                                              | Why the format cannot express it                                                                                           |
+| ------------------------------ | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Numbers written as words       | "nine eight seven six…", "nau aath saat…"                         | a slot generates digits; no modifier spells them out, and a typed spelled-out number could be anybody's                    |
+| Letters standing in for digits | O for 0, l for 1, S for 5, B for 8, as in scanned or retyped text | masks place the value's own characters; no modifier swaps a digit for a letter, and typing one would mean typing the value |
+| Postal addresses               | flat, street, locality, PIN code                                  | there is no address type and no generator, and the lint cannot tell a typed address is fictional                           |
+| Vehicle registration numbers   | a state code, a district number, letters and four digits          | there is no vehicle type and no generator, and a typed one could be a real registration                                    |
+
+Adding any of them means a new slot type or modifier, with a generator
+and a lint rule, first. A probe outside the datasets (2026-10-02, generated
+values, one digit written as a letter) found such values never recognised
+as their type, and redacted whole only when 9 or more digits are left in
+one stretch, by the safety net: 208 of 494 Aadhaar numbers, 403 of 500
+card numbers, 0 of 489 mobiles.
+
 ## Checking your work
 
 ```powershell

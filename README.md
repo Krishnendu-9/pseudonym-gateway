@@ -346,7 +346,16 @@ cannot tell whether two of them are on the same network. **MAC addresses**
 (a device identifier) have no detector: written with colons
 (`00:1A:2B:3C:4D:5E`) they are always sent as written, and in other forms
 they are replaced only when their decimal digits happen to reach the 9 the
-safety net needs.
+safety net needs. **Not detected, and not measured:** numbers written as
+words ("nine eight seven…", "nau aath saat…"); letters standing in for
+digits (O for 0, l for 1, as in scanned or retyped text), which stop a value
+being recognised as its type, so it is replaced only when 9 or more digits
+are left in one stretch for the safety net (in a probe with one letter for
+one digit: 208 of 494 Aadhaar numbers, 403 of 500 card numbers, 0 of 489
+mobiles); postal addresses; and vehicle registration numbers. The
+evaluation's case format cannot express any of the four yet
+([eval/HELD-OUT-FORMAT.md](eval/HELD-OUT-FORMAT.md), "Not expressible
+yet"), so neither dataset contains them.
 
 ## Measured results
 
@@ -615,8 +624,10 @@ provider-side logging or training on them.
 every person's name, an IFSC code with an unknown bank code and no keyword nearby, any secret with neither a known format
 nor a keyword directly before it, a UPI ID at an unknown handle with no
 keyword nearby, a passport number, voter ID or date of birth with no
-keyword nearby, an IP address inside a host name, and the part of an email
-address before a `/`, `=` or `?` in its local part); anything your application
+keyword nearby, an IP address inside a host name, the part of an email
+address before a `/`, `=` or `?` in its local part, numbers written as
+words or with letters for digits, postal addresses and vehicle numbers);
+anything your application
 logs before
 calling Pseudonym; a compromised Pseudonym host; prompt injection that
 manipulates answers (only the URL-exfiltration path is mitigated).
