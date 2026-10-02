@@ -89,11 +89,12 @@ export async function startMockProvider(): Promise<MockProvider> {
   };
 }
 
-// Streams, as Ollama writes them (middleware/openai.go, checked 2026-09-29;
-// a recorded fixture from a real Ollama is a follow-up): `data: <chunk>`
-// events, the first with `delta.role`, `content` left out when empty, a
-// separate finish chunk, with include_usage a `choices: []` chunk carrying
-// `usage` and `timings`, then `data: [DONE]`.
+// Streams, as Ollama writes them (middleware/openai.go, checked 2026-09-29):
+// `data: <chunk>` events, the first with `delta.role`, `content` left out
+// when empty, a separate finish chunk, with include_usage a `choices: []`
+// chunk carrying `usage` and `timings`, then `data: [DONE]`. A real
+// recording (ollama-recorded-stream.test.ts) has the same shape, except
+// that a thinking model's reasoning chunks send `"content":""`.
 
 export const STREAM_ID = 'chatcmpl-stream';
 export const STREAM_CREATED = 1_790_000_100;

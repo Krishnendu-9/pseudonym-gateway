@@ -1,1 +1,3 @@
 * text=auto eol=lf
+# Recorded provider streams are kept byte for byte (no line-ending changes).
+*.sse -text

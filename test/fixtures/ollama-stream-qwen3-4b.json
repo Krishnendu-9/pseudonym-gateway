@@ -1,0 +1,23 @@
+{
+  "recordedOn": "2026-10-02",
+  "ollamaVersion": "0.35.0",
+  "model": "qwen3:4b",
+  "modelDigest": "359d7dd4bcdab3d86b87d73ac27966f4dbb9f5efdfcc75d34a8764a09474fae7",
+  "sentToProvider": {
+    "model": "qwen3:4b",
+    "messages": [
+      {
+        "role": "system",
+        "content": "Some values in this conversation were replaced with placeholders in square brackets, such as [TYPE_N]. Whenever you mention one of those values, write its placeholder exactly as it appears, brackets included."
+      },
+      {
+        "role": "user",
+        "content": "In two short sentences, confirm to the customer that the refund to card [CARD_1] was approved and that the receipt was emailed to [EMAIL_1]."
+      }
+    ],
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    }
+  }
+}

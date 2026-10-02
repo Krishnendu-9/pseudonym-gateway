@@ -24,7 +24,10 @@
 // first with `delta.role`; `delta.content` is empty or left out in a chunk
 // that carries only `reasoning` (`"content":""` on main, 2026-09-30); a
 // separate chunk carries `finish_reason`; with `include_usage`, a chunk with
-// `choices: []` and `usage` follows; then `data: [DONE]`. An error in the
+// `choices: []` and `usage` follows; then `data: [DONE]`. A real stream from
+// v0.35.0 (test/fixtures/ollama-stream-qwen3-4b.sse, recorded 2026-10-02)
+// has exactly this shape, with `"content":""` on every reasoning chunk and
+// an empty `delta` in the finish chunk. An error in the
 // middle of a stream is not an event: Ollama has already sent 200, writes
 // the error through the chunk writer, and ends without `[DONE]`. So a stream
 // that ends before `[DONE]` is a failure, never a short answer. An OpenAI-
