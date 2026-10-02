@@ -16,7 +16,14 @@ import {
   SECRET_KINDS,
   type SecretKind,
 } from '../src/synthetic/identifiers.js';
+import {
+  DEVANAGARI_FORMS,
+  NAME_FORMS,
+  writtenName,
+  type NameScript,
+} from '../src/synthetic/names.js';
 import { createRng, type Rng } from '../src/synthetic/rng.js';
+import { NAME_REGIONS } from '../src/synthetic/wikidata-names.js';
 import type { RawCase, RawMessage } from './format.js';
 import { renderCase } from './render.js';
 import {
@@ -692,6 +699,7 @@ export const SHAPES = [
   'contact-sheet',
   'misaligned-sheet',
   'in-markup',
+  'names',
 ] as const;
 export type Shape = (typeof SHAPES)[number];
 
@@ -707,6 +715,7 @@ export const SHAPE_VALUES: Readonly<Record<Shape, number>> = {
   'contact-sheet': 120,
   'misaligned-sheet': 132,
   'in-markup': 90,
+  names: 4 * VALUES_PER_TYPE,
 };
 
 const SHAPE_SALT = 0x5c5c5c5c;
@@ -988,8 +997,16 @@ const pickTongue = (rng: Rng): Tongue =>
 function shapeCases(seed: number, firstNumber: number): RawCase[] {
   const rng = createRng((seed ^ SHAPE_SALT) >>> 0);
   const out: RawCase[] = [];
-  const add = (kind: Kind, tongue: Tongue, shape: Shape, messages: readonly RawMessage[]): void => {
-    out.push(rawCase(firstNumber + out.length, [kind, tongue, SHAPE_TAG + shape], messages));
+  const add = (
+    kind: Kind,
+    tongue: Tongue,
+    shape: Shape,
+    messages: readonly RawMessage[],
+    tags: readonly string[] = [],
+  ): void => {
+    out.push(
+      rawCase(firstNumber + out.length, [kind, tongue, SHAPE_TAG + shape, ...tags], messages),
+    );
   };
   const ticket = (tongue: Tongue, sentence: string): string => {
     const body = rng.chance(0.5) ? [sentence, otherSentence(tongue, rng, LOOKALIKES)] : [sentence];
@@ -1082,7 +1099,237 @@ function shapeCases(seed: number, firstNumber: number): RawCase[] {
     const sentence = rng.pick(MARKUP_FRAMES[tongue])(markup(slot));
     add('ticket', tongue, 'in-markup', [message(ticket(tongue, sentence))]);
   }
+  // Names come last of all (Phase 6), for the same reason.
+  for (let i = 0; i < SHAPE_VALUES.names; i++) {
+    const { kind, tongue, text, tags } = nameCase(rng);
+    add(kind, tongue, 'names', [message(text)], tags);
+  }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Person names (Phase 6, ADR-035): one name per case, from the `eval` half
+// of the Wikidata lists, in one of five places in a message, with text
+// beside it that a name detector could take for a name (a month, a place, a
+// company, a festival, a word that is also a name, a Title Case label, a
+// code identifier). Each case is tagged with what the comparison reports
+// by: language, script, region, form and place.
+
+export const NAME_PLACES = ['intro', 'field', 'greeting', 'sign-off', 'sentence'] as const;
+type NamePlace = (typeof NAME_PLACES)[number];
+/** Share of names in Devanagari, by the language of the message. */
+const DEVANAGARI_SHARE: Readonly<Record<Tongue, number>> = { en: 0.05, hinglish: 0.05, hi: 0.75 };
+
+// Intro and field say that a name follows; the other three do not.
+const NAME_FRAMES: Readonly<Record<NamePlace, ByTongue>> = {
+  intro: {
+    en: [
+      (n) => `My name is ${n}.`,
+      (n) => `This is ${n} from the accounts team.`,
+      (n) => `I am ${n}, the account holder.`,
+    ],
+    hinglish: [(n) => `Mera naam ${n} hai.`, (n) => `Main ${n} bol raha hoon.`],
+    hi: [(n) => `मेरा नाम ${n} है।`, (n) => `मैं ${n} बोल रही हूँ।`],
+  },
+  field: {
+    en: [(n) => `Name: ${n}`, (n) => `Customer name: ${n}`, (n) => `Account holder: ${n}`],
+    hinglish: [(n) => `Naam: ${n}`, (n) => `Customer ka naam: ${n}`],
+    hi: [(n) => `नाम: ${n}`, (n) => `ग्राहक का नाम: ${n}`],
+  },
+  greeting: {
+    en: [(n) => `Hi ${n},`, (n) => `Hello ${n},`, (n) => `Dear ${n},`],
+    hinglish: [(n) => `Hi ${n},`, (n) => `Namaste ${n},`],
+    hi: [(n) => `नमस्ते ${n},`, (n) => `प्रिय ${n},`],
+  },
+  'sign-off': {
+    en: [(n) => `Regards,\n${n}`, (n) => `Thanks,\n${n}`, (n) => `— ${n}`],
+    hinglish: [(n) => `Dhanyavaad,\n${n}`, (n) => `Thanks,\n${n}`],
+    hi: [(n) => `धन्यवाद,\n${n}`, (n) => `सादर,\n${n}`],
+  },
+  sentence: {
+    en: [
+      (n) => `Please ask ${n} to call me back.`,
+      (n) => `${n} said the parcel was damaged.`,
+      (n) => `I spoke to ${n} at your branch yesterday.`,
+      (n) => `The form was signed by ${n}.`,
+    ],
+    hinglish: [
+      (n) => `${n} ne bola tha refund aayega.`,
+      (n) => `Kal ${n} se baat hui thi.`,
+      (n) => `${n} ko call karke bata dena.`,
+    ],
+    hi: [(n) => `${n} ने कहा था कि रिफ़ंड आएगा।`, (n) => `कल ${n} से बात हुई थी।`],
+  },
+};
+
+const MONTHS = ['January', 'March', 'April', 'May', 'June', 'July', 'August', 'December'];
+const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const PLACES = [
+  'Pune',
+  'Kochi',
+  'Shimla',
+  'Indore',
+  'Nagpur',
+  'Guwahati',
+  'Gandhinagar',
+  'Nehru Place',
+  'Vijayawada',
+  'Jaipur',
+  'Lucknow',
+  'Mysuru',
+  'Darjeeling',
+  'Shillong',
+];
+const COMPANIES = [
+  'Tata Motors',
+  'Bajaj Finance',
+  'Mahindra',
+  'Godrej',
+  'Infosys',
+  'Reliance Jio',
+  'Bharti Airtel',
+  'Wipro',
+  'Birla Sun Life',
+  'Flipkart',
+];
+const PRODUCTS = ['Swift', 'Galaxy', 'Pixel', 'Alto', 'Activa', 'Splendor', 'Redmi', 'Kindle'];
+const FESTIVALS = ['Diwali', 'Holi', 'Eid', 'Pongal', 'Onam', 'Ganesh Chaturthi', 'Durga Puja'];
+const DEITIES = ['Krishna', 'Ganesh', 'Lakshmi', 'Shiva', 'Hanuman', 'Durga', 'Saraswati'];
+const TITLES = [
+  'Payment Failed Notification',
+  'Account Settings',
+  'Customer Care Team',
+  'Head Office',
+  'Branch Manager',
+  'Order Status Update',
+  'Refund Request Form',
+];
+const CODE_NAMES = [
+  'OrderService',
+  'PaymentGateway',
+  'customerName',
+  'getUserProfile',
+  'KycVerifier',
+  'NullPointerException',
+  'AccountHolderName',
+];
+const MONTHS_HI = ['जनवरी', 'मार्च', 'अप्रैल', 'मई', 'जून', 'जुलाई', 'अगस्त', 'दिसंबर'];
+const WEEKDAYS_HI = ['सोमवार', 'मंगलवार', 'बुधवार', 'गुरुवार', 'शुक्रवार', 'शनिवार', 'रविवार'];
+const PLACES_HI = ['पुणे', 'जयपुर', 'लखनऊ', 'इंदौर', 'नागपुर', 'शिमला'];
+const COMPANIES_HI = ['टाटा मोटर्स', 'बजाज फ़ाइनेंस', 'महिंद्रा', 'गोदरेज', 'रिलायंस जियो'];
+const FESTIVALS_HI = ['दिवाली', 'होली', 'ईद', 'पोंगल', 'ओणम'];
+const DEITIES_HI = ['कृष्ण', 'गणेश', 'लक्ष्मी', 'शिव', 'हनुमान'];
+
+const not = (label: string, text: string): string => `{{NOT.${label}=${text}}}`;
+const title = (rng: Rng): string => `Status: ${not('title', rng.pick(TITLES))}`;
+const code = (rng: Rng): string =>
+  rng.pick([(c: string) => `The error came from ${c}.`, (c: string) => `The field ${c} is empty.`])(
+    not('code', rng.pick(CODE_NAMES)),
+  );
+
+const NAME_LOOKALIKES: Readonly<Record<Tongue, readonly Lookalike[]>> = {
+  en: [
+    (rng) => `The refund was promised by ${not('month', rng.pick(MONTHS))}.`,
+    (rng) => `It was delivered on ${not('weekday', rng.pick(WEEKDAYS))}.`,
+    (rng) => `The parcel is stuck in ${not('place', rng.pick(PLACES))}.`,
+    (rng) => `My loan is with ${not('company', rng.pick(COMPANIES))}.`,
+    (rng) => `The ${not('product', rng.pick(PRODUCTS))} I bought stopped working.`,
+    (rng) => `The office was closed for ${not('festival', rng.pick(FESTIVALS))}.`,
+    (rng) => `There is a ${not('deity', rng.pick(DEITIES))} temple near my house.`,
+    (rng) =>
+      rng.pick([
+        `I have no ${not('word', 'hope')} left.`,
+        `It was a ${not('word', 'sunny')} day when it arrived.`,
+        `This brought me no ${not('word', 'joy')}.`,
+        `Please show some ${not('word', 'grace')}.`,
+      ]),
+    title,
+    code,
+  ],
+  hinglish: [
+    (rng) => `Refund ${not('month', rng.pick(MONTHS))} tak aana tha.`,
+    (rng) => `${not('weekday', rng.pick(WEEKDAYS))} ko delivery hui.`,
+    (rng) => `Parcel ${not('place', rng.pick(PLACES))} mein atka hai.`,
+    (rng) => `Mera loan ${not('company', rng.pick(COMPANIES))} se hai.`,
+    (rng) => `${not('product', rng.pick(PRODUCTS))} ki service karwani hai.`,
+    (rng) => `${not('festival', rng.pick(FESTIVALS))} ki chhutti thi.`,
+    (rng) => `Ghar ke paas ${not('deity', rng.pick(DEITIES))} mandir hai.`,
+    (rng) =>
+      rng.pick([
+        `Mujhe koi ${not('word', 'asha')} nahi hai.`,
+        `Thodi ${not('word', 'shanti')} chahiye.`,
+        `Ye ${not('word', 'prem')} se kiya tha.`,
+      ]),
+    title,
+    code,
+  ],
+  hi: [
+    (rng) => `रिफ़ंड ${not('month', rng.pick(MONTHS_HI))} तक आना था।`,
+    (rng) => `${not('weekday', rng.pick(WEEKDAYS_HI))} को डिलीवरी हुई।`,
+    (rng) => `पार्सल ${not('place', rng.pick(PLACES_HI))} में अटका है।`,
+    (rng) => `मेरा लोन ${not('company', rng.pick(COMPANIES_HI))} से है।`,
+    (rng) => `${not('product', rng.pick(PRODUCTS))} की सर्विस करवानी है।`,
+    (rng) => `${not('festival', rng.pick(FESTIVALS_HI))} की छुट्टी थी।`,
+    (rng) => `घर के पास ${not('deity', rng.pick(DEITIES_HI))} मंदिर है।`,
+    (rng) =>
+      rng.pick([
+        `मुझे कोई ${not('word', 'आशा')} नहीं है।`,
+        `थोड़ी ${not('word', 'शांति')} चाहिए।`,
+        `यह ${not('word', 'प्रेम')} से किया था।`,
+      ]),
+    title,
+    code,
+  ],
+};
+
+/** One case of the names block: a name in its place, and one or two other sentences. */
+function nameCase(rng: Rng): { kind: Kind; tongue: Tongue; text: string; tags: string[] } {
+  const tongue = pickTongue(rng);
+  const region = rng.pick(NAME_REGIONS);
+  const place = rng.pick(NAME_PLACES);
+  const script: NameScript = rng.chance(DEVANAGARI_SHARE[tongue]) ? 'devanagari' : 'latin';
+  const form = rng.pick(script === 'latin' ? NAME_FORMS : DEVANAGARI_FORMS);
+  const name = writtenName(rng, region, script, form);
+  const sentence = rng.pick(NAME_FRAMES[place][tongue])(
+    `${name.before}{{PERSON=${name.name}}}${name.after}`,
+  );
+  const others = Array.from({ length: rng.int(1, 2) }, () =>
+    rng.chance(0.6)
+      ? rng.pick(NAME_LOOKALIKES[tongue])(rng)
+      : otherSentence(tongue, rng, LOOKALIKES),
+  );
+  const tags = [
+    `name-lang:${tongue}`,
+    `name-script:${script}`,
+    `name-region:${region}`,
+    `name-form:${form}`,
+    `name-place:${place}`,
+  ];
+  switch (place) {
+    case 'greeting':
+      return {
+        kind: 'email',
+        tongue,
+        tags,
+        text: `${sentence}\n\n${others.join('\n')}\n\n${rng.pick(CLOSINGS[tongue])}`,
+      };
+    case 'sign-off':
+      return {
+        kind: 'email',
+        tongue,
+        tags,
+        text: `${rng.pick(GREETINGS[tongue])}\n\n${others.join('\n')}\n\n${sentence}`,
+      };
+    case 'field':
+      return { kind: 'record', tongue, tags, text: [sentence, ...others].join('\n') };
+    default:
+      return {
+        kind: 'ticket',
+        tongue,
+        tags,
+        text: `Subject: ${rng.pick(SUBJECTS[tongue])}\n\n${shuffle([sentence, ...others], rng).join(' ')}`,
+      };
+  }
 }
 
 /** The generated dataset, rendered: the same messages for the same seed. */

@@ -8,6 +8,7 @@ import {
   generateCases,
   generateRawCases,
   MAIN_TYPES,
+  NAME_PLACES,
   SHAPE_VALUES,
   SHAPES,
   SHARE_WITHOUT_VALUES,
@@ -16,6 +17,8 @@ import {
 } from '../../../eval/generate.js';
 import { lintCases } from '../../../eval/lint.js';
 import { PERSONAL_TYPES, SHAPE_TAG, type LabelledCase } from '../../../eval/types.js';
+import { NAME_FORMS } from '../../../src/synthetic/names.js';
+import { NAME_REGIONS, WIKIDATA_NAMES } from '../../../src/synthetic/wikidata-names.js';
 
 const shapeOf = (c: LabelledCase): string | undefined =>
   c.tags.find((tag) => tag.startsWith(SHAPE_TAG))?.slice(SHAPE_TAG.length);
@@ -353,6 +356,94 @@ describe('the shape block (Phase 5c)', () => {
       'NOT.model-code',
       'NOT.ticket-code',
       'NOT.event-date',
+    ]) {
+      expect([label, labels.has(label)]).toEqual([label, true]);
+    }
+  });
+});
+
+describe('the names block (Phase 6, ADR-035)', () => {
+  const names = block.filter((c) => shapeOf(c) === 'names');
+  const labelsOf = (set: readonly LabelledCase[]): Set<string> =>
+    new Set(
+      set.flatMap((c) =>
+        c.messages.flatMap((m) => m.pieces.map((p) => `${p.type}.${p.label ?? ''}`)),
+      ),
+    );
+  const tagsOf = (prefix: string): Record<string, number> =>
+    tally(names.map((c) => c.tags.find((t) => t.startsWith(prefix))?.slice(prefix.length) ?? '?'));
+
+  it('has one PERSON value in each case, in one message', () => {
+    expect(valuesByType(names)).toEqual({ PERSON: SHAPE_VALUES.names });
+    const ok = names.every(
+      (c) =>
+        c.messages.length === 1 &&
+        c.messages[0]!.pieces.filter((p) => p.type === 'PERSON').length === 1,
+    );
+    expect(ok).toBe(true);
+  });
+
+  it('tags every case by language, script, region, form and place, each with every value', () => {
+    expect(Object.keys(tagsOf('name-lang:')).sort()).toEqual(['en', 'hi', 'hinglish']);
+    expect(Object.keys(tagsOf('name-script:')).sort()).toEqual(['devanagari', 'latin']);
+    expect(Object.keys(tagsOf('name-region:')).sort()).toEqual([...NAME_REGIONS].sort());
+    expect(Object.keys(tagsOf('name-form:')).sort()).toEqual([...NAME_FORMS].sort());
+    expect(Object.keys(tagsOf('name-place:')).sort()).toEqual([...NAME_PLACES].sort());
+    // The language tag repeats the case's own language tag.
+    expect(names.every((c) => c.tags.includes(`name-lang:${c.tags[1]}`))).toBe(true);
+  });
+
+  it('has enough names in each judged row (language and script) to judge it', () => {
+    const rows = [...Object.values(tagsOf('name-lang:')), ...Object.values(tagsOf('name-script:'))];
+    expect(rows.every((n) => n >= 50)).toBe(true);
+  });
+
+  it('writes a Devanagari-tagged name in Devanagari and a Latin-tagged one in Latin script', () => {
+    const devanagari = /\p{Script=Devanagari}/u;
+    const ok = names.every((c) => {
+      const m = c.messages[0]!;
+      const p = m.pieces.find((piece) => piece.type === 'PERSON')!;
+      const inDevanagari = devanagari.test(m.text.slice(p.start, p.end));
+      return inDevanagari === c.tags.includes('name-script:devanagari');
+    });
+    expect(ok).toBe(true);
+  });
+
+  it('draws names only from the eval half of the lists', () => {
+    const evalHalf = new Set(
+      Object.values(WIKIDATA_NAMES).flatMap((r) =>
+        [...r.evalGiven, ...r.evalFamily].flatMap(([latin, devanagari]) => [
+          latin.toLowerCase(),
+          ...(devanagari === undefined ? [] : [devanagari]),
+        ]),
+      ),
+    );
+    const ok = names.every((c) => {
+      const m = c.messages[0]!;
+      const p = m.pieces.find((piece) => piece.type === 'PERSON')!;
+      // Words of the name, initials left out.
+      const words = m.text
+        .slice(p.start, p.end)
+        .split(/[ .]+/)
+        .filter((w) => w.length > 1);
+      return words.length > 0 && words.every((w) => evalHalf.has(w.toLowerCase()));
+    });
+    expect(ok).toBe(true);
+  });
+
+  it('puts name lookalikes of every kind beside the names', () => {
+    const labels = labelsOf(names);
+    for (const label of [
+      'NOT.month',
+      'NOT.weekday',
+      'NOT.place',
+      'NOT.company',
+      'NOT.product',
+      'NOT.festival',
+      'NOT.deity',
+      'NOT.word',
+      'NOT.title',
+      'NOT.code',
     ]) {
       expect([label, labels.has(label)]).toEqual([label, true]);
     }

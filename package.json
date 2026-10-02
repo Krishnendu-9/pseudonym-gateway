@@ -23,6 +23,7 @@
     "test:timing": "vitest run --project timing",
     "eval": "tsx eval/run.ts",
     "eval:lint": "tsx eval/check-held-out.ts",
+    "gen:names": "tsx scripts/fetch-wikidata-names.ts && prettier --write src/synthetic/wikidata-names.ts",
     "gen:digits": "tsx scripts/generate-decimal-digit-zeros.ts && prettier --write src/detection/decimal-digit-zeros.ts"
   },
   "dependencies": {

@@ -5,7 +5,8 @@ reaches an LLM, and restores it in the reply.**
 
 > **Status: work in progress (Phase 5 of 8 done: detection, the gateway,
 > streaming and the evaluation are built, and a CI workflow runs the checks,
-> tests and evaluation; person names are next).** Not ready for production
+> tests and evaluation; person names are under way: their test set is
+> built, no detector yet).** Not ready for production
 > use.
 > Pseudonym runs as a gateway: `POST /v1/chat/completions` (OpenAI format,
 > streaming and non-streaming) redacts emails, phone numbers, Aadhaar, PAN,
@@ -388,43 +389,51 @@ How to read a row:
   number, a value split across two messages, two values side by side, a
   checked value inside an email address or key, passport and voter ID
   numbers and dates of birth, contact sheets of mobiles in columns, values
-  inside a URL, a markdown link or an HTML tag), one row per way of
-  writing. Each row there measures one hard layout; a low number in it is
-  that layout's gap, not the overall quality.
+  inside a URL, a markdown link or an HTML tag, person names), one row per
+  way of writing. Each row there measures one hard layout; a low number in
+  it is that layout's gap, not the overall quality.
 
 PERSON has no detector yet. It is labelled and measured from the start so
-that the "before" is on record, as passport numbers, voter IDs and dates
-of birth were: the shape block's `short-id` row went from 1 of 459
-redacted to 305 when their detectors were added (passport 93, voter ID
-103, date of birth 108 of 153 each with the right type, and one date of
-birth read as a phone number). Its misses are values in sentences that
-name no type ("Document … expired last month", "The age proof says …"),
-which are sent as written by design. Its 25 over-redactions are codes
-and dates of the same shapes within 40 characters of a real value's
-keyword: model, ticket, invoice and order codes (18), dates in the 1900s
-(4), and order dates in 2026 (3). The IP
-row's 4 values of the wrong type are
-addresses written with a prefix length (`/24`) whose digits also read as a
-valid phone number: still redacted, as a phone number, prefix and all. Its
-53 over-redactions are private (14) and link-local (17) addresses, which
-are redacted on purpose, four-part versions with no version word in front
-(20), which cannot be told from an address, and two IPv6 interface ids
-next to an IP keyword. The SECRET row counts eleven kinds of secret in
-equal shares: nine known key formats, passwords and bare 40-character
-tokens. The last two are found only after a keyword, and some of the
-generated sentences deliberately have none ("I pasted … into the chat by
-mistake"): those are the misses in that row. The same holds for UPI: the
-six misses are IDs at a handle on no list, in sentences with no UPI
-keyword. Every real handle the generator uses is taken from the
-detector's list (the others are made up), so the UPI row does not measure
-how complete that list is, and nothing else does yet: the list is compiled
-from public sources, not NPCI's official list. The IFSC row has the same
-limit. Of its 24 IFSCs with an unknown bank code, 23 have a keyword nearby
-and are found; the one without is the row's one miss, by design. Its 3
-over-redactions are IFSC-shaped product codes (four letters, a zero, six
-digits): 3 of the 15 in the set. None of the 35 codes that are one
-character off (a fifth character other than zero, three letters instead of
-four) was touched.
+that the "before" is on record. The main cases' 153 names come from a
+short list in sentences that say a name follows; the shape block's `names`
+row is the harder set Phase 6 is measured on: 612 names paired at random
+from Wikidata's given and family names (CC0), Indian by region and
+international, in Latin script and Devanagari, written in full, as a given
+name alone, with initials, with an honorific, in lower case or capitals,
+in a greeting, a sign-off, a form field or the middle of a sentence,
+beside words that are not names (months, places, companies, festivals,
+words that are also names, code identifiers). Today 0 of them are
+redacted. Passport numbers, voter IDs and dates of birth were measured the
+same way before their detectors: the shape block's `short-id` row went
+from 1 of 459 redacted to 305 when their detectors were added (passport
+93, voter ID 103, date of birth 108 of 153 each with the right type, and
+one date of birth read as a phone number). Its misses are values in
+sentences that name no type ("Document … expired last month", "The age
+proof says …"), which are sent as written by design. Its 25
+over-redactions are codes and dates of the same shapes within 40
+characters of a real value's keyword: model, ticket, invoice and order
+codes (18), dates in the 1900s (4), and order dates in 2026 (3). The IP
+row's 4 values of the wrong type are addresses written with a prefix
+length (`/24`) whose digits also read as a valid phone number: still
+redacted, as a phone number, prefix and all. Its 53 over-redactions are
+private (14) and link-local (17) addresses, which are redacted on purpose,
+four-part versions with no version word in front (20), which cannot be
+told from an address, and two IPv6 interface ids next to an IP keyword.
+The SECRET row counts eleven kinds of secret in equal shares: nine known
+key formats, passwords and bare 40-character tokens. The last two are
+found only after a keyword, and some of the generated sentences
+deliberately have none ("I pasted … into the chat by mistake"): those are
+the misses in that row. The same holds for UPI: the six misses are IDs at
+a handle on no list, in sentences with no UPI keyword. Every real handle
+the generator uses is taken from the detector's list (the others are made
+up), so the UPI row does not measure how complete that list is, and
+nothing else does yet: the list is compiled from public sources, not
+NPCI's official list. The IFSC row has the same limit. Of its 24 IFSCs
+with an unknown bank code, 23 have a keyword nearby and are found; the one
+without is the row's one miss, by design. Its 3 over-redactions are
+IFSC-shaped product codes (four letters, a zero, six digits): 3 of the 15
+in the set. None of the 35 codes that are one character off (a fifth
+character other than zero, three letters instead of four) was touched.
 
 <!-- eval:start -->
 
@@ -446,7 +455,7 @@ _Measured on 2026-10-02 (UTC date) by `npm run eval`. This block is generated, a
 | SECRET  | 153    | 147/153 (96.0%)     | 0               | 147/153 (96.0%)     | 147/147 (100.0%)       | 98.0%  | 0               |
 | PERSON  | 153    | 0/153 (0.0%)        | 0               | 0/153 (0.0%)        | -                      | -      | 0               |
 
-**Generated dataset, shape block** (1201 labelled personal values, in cases apart from the main ones). Each row is a way of writing values that is hard on purpose: a line break inside a value, a value split across two messages, two values side by side, digits beside a mobile, a checked value inside an address or key, digits joined by a bracket, passport and voter ID numbers and dates of birth, contact sheets of mobiles in columns (aligned, and with one row out of line), and values inside markup (a URL, a markdown link or image, an HTML tag). These rows measure hard layouts one at a time; they are not part of the numbers above.
+**Generated dataset, shape block** (1813 labelled personal values, in cases apart from the main ones). Each row is a way of writing values that is hard on purpose: a line break inside a value, a value split across two messages, two values side by side, digits beside a mobile, a checked value inside an address or key, digits joined by a bracket, passport and voter ID numbers and dates of birth, contact sheets of mobiles in columns (aligned, and with one row out of line), values inside markup (a URL, a markdown link or image, an HTML tag), and person names written the ways people write them, beside words that are not names (Phase 6). These rows measure hard layouts one at a time; they are not part of the numbers above.
 
 | Written as       | Values | Redacted (any type) | Partly redacted | Recall (right type) | Over-redactions |
 | ---------------- | ------ | ------------------- | --------------- | ------------------- | --------------- |
@@ -460,22 +469,23 @@ _Measured on 2026-10-02 (UTC date) by `npm run eval`. This block is generated, a
 | contact-sheet    | 120    | 120/120 (100.0%)    | 0               | 120/120 (100.0%)    | 0               |
 | misaligned-sheet | 132    | 132/132 (100.0%)    | 0               | 132/132 (100.0%)    | 0               |
 | in-markup        | 90     | 90/90 (100.0%)      | 0               | 90/90 (100.0%)      | 8               |
+| names            | 612    | 0/612 (0.0%)        | 0               | 0/612 (0.0%)        | 79              |
 
-**Held-out adversarial dataset** (drafted with AI assistance in a separate session that did not write the detectors, then reviewed by the author; never run against the detectors before it was committed, and never used for tuning; 58 messages in 54 cases, 79 labelled personal values).
+**Held-out adversarial dataset** (drafted with AI assistance in a separate session that did not write the detectors, then reviewed by the author; never run against the detectors before it was committed, and never used for tuning; 80 messages in 76 cases, 118 labelled personal values).
 
 | Type     | Values | Redacted (any type) | Partly redacted | Recall (right type) | Precision (right type) | F1     | Over-redactions |
 | -------- | ------ | ------------------- | --------------- | ------------------- | ---------------------- | ------ | --------------- |
 | AADHAAR  | 9      | 8/9 (88.8%)         | 0               | 7/9 (77.7%)         | 7/7 (100.0%)           | 87.5%  | 0               |
 | CARD     | 7      | 4/7 (57.1%)         | 0               | 4/7 (57.1%)         | 4/4 (100.0%)           | 72.7%  | 0               |
 | PAN      | 8      | 7/8 (87.5%)         | 0               | 7/8 (87.5%)         | 7/7 (100.0%)           | 93.3%  | 0               |
-| PHONE    | 19     | 18/19 (94.7%)       | 0               | 18/19 (94.7%)       | 18/19 (94.7%)          | 94.7%  | 1               |
-| EMAIL    | 7      | 6/7 (85.7%)         | 0               | 6/7 (85.7%)         | 6/6 (100.0%)           | 92.3%  | 0               |
+| PHONE    | 22     | 21/22 (95.4%)       | 0               | 21/22 (95.4%)       | 21/22 (95.4%)          | 95.4%  | 1               |
+| EMAIL    | 8      | 7/8 (87.5%)         | 0               | 7/8 (87.5%)         | 7/7 (100.0%)           | 93.3%  | 0               |
 | NUMBER   | 6      | 5/6 (83.3%)         | 0               | 3/6 (50.0%)         | 3/8 (37.5%)            | 42.8%  | 4               |
 | IFSC     | 3      | 3/3 (100.0%)        | 0               | 3/3 (100.0%)        | 3/3 (100.0%)           | 100.0% | 0               |
 | UPI      | 3      | 3/3 (100.0%)        | 0               | 3/3 (100.0%)        | 3/3 (100.0%)           | 100.0% | 0               |
 | IP       | 2      | 2/2 (100.0%)        | 0               | 2/2 (100.0%)        | 2/4 (50.0%)            | 66.6%  | 2               |
 | SECRET   | 5      | 5/5 (100.0%)        | 0               | 5/5 (100.0%)        | 5/5 (100.0%)           | 100.0% | 0               |
-| PERSON   | 10     | 0/10 (0.0%)         | 0               | 0/10 (0.0%)         | -                      | -      | 0               |
+| PERSON   | 45     | 0/45 (0.0%)         | 0               | 0/45 (0.0%)         | -                      | -      | 0               |
 | PASSPORT | 0      | -                   | 0               | -                   | 0/1 (0.0%)             | -      | 0               |
 | VOTER    | 0      | -                   | 0               | -                   | 0/1 (0.0%)             | -      | 0               |
 | DOB      | 0      | -                   | 0               | -                   | 0/1 (0.0%)             | -      | 1               |
@@ -484,9 +494,9 @@ _Measured on 2026-10-02 (UTC date) by `npm run eval`. This block is generated, a
 
 | Echoed unchanged                                    | Generated, main   | Shape block: in-markup | Shape block: other shapes | Held-out      |
 | --------------------------------------------------- | ----------------- | ---------------------- | ------------------------- | ------------- |
-| Messages                                            | 600               | 90                     | 696                       | 58            |
-| Placeholders                                        | 1667              | 98                     | 941                       | 70            |
-| Restored                                            | 1660/1667 (99.5%) | 26/98 (26.5%)          | 932/941 (99.0%)           | 66/70 (94.2%) |
+| Messages                                            | 600               | 90                     | 1308                      | 80            |
+| Placeholders                                        | 1667              | 98                     | 1020                      | 74            |
+| Restored                                            | 1660/1667 (99.5%) | 26/98 (26.5%)          | 1011/1020 (99.1%)         | 70/74 (94.5%) |
 | Left: in a markdown link or image target            | 0                 | 18                     | 9                         | 0             |
 | Left: after "[label]:"                              | 0                 | 9                      | 0                         | 0             |
 | Left: in a quoted HTML attribute value              | 0                 | 18                     | 0                         | 2             |
@@ -495,7 +505,7 @@ _Measured on 2026-10-02 (UTC date) by `npm run eval`. This block is generated, a
 | Left: rest of the text after an unclosed `="`       | 0                 | 0                      | 0                         | 0             |
 | Left: host rule (`[TYPE_N].x`)                      | 0                 | 0                      | 0                         | 0             |
 | `Type N` text, never restored (ADR-013)             | 0                 | 0                      | 0                         | 0             |
-| Messages back exactly                               | 600               | 90                     | 696                       | 58            |
+| Messages back exactly                               | 600               | 90                     | 1308                      | 80            |
 | Messages back with a later mention as first written | 0                 | 0                      | 0                         | 0             |
 | Messages not restored correctly                     | 0                 | 0                      | 0                         | 0             |
 

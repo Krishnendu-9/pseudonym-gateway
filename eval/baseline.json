@@ -229,6 +229,13 @@
         "partial": 0,
         "typed": 90,
         "overRedactions": 8
+      },
+      "names": {
+        "values": 612,
+        "redacted": 0,
+        "partial": 0,
+        "typed": 0,
+        "overRedactions": 79
       }
     },
     "echo": {
@@ -429,13 +436,31 @@
         "exact": 90,
         "firstForm": 0,
         "broken": 0
+      },
+      "names": {
+        "messages": 612,
+        "placeholders": 79,
+        "restored": 79,
+        "heldBack": {
+          "markdown-destination": 0,
+          "reference-label": 0,
+          "html-attribute": 0,
+          "url": 0,
+          "unclosed-angle": 0,
+          "unclosed-quote": 0,
+          "host": 0,
+          "bare-space": 0
+        },
+        "exact": 612,
+        "firstForm": 0,
+        "broken": 0
       }
     },
     "seed": 20260930
   },
   "heldOut": {
-    "cases": 54,
-    "messages": 58,
+    "cases": 76,
+    "messages": 80,
     "types": {
       "AADHAAR": {
         "values": 9,
@@ -471,24 +496,24 @@
         "notPersonal": 0
       },
       "PHONE": {
-        "values": 19,
-        "redacted": 18,
-        "typed": 18,
+        "values": 22,
+        "redacted": 21,
+        "typed": 21,
         "partial": 0,
         "missed": 1,
-        "detections": 19,
-        "rightType": 18,
+        "detections": 22,
+        "rightType": 21,
         "otherPersonal": 0,
         "notPersonal": 1
       },
       "EMAIL": {
-        "values": 7,
-        "redacted": 6,
-        "typed": 6,
+        "values": 8,
+        "redacted": 7,
+        "typed": 7,
         "partial": 0,
         "missed": 1,
-        "detections": 6,
-        "rightType": 6,
+        "detections": 7,
+        "rightType": 7,
         "otherPersonal": 0,
         "notPersonal": 0
       },
@@ -548,11 +573,11 @@
         "notPersonal": 0
       },
       "PERSON": {
-        "values": 10,
+        "values": 45,
         "redacted": 0,
         "typed": 0,
         "partial": 0,
-        "missed": 10,
+        "missed": 45,
         "detections": 0,
         "rightType": 0,
         "otherPersonal": 0,
@@ -594,9 +619,9 @@
     },
     "echo": {
       "all": {
-        "messages": 58,
-        "placeholders": 70,
-        "restored": 66,
+        "messages": 80,
+        "placeholders": 74,
+        "restored": 70,
         "heldBack": {
           "markdown-destination": 0,
           "reference-label": 0,
@@ -607,7 +632,7 @@
           "host": 0,
           "bare-space": 0
         },
-        "exact": 58,
+        "exact": 80,
         "firstForm": 0,
         "broken": 0
       }
@@ -772,6 +797,19 @@
       "changes": [
         "generated echo in-markup: restored 32 -> 26",
         "generated echo in-markup: left by url 21 -> 27"
+      ]
+    },
+    {
+      "date": "2026-10-02",
+      "note": "ADR-035: names shape block added to the generated set (612 PERSON values, name lookalikes) and held-out cases added in 42d8be0 (22 cases: 35 PERSON, 3 PHONE, 1 EMAIL values); detectors unchanged",
+      "changes": [
+        "generated shape names: 0 values -> 612",
+        "held-out: 54 cases / 58 messages -> 76 / 80",
+        "held-out PHONE: 19 values -> 22",
+        "held-out EMAIL: 7 values -> 8",
+        "held-out PERSON: 10 values -> 45",
+        "generated echo names: 0 messages -> 612",
+        "held-out echo all: 58 messages -> 80"
       ]
     }
   ]
