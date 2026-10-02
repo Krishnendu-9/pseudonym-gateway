@@ -1,0 +1,54 @@
+# Lint, tests and the evaluation on every push and pull request.
+# Not covered here: the model measurement (scripts/measure-rewrites.ts) and
+# the recorded-stream refresh (scripts/record-ollama-stream.ts) need Ollama;
+# mutation checks (scripts/mutate.ts) are run by hand. See the README.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    # Guards against a hang (bug-log 24: a quadratic mutant ran for hours).
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
+      # The main project only; vitest.config.ts fails the run below 100%.
+      - name: Tests with coverage
+        run: npm run test:coverage
+
+      # Growth-ratio tests need the machine mostly to themselves (ADR-032), so
+      # they get their own step and nothing runs beside them. One file at a
+      # time: ADR-032's "three at a time" was measured on 12 cores, and
+      # ubuntu-latest has 4.
+      - name: Timing tests
+        run: npm run test:timing
+        env:
+          PSEUDONYM_TIMING_WORKERS: '1'
+
+      - name: Evaluation
+        run: npm run eval

@@ -4,8 +4,9 @@
 reaches an LLM, and restores it in the reply.**
 
 > **Status: work in progress (Phase 5 of 8 done: detection, the gateway,
-> streaming and the evaluation are built; person names are next).** Not
-> ready for production use.
+> streaming and the evaluation are built, and a CI workflow runs the checks,
+> tests and evaluation; person names are next).** Not ready for production
+> use.
 > Pseudonym runs as a gateway: `POST /v1/chat/completions` (OpenAI format,
 > streaming and non-streaming) redacts emails, phone numbers, Aadhaar, PAN,
 > card numbers, UPI IDs, IFSC codes, IP addresses, API keys in known formats, secrets written after a
@@ -678,7 +679,7 @@ The timing tests check that detection and restoration take linear time:
 each times the same work on an input and on one four times as long, and
 fails if the time grows 8 times or more (linear code grows about 4
 times, quadratic about 16). They run after the other tests, at most three
-files at a time, and they need the machine mostly to themselves. Measured
+files at a time (one in CI), and they need the machine mostly to themselves. Measured
 on 2026-10-02: run alongside two other test suites, they failed 5 ratio
 checks and timed out 6 times in two runs (178 checks); on their own, one
 or three files at a time, they passed all 890 checks in 10 runs. A failure
@@ -691,6 +692,33 @@ restoration safety, the placeholder instruction). The timeout covers the
 whole call when not streaming; when streaming it applies to each wait (for
 the first chunk, then between chunks), so a long answer that keeps arriving
 is never cut off by it.
+
+## Continuous integration
+
+[.github/workflows/ci.yml](.github/workflows/ci.yml) runs on every push and
+pull request, on GitHub's `ubuntu-latest` with the Node version in `.nvmrc`
+and read-only permissions. One job, one step after another: `npm ci`,
+typecheck, lint, format check, the tests with coverage (the run fails below
+100% of lines, branches, functions and statements in `src` and `eval`), the
+timing tests as their own step, then `npm run eval`, which fails if any
+count moves from `eval/baseline.json` or the README's results block is out
+of date. The timing tests run one file at a time there: the three at a time
+used locally was measured on 12 cores, and the runner has 4.
+
+Not covered by CI:
+
+- **The model measurement** (`scripts/measure-rewrites.ts`, the table
+  under [What a real model does with placeholders](#what-a-real-model-does-with-placeholders))
+  needs Ollama and a model, so it is run by hand; CI only checks that the
+  README's table matches `eval/model-rewrites.json`.
+- **Recording a new Ollama stream** (`scripts/record-ollama-stream.ts`) needs
+  Ollama too; CI replays the recorded fixture.
+- **No real provider is called.** Every test talks to a mock or a recording.
+- **Mutation checks** (`scripts/mutate.ts`), which show that the tests can
+  fail, are run by hand.
+- **One platform and one Node version**: Linux with Node 22.23.3, not
+  Windows or macOS, and not the oldest version `engines` allows (22.20).
+- **Docker** does not exist yet (Phase 8).
 
 ## Tech stack
 
