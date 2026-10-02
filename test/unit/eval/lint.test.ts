@@ -1,4 +1,4 @@
-// The lint for hand-written cases. Two things matter most: nothing typed may
+// The lint for cases written in the held-out file's format. Two things matter most: nothing typed may
 // look like a real personal value, and a problem never quotes the file.
 //
 // No test here contains a value either: typed-digit cases are built from

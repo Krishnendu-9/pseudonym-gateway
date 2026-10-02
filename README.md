@@ -3,11 +3,9 @@
 **An OpenAI-compatible privacy gateway that pseudonymises personal data before it
 reaches an LLM, and restores it in the reply.**
 
-> **Status: work in progress (Phase 4 of 8 done; Phase 5, evaluation, under
-> way: its detectors and its hard cases (line breaks, values side by side or
-> inside each other, short IDs) are done, and every planned detector except
-> person names is built).** Not ready
-> for production use.
+> **Status: work in progress (Phase 5 of 8 done: detection, the gateway,
+> streaming and the evaluation are built; person names are next).** Not
+> ready for production use.
 > Pseudonym runs as a gateway: `POST /v1/chat/completions` (OpenAI format,
 > streaming and non-streaming) redacts emails, phone numbers, Aadhaar, PAN,
 > card numbers, UPI IDs, IFSC codes, IP addresses, API keys in known formats, secrets written after a
@@ -23,11 +21,14 @@ reaches an LLM, and restores it in the reply.**
 > Pseudonym does not know with no word such as "UPI" near it, nor an IFSC
 > code whose bank code is not on Pseudonym's list with no word such as
 > "IFSC" near it, nor a passport number, voter ID or date of birth with no
-> such word near it.
+> such word near it, nor numbers written as words, postal addresses or
+> vehicle numbers.
 > Detection is measured on two datasets, a generated one and a small
-> held-out adversarial one (see [Measured results](#measured-results)). Pseudonym has been tested against
-> a mock of Ollama built from Ollama's documentation and source, not yet
-> against a running Ollama.
+> held-out adversarial one (see [Measured results](#measured-results)).
+> The tests use a mock of Ollama built from Ollama's documentation and
+> source; Pseudonym has also been run against a real Ollama (0.35.0, on a
+> CPU): one recorded stream is a test fixture, and the model measurement
+> made 30 calls through the real pipeline.
 
 ---
 
@@ -87,8 +88,9 @@ What Pseudonym is being built to do:
   message text and `stop` are redacted, numeric settings are forwarded,
   `user` is dropped, and anything else is rejected rather than forwarded.
 - **Stateless by design.** Chat APIs resend the full history on every request, so
-  Pseudonym re-pseudonymises it deterministically each time. The same person is
-  always `[PERSON_1]`, without storing anything between requests.
+  Pseudonym re-pseudonymises it deterministically each time. The same value
+  always gets the same placeholder (`[EMAIL_1]` in every message), without
+  storing anything between requests.
 - **India-aware detection.** Aadhaar (Verhoeff check digit), PAN, UPI IDs
   (known app and bank handles) and IFSC codes (bank codes from RBI's list)
   alongside emails, phone numbers, card numbers (Luhn check) and IPv4 and
@@ -148,7 +150,7 @@ protect real data.
 | API keys, tokens, private keys      | a known format: prefix, alphabet and length (OpenAI, Anthropic, GitHub, GitLab, AWS, Stripe, Razorpay, Slack, Google, npm, Hugging Face), JSON Web Tokens, PEM private key blocks             | redacted |
 | Passwords and codes after a keyword | none possible: the value directly after "password", "api key", "token", "secret", "OTP", "PIN", "CVV" and similar, in English and Hindi                                                       | redacted |
 | Any other number of 9+ digits       | none: a safety net for numbers no detector claimed (bank accounts, odd layouts)                                                                                                               | redacted |
-| UPI ID                              | a handle on Pseudonym's list of 54 app and bank handles (Google Pay, PhonePe, Paytm, BHIM, banks' own…), compiled from public sources, not NPCI's list; any other handle only near a keyword  | redacted |
+| UPI ID                              | a handle on Pseudonym's list of 51 app and bank handles (Google Pay, PhonePe, Paytm, BHIM, banks' own…), compiled from public sources, not NPCI's list; any other handle only near a keyword  | redacted |
 | IFSC code                           | a bank code on Pseudonym's list of 260 (every bank with branches in RBI's list of NEFT-enabled branches, taken from a published copy of RBI's files); any other bank code only near a keyword | redacted |
 | IP address (IPv4 and IPv6)          | parsed by hand: four parts of 0–255, or an IPv6 form (compressed, full, with an IPv4 part); addresses no single host owns (loopback, netmasks, multicast) are left as written                 | redacted |
 | Passport number                     | none possible: a letter and 7 digits, only near "passport" or पासपोर्ट                                                                                                                        | redacted |
@@ -219,7 +221,7 @@ hai`): when the way it is written says it is a value. That is: after `=`;
   (`1991-03-07`), or with the month as a word (`7 March 1991`,
   `07-Mar-1991`, `March 7, 1991`). With a keyword nearby, **anything of
   the same shape within those 40 characters is redacted too**. Measured on
-  200 synthetic messages of each layout, the neighbour was redacted in all
+  2026-10-02 on 200 synthetic messages of each layout, the neighbour was redacted in all
   200: a joining date after a date of birth (`DOB: … Joined: …`), a
   ticket code after a passport number (`Passport no: … Ticket: …`), an
   order code after a voter ID (`Voter ID: … Order: …`), and a date or
@@ -265,8 +267,8 @@ side, a contact sheet of mobiles in columns). Tables of 5-digit numbers pay
 for it. Two neighbouring groups of five starting 6–9 read as a mobile, so
 inside a table they count only if every other row with two 5-digit groups
 in those same two positions has a mobile there too, or if a word such as
-"mobile" or "call" is nearby. Measured on 200 synthetic tables of each
-layout (detections in text with nothing personal; before → now): a row
+"mobile" or "call" is nearby. Measured on 2026-10-01 on 200 synthetic
+tables of each layout (detections in text with nothing personal; before → now): a row
 number and two 5-digit amounts per row (`12 34567 89012`) 116 → 149;
 three 5-digit amounts per row 4 → 43; the same with some row labels
 containing a digit (`Q1`) 5 → 130, in 68 of the 200 tables; two rows of
@@ -285,8 +287,8 @@ two lines of five digits are as often two amounts as one mobile. Another
 number beside the wrapped one on one of its lines (`Room 3 2345 6789`, a
 line break, `0123`) does not stop it being found. Lists of codes pay for
 it: the end of one line and the start of the next often pass the checks.
-Measured on 200 synthetic messages of each layout (detections in text with
-nothing personal; before → now): two 4-digit codes per line 0 → 124, in 98
+Measured on 2026-10-02 on 200 synthetic messages of each layout
+(detections in text with nothing personal; before → now): two 4-digit codes per line 0 → 124, in 98
 of the 200 messages; three 4-digit codes per line 96 → 155; one 6-digit
 number per line 0 → 70, in 55 messages; one 5-digit number per line with
 "phone" in the first line 0 → 539, in all 200. Statements, logs, addresses,
@@ -337,7 +339,9 @@ IFSC written with the letter O for its zero (`SBINO001234`) or with a space
 or hyphen after the bank code is not caught. A lone digit and a space
 before a long number (`1 23456789(12345`) leave the lone digit visible: the
 safety net does not join across spaces, and widening the number over them
-was measured to redact the quantity and price columns of tables. **IP addresses:** one written
+was measured to redact the quantity and price columns of tables (on
+2026-10-01: 4,893 digits redacted instead of 5 in 200 tables of an id, a
+quantity and a price per row). **IP addresses:** one written
 inside a host name (`<address>.nip.io`, reverse-DNS names) is not
 recognised; an address with a prefix length whose digits also read as a
 valid phone number (some `203.x.x.x/24`) is replaced as a phone number,
@@ -350,8 +354,8 @@ safety net needs. **Not detected, and not measured:** numbers written as
 words ("nine eight seven…", "nau aath saat…"); letters standing in for
 digits (O for 0, l for 1, as in scanned or retyped text), which stop a value
 being recognised as its type, so it is replaced only when 9 or more digits
-are left in one stretch for the safety net (in a probe with one letter for
-one digit: 208 of 494 Aadhaar numbers, 403 of 500 card numbers, 0 of 489
+are left in one stretch for the safety net (in a probe on 2026-10-02, one
+letter for one digit in 500 generated values of each type: 208 of 494 Aadhaar numbers, 403 of 500 card numbers, 0 of 489
 mobiles); postal addresses; and vehicle registration numbers. The
 evaluation's case format cannot express any of the four yet
 ([eval/HELD-OUT-FORMAT.md](eval/HELD-OUT-FORMAT.md), "Not expressible
@@ -359,8 +363,10 @@ yet"), so neither dataset contains them.
 
 ## Measured results
 
-Two datasets, reported separately. Every number below is produced by
-`npm run eval` and nothing else.
+Two datasets, reported separately. Every number in this section is
+produced by `npm run eval` (deterministic, run in CI), except the last
+part, a model measurement that needs Ollama
+(`scripts/measure-rewrites.ts`, one run on 2026-10-02).
 
 How to read a row:
 
@@ -541,8 +547,8 @@ contains code; the model measurement below found it (2 of 34 values in one
 task).
 
 How the held-out set was made, stated exactly: it was drafted with AI
-assistance in a separate session that did not write the detectors, and then
-reviewed by the author of this project. It is blind (no case was run against
+assistance in a separate session that did not write the detectors, then
+reviewed by the author. It is blind (no case was run against
 the detectors before the set was committed) and it is never used for tuning:
 whoever works on the detectors does not read the file, and the evaluation
 prints counts per data type, never a case's text, so a detector cannot be
@@ -612,8 +618,8 @@ tokens included, arrives in its own chunk of about 200 to 250 bytes. 32 MiB
 is about 130,000 to 160,000 tokens: room for a 32,768-token answer after as
 many reasoning tokens (13.4 to 16.3 MiB, depending on the model name and
 the script). These figures are computed from Ollama's chunk format, and a
-recorded stream from Ollama 0.35.0 matches them: 516,575 bytes for 2,335
-tokens, 221 bytes per token.
+recorded stream from Ollama 0.35.0 matches them: 516,575 bytes in 2,335
+events, 2,332 of them tokens, about 221 bytes per token.
 
 ## Threat model (summary)
 

@@ -2,7 +2,7 @@
 // may be said about it.
 //
 // eval/held-out.txt was drafted with AI assistance in a separate session
-// that did not write the detectors, then reviewed by the project's author.
+// that did not write the detectors, then reviewed by the author.
 // It was committed before the Phase 5 detectors existed, was never run
 // against the detectors before that, and is never used for tuning
 // (ADR-021). This code reads it; whoever works on the detectors does not.

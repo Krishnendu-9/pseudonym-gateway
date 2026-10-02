@@ -360,7 +360,7 @@ describe('the shape block (Phase 5c)', () => {
 });
 
 describe('the generator’s templates', () => {
-  it('pass the same lint as hand-written cases: nothing typed looks like a value', () => {
+  it('pass the same lint as the held-out file: nothing typed looks like a value', () => {
     for (const seed of [GENERATED_SEED, 1, 2, 3]) {
       const problems = lintCases(generateRawCases(seed)).map((p) => `${p.caseId}: ${p.rule}`);
       expect(problems).toEqual([]);

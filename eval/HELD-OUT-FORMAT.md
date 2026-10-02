@@ -8,7 +8,7 @@ Three rules make its numbers worth publishing:
 
 1. **It is written apart from the detectors, and blind.** The set was
    drafted with AI assistance in a separate session that did not write the
-   detectors, then reviewed by the project's author. No case was run
+   detectors, then reviewed by the author. No case was run
    against the detectors before the set was committed.
 2. **It is written before the detectors it will test,** and committed first.
 3. **It is never used for tuning.** The detectors' author does not read this
