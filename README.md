@@ -599,6 +599,50 @@ put its reasoning into the answer itself (ending with a stray
 `</think>`), and its reasoning once wrote `[EMAIL_:1]`, a form
 restoration does not read.
 
+### Choosing a person-name detector (Phase 6a)
+
+Measured on 2026-10-03, on one machine (Intel i5-12450H, no GPU), by a
+rule fixed before any model ran (ADR-035): recall on the generated set's
+612-name block of at least 60% to ship at all, and three limits for being
+on by default: at most 1.0 false positive per 1,000 words (over the whole
+generated set, 1,998 messages), at most 60 ms per KiB of text, at most
+1.5 GiB of memory. Every model runs locally; names never leave the
+machine.
+
+| Candidate                                 | Names found (612)                 | False positives per 1,000 words | ms per KiB | Memory      | Fails           |
+| ----------------------------------------- | --------------------------------- | ------------------------------- | ---------- | ----------- | --------------- |
+| A: `bert-base-NER` (English)              | 293 (47.8%)                       | 0.99                            | 416        | 245 MiB     | speed           |
+| B: `bert-base-multilingual-cased-ner-hrl` | 383 (62.5%)                       | 0.96                            | 285        | 325 MiB     | speed           |
+| F: name lists and cue words, no model     | 420 (68.6%)                       | 4.98                            | 1          | 30 MiB      | false positives |
+| A and F together                          | 468 (76.4%)                       | 5.67                            | 417        | 245 MiB     | both            |
+| **B and F together**                      | **501 (81.8%)**                   | **5.85**                        | **286**    | **325 MiB** | **both**        |
+| D: GLiNER (`gliner_multi_pii-v1`)         | port unverified, results excluded |                                 |            |             |                 |
+| E: the local LLM (`qwen3:4b-instruct`)    | did not complete                  |                                 |            |             | speed           |
+
+D is excluded because our port of it reproduced none of the six entities
+in the example on the model's own card, so its numbers would describe our
+code, not the model. E stopped after 92 of 612 messages on an error inside
+Ollama; no number is published from a partial run in a fixed order, and E
+could not have been on by default anyway (one request takes seconds).
+
+**Decision, by the rule as written:** no candidate meets all three
+limits, so the one with the highest recall, B and F together (81.8%), is
+what Phase 6 builds, **off by default** behind `PSEUDONYM_NAMES`. It
+fails the false-positive limit by 5.85 times (about one wrongly redacted
+word in every 170) and the speed limit. Names in all lower case are
+almost never found (3 of 59). The held-out set has not been run on it
+yet. Until Phase 6 is built, names are not detected.
+
+**Observed after the measurement, not before:** B alone meets both
+accuracy requirements (62.5% of names, 0.96 false positives per 1,000
+words) and fails only the speed limit. In absolute terms it adds about
+138 ms to a 1 KiB request and 1.1 s to a 4 KiB one, while the local demo
+model itself takes 15.8 s and 66.9 s to its first token on the same
+machine (a hosted model is usually much faster, so there the share would
+be larger). A future revision that set an absolute added-latency budget
+instead of a flat rate per KiB would likely allow B on by default. The
+rule was not changed after seeing this.
+
 ## Unsupported input
 
 Pseudonym handles text chat messages (system, user and assistant roles),
