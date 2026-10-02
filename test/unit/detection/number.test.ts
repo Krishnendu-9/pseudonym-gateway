@@ -12,7 +12,6 @@ import { MIN_NUMBER_DIGITS, unclaimedNumbers } from '../../../src/detection/numb
 import { createRng } from '../../../src/synthetic/rng.js';
 import { indianMobile } from '../../../src/synthetic/values.js';
 import { compose } from '../../support/compose.js';
-import { growthRatio, MAX_GROWTH_RATIO } from '../../support/linear-time.js';
 import { numberAt } from '../../support/number-at.js';
 
 const spansOf = (text: string, claimed: Span[] = []): Span[] =>
@@ -132,34 +131,6 @@ describe('unclaimedNumbers', () => {
     // A claim that starts before the run and ends inside it.
     expect(spansOf('ab 123456789012345', [{ start: 0, end: 8 }])).toEqual([{ start: 8, end: 18 }]);
   });
-
-  it('runs in linear time, with or without claims', () => {
-    const joined = (n: number): string => '1-'.repeat(n / 2);
-    expect(growthRatio(joined, 250_000, (t) => unclaimedNumbers(t, []))).toBeLessThan(
-      MAX_GROWTH_RATIO,
-    );
-    // One run a million characters long, with a claim every 20 characters.
-    const claims = (text: string): Span[] =>
-      Array.from({ length: Math.floor(text.length / 20) }, (_, i) => ({
-        start: i * 20,
-        end: i * 20 + 4,
-      }));
-    expect(growthRatio(joined, 250_000, (t) => unclaimedNumbers(t, claims(t)))).toBeLessThan(
-      MAX_GROWTH_RATIO,
-    );
-  });
-
-  it('runs in linear time on one long token full of long numbers', () => {
-    // Every stretch would widen over the whole token if it were walked again.
-    const token = (n: number): string => '123456789a'.repeat(n / 10);
-    expect(growthRatio(token, 250_000, (t) => unclaimedNumbers(t, []))).toBeLessThan(
-      MAX_GROWTH_RATIO,
-    );
-    const lettersThenNumber = (n: number): string => `${'a'.repeat(n)}123456789`;
-    expect(growthRatio(lettersThenNumber, 250_000, (t) => unclaimedNumbers(t, []))).toBeLessThan(
-      MAX_GROWTH_RATIO,
-    );
-  });
 });
 
 describe('detect: the safety net closes bug-log 8', () => {
@@ -270,10 +241,5 @@ describe('digits joined to a claimed span (J1)', () => {
 
   it('does not take digits in a run of their own', () => {
     expect(spansOf('9876543210 12345', [{ start: 0, end: 10 }])).toEqual([]);
-  });
-
-  it('takes bracket-joined digits after phones in linear time', () => {
-    const make = (n: number): string => '98765 43210(12'.repeat(Math.ceil(n / 14));
-    expect(growthRatio(make, 5_000, detect)).toBeLessThan(MAX_GROWTH_RATIO);
   });
 });

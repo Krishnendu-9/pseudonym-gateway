@@ -8,7 +8,6 @@ import { describe, expect, it } from 'vitest';
 import { PlaceholderMapping } from '../../../src/redaction/mapping.js';
 import type { PlaceholderNamespace } from '../../../src/redaction/placeholder.js';
 import { restore } from '../../../src/redaction/restore.js';
-import { growthRatio, MAX_GROWTH_RATIO, ofLength } from '../../support/linear-time.js';
 
 function mappingWith(
   entries: readonly [namespace: PlaceholderNamespace, value: string][],
@@ -279,21 +278,5 @@ describe('restore: the host rule (ADR-018)', () => {
     expect(
       restore('Visit AADHAAR_1.attacker.example', mapping, { restoreInUnsafeRegions: true }),
     ).toBe('Visit 234567890123.attacker.example');
-  });
-});
-
-// Bug-log 17: dropping bare matches inside brackets compared every bare
-// match with every bracketed one.
-describe('restore: linear time (bug-log 17)', () => {
-  it.each([
-    ['brackets and bare forms mixed', '[CARD_1] CARD_1 '],
-    ['placeholders in URLs', 'https://a.example/[CARD_1] '],
-    ['prose', 'word word '],
-  ])('%s', (_name, unit) => {
-    const mapping = mappingWith([['CARD', '4111111111111111']]);
-    const make = (n: number): string => ofLength(unit, n);
-    expect(growthRatio(make, 50_000, (text) => restore(text, mapping))).toBeLessThan(
-      MAX_GROWTH_RATIO,
-    );
   });
 });

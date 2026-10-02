@@ -14,7 +14,6 @@ import { passportNumber } from '../../../src/synthetic/identifiers.js';
 import { obfuscate } from '../../../src/synthetic/obfuscate.js';
 import { createRng } from '../../../src/synthetic/rng.js';
 import { compose } from '../../support/compose.js';
-import { growthRatio, MAX_GROWTH_RATIO } from '../../support/linear-time.js';
 import { assertPropertyQuietly, seedArb } from '../../support/quiet-property.js';
 
 const rng = createRng(20_261_002);
@@ -108,20 +107,5 @@ describe('passport numbers in text: only with a keyword', () => {
       ['PASSPORT', spans[0]!.start, spans[0]!.end, false],
       ['PASSPORT', spans[1]!.start, spans[1]!.end, false],
     ]);
-  });
-});
-
-describe('passport: linear time', () => {
-  it.each([
-    ['letters and digits glued together', 25_000, (n: number) => 'A1234567'.repeat(n / 8)],
-    // Put together here: typed after its keyword, it would be a passport
-    // number in a file (repo-hygiene.test.ts).
-    [
-      'passport shapes after keywords',
-      25_000,
-      (n: number) => ['passport A', '1234567 '].join('').repeat(n / 18),
-    ],
-  ])('scans %s in linear time', (_name, size, make) => {
-    expect(growthRatio(make, size, detect)).toBeLessThan(MAX_GROWTH_RATIO);
   });
 });

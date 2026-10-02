@@ -96,6 +96,16 @@ export async function startMockProvider(): Promise<MockProvider> {
 // recording (ollama-recorded-stream.test.ts) has the same shape, except
 // that a thinking model's reasoning chunks send `"content":""`.
 
+/**
+ * The timeout for a test that needs something to arrive in time before the
+ * failure it checks (a first chunk, then a gap; many short gaps). A local
+ * round trip takes milliseconds, but during this machine's slow spells (20x,
+ * ADR-032) a 300 ms timeout expired before the first chunk (bug-log 47).
+ * Tests that only wait for a timeout to fire keep short ones: load can only
+ * make those fire sooner.
+ */
+export const SUCCESS_DEADLINE_MS = 2_000;
+
 export const STREAM_ID = 'chatcmpl-stream';
 export const STREAM_CREATED = 1_790_000_100;
 

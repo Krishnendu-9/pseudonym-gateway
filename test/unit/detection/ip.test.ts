@@ -20,7 +20,6 @@ import { ipAddress } from '../../../src/synthetic/identifiers.js';
 import { createRng } from '../../../src/synthetic/rng.js';
 import { groupDigits, indianMobile } from '../../../src/synthetic/values.js';
 import { compose } from '../../support/compose.js';
-import { growthRatio, MAX_GROWTH_RATIO } from '../../support/linear-time.js';
 import { assertPropertyQuietly, seedArb } from '../../support/quiet-property.js';
 
 /** Every detection as [type, text]: typed addresses only, so safe to print. */
@@ -483,34 +482,5 @@ describe('the value key: one address, one key', () => {
   it('a detection widened past its address is keyed by its text, in lower case', () => {
     expect(ipValueKey('10.1.2.3 4567')).toBe('10.1.2.3 4567');
     expect(ipValueKey('CAFE:X')).toBe('cafe:x');
-  });
-});
-
-// Each case makes the input 4 times longer and checks the time grows about
-// 4 times, not 16 (test/support/linear-time.ts). Sizes are measured per
-// input so that one run takes a few milliseconds (bug-log 28, 30): where
-// digit groups sit next to each other the phone detector costs about 25 ms
-// per 1,000 characters, so those inputs are small, and the IP detector is
-// also timed on its own at full size.
-describe('IP: linear time', () => {
-  it.each([
-    ['a long run of digits and dots', 500, (n: number) => '1.'.repeat(n / 2)],
-    ['a long run of colons', 25_000, (n: number) => ':'.repeat(n)],
-    ['hex and colons', 25_000, (n: number) => 'ab:'.repeat(n / 3)],
-    ['addresses with ports, glued by colons', 500, (n: number) => '10.1.2.3:'.repeat(n / 9)],
-    ['addresses after version words', 1_000, (n: number) => 'version 10.1.2.3 '.repeat(n / 17)],
-    ['kept addresses', 1_000, (n: number) => '127.0.0.1 '.repeat(n / 10)],
-    ['a long run glued to a word', 25_000, (n: number) => `x${'a:'.repeat(n / 2)}`],
-  ])('detect() scans %s in linear time', (_name, size, make) => {
-    expect(growthRatio(make, size, detect)).toBeLessThan(MAX_GROWTH_RATIO);
-  });
-
-  it.each([
-    ['addresses with ports, glued by colons', (n: number) => '10.1.2.3:'.repeat(n / 9)],
-    ['addresses after version words', (n: number) => 'version 10.1.2.3 '.repeat(n / 17)],
-    ['kept addresses', (n: number) => '127.0.0.1 '.repeat(n / 10)],
-  ])('the IP detector alone scans %s in linear time', (_name, make) => {
-    const scan = (text: string): number => [...ipCandidates(text)].length;
-    expect(growthRatio(make, 100_000, scan)).toBeLessThan(MAX_GROWTH_RATIO);
   });
 });

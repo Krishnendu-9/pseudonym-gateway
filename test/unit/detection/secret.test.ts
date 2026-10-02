@@ -14,7 +14,6 @@ import { secret, type SecretKind } from '../../../src/synthetic/identifiers.js';
 import { createRng } from '../../../src/synthetic/rng.js';
 import { indianMobile } from '../../../src/synthetic/values.js';
 import { compose } from '../../support/compose.js';
-import { growthRatio, MAX_GROWTH_RATIO } from '../../support/linear-time.js';
 import { assertPropertyQuietly, seedArb } from '../../support/quiet-property.js';
 
 /** `n` characters of filler: letters in both cases and digits, no long digit stretch. */
@@ -516,34 +515,6 @@ describe('secrets: with the other detectors', () => {
   });
 });
 
-// Each case makes the input 4 times longer and checks the time grows about
-// 4 times, not 16 (test/support/linear-time.ts).
-describe('secrets: linear time', () => {
-  it.each([
-    ['keywords chained by colons', (n: number) => `${'pin:'.repeat(n / 4)} x`],
-    ['keywords chained by colons, with quotes', (n: number) => `${'pin:a"'.repeat(n / 6)} x`],
-    ['keywords with no value', (n: number) => 'pin '.repeat(n / 4)],
-    ['keywords in prose', (n: number) => 'password is wrong '.repeat(n / 18)],
-    ['keywords chained by underscores', (n: number) => `${'pin_'.repeat(n / 4)} x`],
-    [
-      'keywords chained by underscores, then a line end',
-      (n: number) => `${'pin_'.repeat(n / 4)}\n`,
-    ],
-    ['keywords chained by equals signs', (n: number) => `${'pin='.repeat(n / 4)} x`],
-    ['a keyword and a long value without evidence', (n: number) => `token ${'a'.repeat(n)} x`],
-    ['a keyword and a long run of blanks', (n: number) => `token${' '.repeat(n)}\nx`],
-    ['sk- chains', (n: number) => 'sk-'.repeat(n / 3)],
-    ['GitHub prefixes', (n: number) => 'ghp_'.repeat(n / 4)],
-    ['Google prefixes joined by hyphens', (n: number) => 'AIza-'.repeat(n / 5)],
-    ['JWT starts with no dot', (n: number) => 'eyJaaaaaaaa-'.repeat(n / 12)],
-    ['JWT starts with dots', (n: number) => 'eyJaaaaaaaa.'.repeat(n / 12)],
-    ['PEM BEGIN lines with no END', (n: number) => `${PEM_BEGIN}\n`.repeat(n / 32)],
-    ['BEGIN with no label', (n: number) => '-----BEGIN A '.repeat(n / 13)],
-  ])('scans %s in linear time', (_name, make) => {
-    expect(growthRatio(make, 25_000, detect)).toBeLessThan(MAX_GROWTH_RATIO);
-  });
-});
-
 // ADR-029: a key takes the rest of its token; a JWT may start after "-".
 describe('secrets glued to other text', () => {
   const r = createRng(2029);
@@ -566,21 +537,6 @@ describe('secrets glued to other text', () => {
     }
   });
 
-  it('the secret detector alone reads a chain of keys whose alphabet has no hyphen in linear time', () => {
-    // Each key takes the rest of the token, the whole chain; the search must
-    // then go on after it, not find every next key again. Timed on the
-    // detector alone (the other detectors would hide a quadratic one), ten
-    // scans per measurement, as one takes about a millisecond.
-    const unit = ['gh', 'p_', filler(36), '-'].join('');
-    const make = (n: number): string => unit.repeat(Math.ceil(n / unit.length));
-    const work = (text: string): number => {
-      let found = 0;
-      for (let i = 0; i < 10; i++) found += [...secretCandidates(text)].length;
-      return found;
-    };
-    expect(growthRatio(make, 100_000, work)).toBeLessThan(MAX_GROWTH_RATIO);
-  });
-
   it('a JWT glued to a letter outside its alphabet is not one', () => {
     expect(detect(`ref é${secret(r, 'jwt')} ok`)).toEqual([]);
   });
@@ -593,14 +549,5 @@ describe('secrets glued to other text', () => {
         (d) => d.type === 'SECRET' && d.start === spans[0]!.start && d.end === spans[0]!.end,
       ),
     ).toBe(true);
-  });
-
-  it.each([
-    ['a dotless chain of JWT headers', 'eyJabcdefghij-'],
-    ['a chain of JWT header and payload parts', 'eyJabcdefghij.eyJabcdefghij-'],
-    ['a chain of keys', 'sk-Abc123456789012345678-'],
-  ])('reads %s in linear time', (_name, unit) => {
-    const make = (n: number): string => unit.repeat(Math.ceil(n / unit.length));
-    expect(growthRatio(make, 25_000, detect)).toBeLessThan(MAX_GROWTH_RATIO);
   });
 });

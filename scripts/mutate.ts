@@ -8,6 +8,10 @@
 // A mutation list is a module exporting MUTATIONS, each
 // { id, what, file, tests, find, replace }: `find` must occur exactly once
 // in `file` (repo-relative). Lists and results live outside the repo.
+// `tests` are file paths; Vitest runs each in its own project, so a
+// `*.timing.test.ts` file runs in the timing project. List it whenever a
+// mutation could make code slower without changing an answer: only the
+// timing tests catch that (ADR-032).
 //
 // The file is put back in `finally`, on SIGINT/SIGTERM and on exit. None of
 // those runs when the process is killed outright, so before writing a

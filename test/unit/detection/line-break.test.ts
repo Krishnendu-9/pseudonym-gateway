@@ -26,7 +26,6 @@ import {
   indianMobile,
 } from '../../../src/synthetic/values.js';
 import { compose } from '../../support/compose.js';
-import { growthRatio, MAX_GROWTH_RATIO, ofLength } from '../../support/linear-time.js';
 import { assertPropertyQuietly, seedArb } from '../../support/quiet-property.js';
 
 const rng = createRng(30_030);
@@ -510,23 +509,5 @@ describe('known costs of joining across a line', () => {
   it('two lines of five digits near a phone keyword are a phone', () => {
     const { text, spans } = compose`Phone bill totals:\n${'71234\n68230'}`;
     expect(coveredBy(text, spans[0]!, 'PHONE')).toBe(true);
-  });
-});
-
-// Each input grows 4 times and the time must grow about 4 times, not 16
-// (test/support/linear-time.ts). Every line join costs a libphonenumber
-// call, so inputs made of joins are small (bug-log 28, 30).
-describe('line joins: linear time', () => {
-  const m = indianMobile(rng);
-  it.each([
-    ['many short lines of digits', 2_000, (n: number) => ofLength('71234\n', n)],
-    ['wrapped mobiles', 2_000, (n: number) => ofLength(`${m.slice(0, 5)}\n${m.slice(5)} x\n`, n)],
-    [
-      'two long runs on two lines',
-      2_000,
-      (n: number) => `${ofLength('1 ', n / 2)}\n${ofLength('2 ', n / 2)}`,
-    ],
-  ])('detect scans %s in linear time', (_name, size, make) => {
-    expect(growthRatio(make, size, detect)).toBeLessThan(MAX_GROWTH_RATIO);
   });
 });

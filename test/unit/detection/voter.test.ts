@@ -13,7 +13,6 @@ import { voterCandidates } from '../../../src/detection/voter.js';
 import { passportNumber, voterId } from '../../../src/synthetic/identifiers.js';
 import { createRng } from '../../../src/synthetic/rng.js';
 import { compose } from '../../support/compose.js';
-import { growthRatio, MAX_GROWTH_RATIO } from '../../support/linear-time.js';
 import { assertPropertyQuietly, seedArb } from '../../support/quiet-property.js';
 
 const rng = createRng(20_261_003);
@@ -86,20 +85,5 @@ describe('voter IDs in text: only with a keyword', () => {
       ['VOTER', spans[0]!.start, spans[0]!.end, false],
       ['VOTER', spans[1]!.start, spans[1]!.end, false],
     ]);
-  });
-});
-
-describe('voter ID: linear time', () => {
-  it.each([
-    ['letters and digits glued together', 25_000, (n: number) => 'ABC1234567'.repeat(n / 10)],
-    // Put together here: typed after its keyword, it would be a voter ID in
-    // a file (repo-hygiene.test.ts).
-    [
-      'voter ID shapes after keywords',
-      25_000,
-      (n: number) => ['voter ABC', '1234567 '].join('').repeat(n / 17),
-    ],
-  ])('scans %s in linear time', (_name, size, make) => {
-    expect(growthRatio(make, size, detect)).toBeLessThan(MAX_GROWTH_RATIO);
   });
 });

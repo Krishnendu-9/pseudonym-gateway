@@ -14,7 +14,6 @@ import {
   unsafeRegions,
   UnsafeRegionScanner,
 } from '../../../src/redaction/unsafe-regions.js';
-import { growthRatio, MAX_GROWTH_RATIO, ofLength } from '../../support/linear-time.js';
 import { assertPropertyQuietly } from '../../support/quiet-property.js';
 import { legacyUnsafeRegions, oracleUnsafeRegions } from '../../support/restore-reference.js';
 import { streamedAnswerArb } from '../../support/restoration-text.js';
@@ -269,23 +268,6 @@ describe('isWhitespace', () => {
       if (isWhitespace(c) !== /\s/.test(String.fromCharCode(c))) differ.push(c);
     }
     expect(differ).toEqual([]);
-  });
-});
-
-// Bug-log 16: two Phase 2 patterns rescanned to the end of the line from
-// every place they could start. The scanner does fixed work per character.
-describe('unsafeRegions: linear time (bug-log 16)', () => {
-  it.each([
-    ['"](< " repeated', '](< '],
-    ['"[a " repeated', '[a '],
-    ['unclosed "=\\"" repeated', 'a=" '],
-    ['unclosed "=\'" repeated', "a=' "],
-    ['a URL with a placeholder, repeated', 'https://a.example/[AADHAAR_1] '],
-    ['a host label chain, repeated', 'a-b.c'],
-    ['prose', 'word word '],
-  ])('%s', (_name, unit) => {
-    const make = (n: number): string => ofLength(unit, n);
-    expect(growthRatio(make, 80_000, unsafeRegions)).toBeLessThan(MAX_GROWTH_RATIO);
   });
 });
 

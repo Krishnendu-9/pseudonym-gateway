@@ -29,6 +29,7 @@ import {
   STREAM_USAGE,
   streamed,
   type Responder,
+  SUCCESS_DEADLINE_MS,
 } from '../support/mock-provider.js';
 import { assertTextEqualQuietly } from '../support/quiet-text.js';
 
@@ -695,7 +696,7 @@ describe('streaming (ADR-019)', () => {
   );
 
   it('a gap between chunks longer than the timeout → provider_timeout error event', async () => {
-    gateway = await startTestGateway({ timeoutMs: 400 });
+    gateway = await startTestGateway({ timeoutMs: SUCCESS_DEADLINE_MS });
     gateway.provider.respondWith(
       streamed(ollamaStreamEvents(['partial answer']).slice(0, 1), { end: false }),
     );

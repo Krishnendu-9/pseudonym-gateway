@@ -40,6 +40,7 @@ import {
   streamPiece as piece,
   type RecordedRequest,
   type Responder,
+  SUCCESS_DEADLINE_MS,
 } from '../support/mock-provider.js';
 import { expandCaptured, leakedForm } from '../support/leak-check.js';
 
@@ -548,7 +549,7 @@ describe('canary: streaming (ADR-019)', () => {
       'a gap longer than the timeout',
       streamed([first], { end: false }),
       'provider_timeout',
-      { timeoutMs: 400 },
+      { timeoutMs: SUCCESS_DEADLINE_MS },
     ],
     [
       'the connection is cut',

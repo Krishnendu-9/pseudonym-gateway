@@ -16,7 +16,6 @@ import { IFSC_BANK_CODES as GENERATOR_CODES, ifsc } from '../../../src/synthetic
 import { createRng } from '../../../src/synthetic/rng.js';
 import { pan } from '../../../src/synthetic/values.js';
 import { compose } from '../../support/compose.js';
-import { growthRatio, MAX_GROWTH_RATIO } from '../../support/linear-time.js';
 import { assertPropertyQuietly, seedArb } from '../../support/quiet-property.js';
 
 const rng = createRng(20261001);
@@ -278,20 +277,5 @@ describe('IFSC next to the other types', () => {
       ['IFSC', 0, 11],
       ['IFSC', 12, 23],
     ]);
-  });
-});
-
-// Each case makes the input 4 times longer and checks the time grows about
-// 4 times, not 16 (test/support/linear-time.ts). Sizes are chosen so one
-// run takes a few milliseconds: "SBIN0" repeated costs the phone detector
-// several times more per character than the others (bug-log 28).
-describe('IFSC: linear time', () => {
-  it.each([
-    ['a long run of letters', 25_000, (n: number) => 'A'.repeat(n)],
-    ['letters and zeros', 2_000, (n: number) => 'SBIN0'.repeat(n / 5)],
-    ['IFSC-shaped codes glued together', 25_000, (n: number) => 'SBIN0001234'.repeat(n / 11)],
-    ['IFSC-shaped codes after keywords', 25_000, (n: number) => 'IFSC ZZQX0123456 '.repeat(n / 17)],
-  ])('scans %s in linear time', (_name, size, make) => {
-    expect(growthRatio(make, size, detect)).toBeLessThan(MAX_GROWTH_RATIO);
   });
 });

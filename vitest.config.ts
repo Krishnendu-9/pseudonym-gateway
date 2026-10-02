@@ -1,9 +1,18 @@
-import { defineConfig } from 'vitest/config';
+import { availableParallelism } from 'node:os';
+import { configDefaults, defineConfig } from 'vitest/config';
+
+// Growth-ratio tests (test/support/linear-time.ts) live in *.timing.test.ts
+// files and run in their own project, after the rest and at most three files
+// at a time (ADR-032). Measured on this machine: alongside the other tests,
+// 11 workers on 12 logical CPUs inflated ratios to 8.6 and stretched one call
+// to 42.8 s; on their own, three at a time, 267 calls never reached 6.3 and
+// none took over 10 s. Other heavy work on the machine still breaks them.
+const TIMING_TESTS = 'test/**/*.timing.test.ts';
+const TIMING_WORKERS = Math.max(1, Math.min(3, availableParallelism() - 1));
 
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['test/**/*.test.ts'],
     // Refuses to run while a mutation may still be written into a source file
     // (bug-log 24, scripts/mutation-marker.ts).
     globalSetup: ['test/support/mutation-guard.ts'],
@@ -16,6 +25,26 @@ export default defineConfig({
     // on a busy machine, and in no-leak.test.ts that happens in a beforeAll,
     // under Vitest's 10 s default for hooks (bug-log 21).
     hookTimeout: 30_000,
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'main',
+          include: ['test/**/*.test.ts'],
+          exclude: [...configDefaults.exclude, TIMING_TESTS],
+          sequence: { groupOrder: 0 },
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'timing',
+          include: [TIMING_TESTS],
+          maxWorkers: TIMING_WORKERS,
+          sequence: { groupOrder: 1 },
+        },
+      },
+    ],
     coverage: {
       provider: 'v8',
       // The evaluation's code decides what the published numbers are, so it

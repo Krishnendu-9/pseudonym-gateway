@@ -15,7 +15,6 @@ import { obfuscate, styleDigits } from '../../../src/synthetic/obfuscate.js';
 import { createRng, type Rng } from '../../../src/synthetic/rng.js';
 import { email, groupDigits, indianMobile } from '../../../src/synthetic/values.js';
 import { compose } from '../../support/compose.js';
-import { growthRatio, MAX_GROWTH_RATIO } from '../../support/linear-time.js';
 import { assertPropertyQuietly, seedArb } from '../../support/quiet-property.js';
 
 const rng = createRng(20261001);
@@ -274,24 +273,6 @@ describe('a mobile number inside a UPI ID', () => {
   });
 });
 
-// Each case makes the input 4 times longer and checks the time grows about
-// 4 times, not 16 (test/support/linear-time.ts).
-describe('UPI IDs: linear time', () => {
-  it.each([
-    ['a long name with no "@"', (n: number) => 'a.'.repeat(n / 2)],
-    ['names and "@" with no handle', (n: number) => 'a@-'.repeat(n / 3)],
-    // Handles on no list: a known one would make these UPI IDs typed in a
-    // file (repo-hygiene.test.ts; bug-log 26). Speed does not depend on it.
-    ['IDs chained by "@"', (n: number) => 'a@zzq@'.repeat(n / 6)],
-    ['IDs each followed by a dot', (n: number) => 'a@zzq.'.repeat(n / 6)],
-    ['handles with short domain-like tails', (n: number) => 'a@b.cd.e '.repeat(n / 9)],
-    ['one handle with a long domain-like tail', (n: number) => `a@${'b.'.repeat(n / 2)}`],
-    ['one handle with a long hyphenated tail', (n: number) => `a@${'b-'.repeat(n / 2)}`],
-  ])('scans %s in linear time', (_name, make) => {
-    expect(growthRatio(make, 25_000, detect)).toBeLessThan(MAX_GROWTH_RATIO);
-  });
-});
-
 // ADR-029: found at every "@", so two IDs glued by a hyphen are both found.
 describe('UPI: glued IDs', () => {
   const handle = [...UPI_HANDLES][0]!;
@@ -311,11 +292,5 @@ describe('UPI: glued IDs', () => {
       ),
     );
     expect(covered).toBe(true);
-  });
-
-  it('reads glued IDs in linear time', () => {
-    const unit = `ab@${handle}-`;
-    const make = (n: number): string => unit.repeat(Math.ceil(n / unit.length));
-    expect(growthRatio(make, 25_000, detect)).toBeLessThan(MAX_GROWTH_RATIO);
   });
 });

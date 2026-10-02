@@ -558,13 +558,25 @@ Requires Node.js 22.20+ and, to actually talk to a model,
 
 ```bash
 npm install
-npm test            # run the test suite
-npm run lint        # lint
-npm run typecheck   # type-check
+npm test               # run the test suite (the timing tests last)
+npm run test:coverage  # coverage, without the timing tests
+npm run test:timing    # only the timing tests
+npm run lint           # lint
+npm run typecheck      # type-check
 
 cp .env.example .env    # then set PSEUDONYM_MODEL to your Ollama model
 npm run dev             # gateway on http://127.0.0.1:3000/v1
 ```
+
+The timing tests check that detection and restoration take linear time:
+each times the same work on an input and on one four times as long, and
+fails if the time grows 8 times or more (linear code grows about 4
+times, quadratic about 16). They run after the other tests, at most three
+files at a time, and they need the machine mostly to themselves. Measured
+on 2026-10-02: run alongside two other test suites, they failed 5 ratio
+checks and timed out 6 times in two runs (178 checks); on their own, one
+or three files at a time, they passed all 890 checks in 10 runs. A failure
+prints its input sizes and every run's time.
 
 Point your OpenAI client at `http://127.0.0.1:3000/v1` and use the same model
 name as `PSEUDONYM_MODEL`; requests naming any other model are rejected.

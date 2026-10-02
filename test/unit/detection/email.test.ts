@@ -8,7 +8,6 @@ import { emailCandidates } from '../../../src/detection/email.js';
 import { createRng } from '../../../src/synthetic/rng.js';
 import { email } from '../../../src/synthetic/values.js';
 import { compose } from '../../support/compose.js';
-import { growthRatio, MAX_GROWTH_RATIO } from '../../support/linear-time.js';
 import { assertPropertyQuietly, seedArb } from '../../support/quiet-property.js';
 
 /** The emails detect() finds in `text`, as the substrings they cover. */
@@ -86,24 +85,6 @@ describe('email detection', () => {
     );
   });
 
-  // Each case makes the input 4 times longer and checks the time grows
-  // about 4 times, not 16 or more (test/support/linear-time.ts).
-  describe('backtracking (ReDoS) safety', () => {
-    it.each([
-      ['a long token with no @', (n: number) => 'a'.repeat(n)],
-      ['a long dotted token with no @', (n: number) => 'a.'.repeat(n / 2)],
-      [
-        'a long domain with no valid top-level domain',
-        (n: number) => `priya@${'a.'.repeat(n / 2)}1`,
-      ],
-      ['a long hyphenated domain', (n: number) => `priya@${'a-'.repeat(n / 2)}`],
-      ['many @ signs', (n: number) => 'a@'.repeat(n / 2)],
-      ['a long domain label with no dot', (n: number) => `priya@${'b'.repeat(n)}`],
-    ])('scans %s in linear time', (_name, make) => {
-      expect(growthRatio(make, 25_000, detect)).toBeLessThan(MAX_GROWTH_RATIO);
-    });
-  });
-
   // The ReDoS guard limits where a match may START; it never skips long
   // input. Nothing in the pattern has a length limit, so a long address is
   // redacted whole, however long it is (fail closed).
@@ -127,14 +108,6 @@ describe('email detection', () => {
       ['a 5,000-character top-level domain', `priya@example.${'c'.repeat(5_000)}`],
     ])('finds %s', (_name, address) => {
       expect(whole(`Mail ${address} now`, address)).toBe(true);
-    });
-
-    it.each([
-      ['a long local part', (n: number) => `Mail ${'p'.repeat(n)}@example.com now`],
-      ['a long domain label', (n: number) => `Mail priya@${'b'.repeat(n)}.example now`],
-      ['a long top-level domain', (n: number) => `Mail priya@example.${'c'.repeat(n)} now`],
-    ])('finds an address with %s in linear time', (_name, make) => {
-      expect(growthRatio(make, 25_000, detect)).toBeLessThan(MAX_GROWTH_RATIO);
     });
 
     it('finds an address after 100,000 characters of other text', () => {
@@ -174,13 +147,6 @@ describe('email: glued addresses', () => {
     expect(
       detect(text).some((d) => d.type === 'EMAIL' && d.start <= s[0]!.start && s[0]!.end <= d.end),
     ).toBe(true);
-  });
-
-  it.each([
-    ['glued addresses', (n: number) => 'ab@example.com-'.repeat(Math.ceil(n / 15))],
-    ['local parts and "@" only', (n: number) => 'abcd.efg@'.repeat(Math.ceil(n / 9))],
-  ])('reads %s in linear time', (_name, make) => {
-    expect(growthRatio(make, 25_000, detect)).toBeLessThan(MAX_GROWTH_RATIO);
   });
 });
 

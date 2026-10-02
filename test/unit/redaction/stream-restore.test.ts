@@ -13,7 +13,6 @@ import { describe, expect, it } from 'vitest';
 import { PlaceholderMapping } from '../../../src/redaction/mapping.js';
 import { restore, StreamRestorer, type RestoreOptions } from '../../../src/redaction/restore.js';
 import { MAX_HELD_BACK } from '../../../src/redaction/variants.js';
-import { growthRatio, MAX_GROWTH_RATIO } from '../../support/linear-time.js';
 import { assertPropertyQuietly } from '../../support/quiet-property.js';
 import { plan, referenceRestore } from '../../support/restore-reference.js';
 import { streamedAnswerArb, streamThrough, testMapping } from '../../support/restoration-text.js';
@@ -267,21 +266,5 @@ describe('StreamRestorer: properties (ADR-018)', () => {
       }),
       { numRuns: 5_000 },
     );
-  });
-});
-
-describe('StreamRestorer: linear time', () => {
-  it.each([
-    ['placeholders and link syntax, in 3-unit chunks', '[CARD_1] ](< [a Card_1 '],
-    ['prose, in 3-unit chunks', 'word word '],
-  ])('%s', (_name, unit) => {
-    const make = (n: number): string => unit.repeat(n);
-    const stream = (text: string): string => {
-      const restorer = new StreamRestorer(mapping);
-      let out = '';
-      for (let i = 0; i < text.length; i += 3) out += restorer.push(text.slice(i, i + 3));
-      return out + restorer.end();
-    };
-    expect(growthRatio(make, 2_000, stream)).toBeLessThan(MAX_GROWTH_RATIO);
   });
 });

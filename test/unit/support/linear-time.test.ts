@@ -2,11 +2,14 @@
 // the smallest is kept, and quadratic code still fails. It climbs from a
 // small size and stops at the first measurable step that is too high
 // (bug-log 24), so quadratic code fails in seconds at any size.
+// These run on a scripted clock; the two that time real quadratic work
+// are in linear-time.timing.test.ts (bug-log 48).
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  expectLinearTime,
   growthRatio,
-  MAX_GROWTH_RATIO,
+  growthReport,
   MEASURABLE_MS,
   MEASUREMENTS,
   ofLength,
@@ -57,22 +60,6 @@ describe('growthRatio', () => {
     expect(scriptedRatio()).toBe(12);
     expect(runs()).toBe(2 * MEASUREMENTS);
   });
-
-  it('still fails real quadratic work', () => {
-    vi.restoreAllMocks();
-    const quadratic = (text: string): number => {
-      let count = 0;
-      for (let i = 0; i < text.length; i++) {
-        for (let j = i; j < text.length; j++) if (text.charCodeAt(j) === 0x2c) count++;
-      }
-      return count;
-    };
-    // Small on purpose: quadratic work measured three times is slow, ten
-    // times slower again under coverage (38.7 s at n = 2,000; bug-log 20).
-    expect(growthRatio((n) => ofLength('a,', n), 1_000, quadratic, 3)).toBeGreaterThanOrEqual(
-      MAX_GROWTH_RATIO,
-    );
-  });
 });
 
 describe('growthRatio climbs from a small size (bug-log 24)', () => {
@@ -118,34 +105,54 @@ describe('growthRatio climbs from a small size (bug-log 24)', () => {
     expect(climb().ratio).toBe(16);
     expect(runs()).toBe(4 + 2 * MEASUREMENTS);
   });
-
-  it('fails quadratic work in seconds at a size it could never finish', () => {
-    vi.restoreAllMocks();
-    const quadratic = (text: string): number => {
-      let count = 0;
-      for (let i = 0; i < text.length; i++) {
-        for (let j = i; j < text.length; j++) if (text.charCodeAt(j) === 0x2c) count++;
-      }
-      return count;
-    };
-    // One run on 4,000,000 characters would take hours. The climb must stop
-    // long before; `make` refuses to build anything close. It stops at
-    // 3,906 -> 15,625 here (15 ms, then 250 ms); only a machine more than 16
-    // times faster would need 62,500. The limit is that tight on purpose:
-    // one run at 250,000 already takes about a minute, so a climb that
-    // failed to stop would make this test slow before it failed
-    // (bug-log 25).
-    const make = (size: number): string => {
-      if (size > 62_500) throw new Error('climbed too far');
-      return ofLength('a,', size);
-    };
-    expect(growthRatio(make, 1_000_000, quadratic, 3)).toBeGreaterThanOrEqual(MAX_GROWTH_RATIO);
-  });
 });
 
 describe('ofLength', () => {
   it('repeats a unit to at least the given length', () => {
     expect(ofLength('abc', 7)).toBe('abcabcabc');
     expect(ofLength('abc', 6)).toBe('abcabc');
+  });
+});
+
+describe('expectLinearTime (ADR-032): a failure explains itself', () => {
+  const scriptedCheck = (): void =>
+    expectLinearTime(
+      (n) => 'x'.repeat(n),
+      10,
+      () => 0,
+      1,
+    );
+
+  it('passes when the ratio is under the limit', () => {
+    scriptDurations([10, 50]);
+    expect(scriptedCheck).not.toThrow();
+  });
+
+  it('fails with the sizes and the runs of the measurement it kept', () => {
+    // Three measurements (16, 12, 17): the second is kept, and reported.
+    scriptDurations([10, 160, 10, 120, 10, 170]);
+    expect(scriptedCheck).toThrow(
+      'growth ratio 12.00 from 10 to 40 characters (smallest of 3 measurements); ' +
+        'runs on the smaller input: 10.00 ms; on the larger: 120.00 ms',
+    );
+  });
+
+  it('says "measurement", singular, when one was enough', () => {
+    expect(
+      growthReport({
+        ratio: 4,
+        measurements: 1,
+        measurement: {
+          smallChars: 100,
+          largeChars: 400,
+          smallMs: [1, 2],
+          largeMs: [4, 5],
+          ratio: 4,
+        },
+      }),
+    ).toBe(
+      'growth ratio 4.00 from 100 to 400 characters (smallest of 1 measurement); ' +
+        'runs on the smaller input: 1.00, 2.00 ms; on the larger: 4.00, 5.00 ms',
+    );
   });
 });

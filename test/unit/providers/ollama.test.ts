@@ -32,6 +32,7 @@ import {
   streamPiece,
   type MockProvider,
   type Responder,
+  SUCCESS_DEADLINE_MS,
 } from '../../support/mock-provider.js';
 
 const text = (s: string): RedactedText => s as RedactedText;
@@ -413,21 +414,31 @@ describe('createOllamaProvider.stream: the answer', () => {
   // Timings leave wide margins: a busy machine stretched a 60 ms gap past a
   // 150 ms timeout in one full run (bug-log 20).
   it('keeps going while every gap is shorter than the timeout (per wait, not in total)', async () => {
-    const pieces = Array.from({ length: 12 }, (_, i) => `p${i} `);
-    mock.respondWith(streamed(ollamaStreamEvents(pieces), { pauseMs: 50 }));
-    // 15 writes 50 ms apart: about 700 ms in all, over the 500 ms timeout,
-    // with every gap a tenth of it.
-    const events = await collect(await openStream({ timeoutMs: 500 }));
-    expect(events).toHaveLength(13);
+    const pieces = Array.from({ length: 28 }, (_, i) => `p${i} `);
+    mock.respondWith(streamed(ollamaStreamEvents(pieces), { pauseMs: 100 }));
+    // 31 writes 100 ms apart: about 3 s in all, over the 2 s timeout, with
+    // every gap a twentieth of it.
+    const events = await collect(await openStream({ timeoutMs: SUCCESS_DEADLINE_MS }));
+    expect(events).toHaveLength(29);
   });
 
   it('time the consumer takes between reads does not count against the timeout', async () => {
-    mock.respondWith(streamed(ollamaStreamEvents(['a', 'b'])));
-    const stream = await openStream({ timeoutMs: 300 });
+    // The first event at once; the rest at 1.25 timeouts, while the consumer
+    // is still pausing (until 1.5 timeouts) and no read is pending. A clock
+    // that ran during the pause would fire with the stream still open.
+    mock.respondWith(async (req, res) => {
+      const [first, ...rest] = ollamaStreamEvents(['a', 'b']);
+      await streamed([first!], { end: false })(req, res);
+      await new Promise((resolve) => setTimeout(resolve, 1.25 * SUCCESS_DEADLINE_MS));
+      res.end(rest.join(''));
+    });
+    const stream = await openStream({ timeoutMs: SUCCESS_DEADLINE_MS });
     const events: ProviderStreamEvent[] = [];
     for await (const event of stream.events) {
       events.push(event);
-      await new Promise((resolve) => setTimeout(resolve, 450));
+      if (events.length === 1) {
+        await new Promise((resolve) => setTimeout(resolve, 1.5 * SUCCESS_DEADLINE_MS));
+      }
     }
     expect(events.map((e) => e.type)).toEqual(['content', 'content', 'finish']);
   });
@@ -546,7 +557,9 @@ describe('createOllamaProvider.stream: failures after the first chunk (thrown fr
 
   it('a gap longer than the timeout → timeout', async () => {
     mock.respondWith(streamed([first], { end: false }));
-    const { events, error } = await midStreamFailure(await openStream({ timeoutMs: 300 }));
+    const { events, error } = await midStreamFailure(
+      await openStream({ timeoutMs: SUCCESS_DEADLINE_MS }),
+    );
     expect([events.length, error.failure]).toEqual([1, 'timeout']);
   });
 
