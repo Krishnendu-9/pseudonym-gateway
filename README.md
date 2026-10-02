@@ -100,11 +100,11 @@ What Pseudonym is being built to do:
   normalised, and invisible characters that can hide data (zero-width spaces,
   soft hyphens, direction marks) are removed before detection. Values are still
   replaced in the original text, so a hidden value is replaced completely.
-- **Placeholder instruction.** When a request contains placeholders,
-  Pseudonym adds one short system message asking the model to copy them
-  exactly, since a placeholder the model rewrites ("email 1") cannot be
-  restored. On by default and switchable (`PSEUDONYM_PLACEHOLDER_INSTRUCTION`);
-  whether it helps will be measured, and the default will follow.
+- **Placeholder instruction.** Pseudonym can add one short system message
+  asking the model to copy placeholders exactly, since a placeholder the
+  model rewrites ("email 1") cannot be restored. Off by default
+  (`PSEUDONYM_PLACEHOLDER_INSTRUCTION`): measured on the demo model, it
+  did not help (see "What a real model does with placeholders").
 - **Streaming.** `stream: true` returns OpenAI-style server-sent events
   (with `stream_options.include_usage` if asked). Placeholders split across
   streamed chunks (`[CAR` + `D_1]`) are restored correctly, holding back
@@ -511,7 +511,7 @@ link texts and table cells (18) and lookalikes in filler sentences (8).
 The first measurement found 6 more restored: emails in a plain URL's query
 or path, which the email detection took together with the URL's host and
 path (`https:[EMAIL_1]`), so the URL rule saw no URL. An address's local
-part now stops at `/`, `=` and `?` (bug-log 49, below). In the other
+part now stops at `/`, `=` and `?` (see the email gap above). In the other
 shapes, 9 placeholders stay because of Pseudonym's own bracket: digits
 joined by a bracket (`1234567890(12345`) become `[NUMBER_1]([NUMBER_2]`,
 and the `](` reads as a link target. The rules added for streaming (an
@@ -519,6 +519,17 @@ unclosed `<` or `="`, the host rule) hold nothing back in the generated
 set, which has no such text. Every message comes back exactly with the
 rules switched off. A model that rewrites or drops placeholders is a
 separate measurement.
+
+**Known costs of restoration safety** (values the user sees as
+placeholders, not as the real value): any placeholder inside a URL, a
+markdown link or image target, after `[label]:`, or in a quoted HTML
+attribute value, by design; the second placeholder of `[NUMBER_1]([NUMBER_2]`,
+because Pseudonym's own bracket followed by `(` reads as a link target; and
+**code that assigns a quoted string**: a quoted value after `=` is treated
+as an HTML attribute, so `API_KEY = "[SECRET_1]"` stays unrestored. The
+echo table above cannot show that last one, because neither dataset
+contains code; the model measurement below found it (2 of 34 values in one
+task).
 
 How the held-out set was made, stated exactly: it was drafted with AI
 assistance in a separate session that did not write the detectors, and then
@@ -532,6 +543,35 @@ several points. Its format is described in
 express some things people really write: numbers spelled out in words, letters
 standing in for digits in scanned text (O for 0, l for 1), postal addresses
 and vehicle numbers. None of those is measured, and none is detected.
+
+### What a real model does with placeholders
+
+Measured on 2026-10-02 with one local model,
+`qwen3:4b-instruct-2507-q4_K_M` on Ollama 0.35.0, at temperature 0 with a
+fixed seed: **15 tasks, 34 values per setting, one run**, each task asking
+the model to repeat every value it was given (a reply, JSON, an SMS, a
+Hindi translation, a summary, a table, a log line, a CSV row, code…).
+
+| Placeholder instruction | Values | Restored | Held back (safety) | Rewritten | Dropped | Invented |
+| ----------------------- | ------ | -------- | ------------------ | --------- | ------- | -------- |
+| On                      | 34     | 30       | 0                  | 0         | 4       | 0        |
+| Off                     | 34     | 32       | 2                  | 0         | 0       | 0        |
+
+**All 4 dropped values come from one task**, the CSV row: with the
+instruction on, the model wrote the header and no data row. The decision
+below therefore rests on a single task out of 15. With the instruction
+off, the model often wrote placeholders without their brackets (`EMAIL_1`), which restoration reads anyway. The 2 held back were
+code, `API_KEY = "[SECRET_1]"` (a known cost, above). No answer
+rewrote a placeholder into a form restoration cannot read, and none made
+one up. By a rule fixed before measuring (ADR-017: keep the instruction
+only if it leaves fewer values unrestored and invents no more), the
+instruction is off by default. This is one model; other models may differ.
+
+Thinking models are not the demo model. On `qwen3:4b` (a thinking model)
+one answer took 13.4 minutes on the same CPU, `reasoning_effort: "none"`
+put its reasoning into the answer itself (ending with a stray
+`</think>`), and its reasoning once wrote `[EMAIL_:1]`, a form
+restoration does not read.
 
 ## Unsupported input
 
@@ -600,8 +640,10 @@ The full threat model will be documented as the project matures.
 ## Running locally
 
 Requires Node.js 22.20+ and, to actually talk to a model,
-[Ollama](https://ollama.com) with a model pulled (for example
-`ollama pull qwen3:8b`). The tests do not need Ollama.
+[Ollama](https://ollama.com) with a model pulled. The demo model, a 4B
+instruct model that runs on a CPU, is
+`ollama pull qwen3:4b-instruct-2507-q4_K_M` (already set in
+`.env.example`). The tests do not need Ollama.
 
 ```bash
 npm install
@@ -611,7 +653,7 @@ npm run test:timing    # only the timing tests
 npm run lint           # lint
 npm run typecheck      # type-check
 
-cp .env.example .env    # then set PSEUDONYM_MODEL to your Ollama model
+cp .env.example .env    # PSEUDONYM_MODEL is the demo model; change it to use another
 npm run dev             # gateway on http://127.0.0.1:3000/v1
 ```
 

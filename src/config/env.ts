@@ -39,8 +39,9 @@ const envSchema = z.object({
   // (one event, at most 64 KiB, at a time).
   PSEUDONYM_MAX_STREAM_BYTES: z.coerce.number().int().positive().default(33_554_432),
   PSEUDONYM_RESTORE_IN_UNSAFE_REGIONS: booleanFlag('false'),
-  // Provisional default until Phase 5 measures it (ADR-017).
-  PSEUDONYM_PLACEHOLDER_INSTRUCTION: booleanFlag('true'),
+  // Off since Phase 5d measured it (ADR-017): with it on, the demo model
+  // left more values unrestored, not fewer.
+  PSEUDONYM_PLACEHOLDER_INSTRUCTION: booleanFlag('false'),
 });
 
 export type Env = z.infer<typeof envSchema>;

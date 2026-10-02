@@ -1,5 +1,7 @@
 // The system message asking the model to copy placeholders exactly
-// (ADR-017, provisional until Phase 5 measures it). A model that rewrites
+// (ADR-017). Off by default since Phase 5d measured it: on the demo model
+// (15 tasks, 34 values per setting) it left 4 values unrestored and no
+// instruction left none; switch it on with PSEUDONYM_PLACEHOLDER_INSTRUCTION. A model that rewrites
 // `[EMAIL_1]` as "email 1" leaves that value unrestored in the answer;
 // every such rewrite works against "the answer still reads naturally".
 //

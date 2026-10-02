@@ -1,0 +1,602 @@
+{
+  "measuredOn": "2026-10-02",
+  "ollama": "0.35.0",
+  "model": "qwen3:4b-instruct-2507-q4_K_M",
+  "digest": "0edcdef34593eac1aa2be9c7d06c432dcf81945adca5eca2f27662c18f168ba0",
+  "seed": 20261002,
+  "temperature": 0,
+  "maxTokens": 400,
+  "tasks": [
+    {
+      "id": "reply",
+      "what": "a reply confirming contact details",
+      "on": {
+        "fates": [
+          {
+            "placeholder": "PHONE_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "EMAIL_1",
+            "fate": "restored"
+          }
+        ],
+        "rewrites": [],
+        "invented": [],
+        "finishReason": "stop",
+        "ms": 15413
+      },
+      "off": {
+        "fates": [
+          {
+            "placeholder": "PHONE_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "EMAIL_1",
+            "fate": "restored"
+          }
+        ],
+        "rewrites": [],
+        "invented": [],
+        "finishReason": "stop",
+        "ms": 10816
+      }
+    },
+    {
+      "id": "json",
+      "what": "a JSON object",
+      "on": {
+        "fates": [
+          {
+            "placeholder": "PAN_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "PHONE_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "EMAIL_1",
+            "fate": "restored"
+          }
+        ],
+        "rewrites": [],
+        "invented": [],
+        "finishReason": "stop",
+        "ms": 16800
+      },
+      "off": {
+        "fates": [
+          {
+            "placeholder": "PAN_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "PHONE_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "EMAIL_1",
+            "fate": "restored"
+          }
+        ],
+        "rewrites": [],
+        "invented": [],
+        "finishReason": "stop",
+        "ms": 10807
+      }
+    },
+    {
+      "id": "sms",
+      "what": "an SMS about a refund",
+      "on": {
+        "fates": [
+          {
+            "placeholder": "UPI_1",
+            "fate": "restored"
+          }
+        ],
+        "rewrites": [],
+        "invented": [],
+        "finishReason": "stop",
+        "ms": 11381
+      },
+      "off": {
+        "fates": [
+          {
+            "placeholder": "UPI_1",
+            "fate": "restored"
+          }
+        ],
+        "rewrites": [],
+        "invented": [],
+        "finishReason": "stop",
+        "ms": 13376
+      }
+    },
+    {
+      "id": "translate",
+      "what": "a translation into Hindi",
+      "on": {
+        "fates": [
+          {
+            "placeholder": "AADHAAR_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "PAN_1",
+            "fate": "restored"
+          }
+        ],
+        "rewrites": [],
+        "invented": [],
+        "finishReason": "stop",
+        "ms": 17852
+      },
+      "off": {
+        "fates": [
+          {
+            "placeholder": "AADHAAR_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "PAN_1",
+            "fate": "restored"
+          }
+        ],
+        "rewrites": [],
+        "invented": [],
+        "finishReason": "stop",
+        "ms": 8271
+      }
+    },
+    {
+      "id": "summary",
+      "what": "a one-line summary",
+      "on": {
+        "fates": [
+          {
+            "placeholder": "CARD_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "NUMBER_1",
+            "fate": "restored"
+          }
+        ],
+        "rewrites": [],
+        "invented": [],
+        "finishReason": "stop",
+        "ms": 8575
+      },
+      "off": {
+        "fates": [
+          {
+            "placeholder": "CARD_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "NUMBER_1",
+            "fate": "restored"
+          }
+        ],
+        "rewrites": [],
+        "invented": [],
+        "finishReason": "stop",
+        "ms": 4575
+      }
+    },
+    {
+      "id": "table",
+      "what": "a markdown table",
+      "on": {
+        "fates": [
+          {
+            "placeholder": "IFSC_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "UPI_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "NUMBER_1",
+            "fate": "restored"
+          }
+        ],
+        "rewrites": [],
+        "invented": [],
+        "finishReason": "stop",
+        "ms": 7905
+      },
+      "off": {
+        "fates": [
+          {
+            "placeholder": "IFSC_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "UPI_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "NUMBER_1",
+            "fate": "restored"
+          }
+        ],
+        "rewrites": [],
+        "invented": [],
+        "finishReason": "stop",
+        "ms": 5479
+      }
+    },
+    {
+      "id": "formal",
+      "what": "a formal rewrite",
+      "on": {
+        "fates": [
+          {
+            "placeholder": "PHONE_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "EMAIL_1",
+            "fate": "restored"
+          }
+        ],
+        "rewrites": [],
+        "invented": [],
+        "finishReason": "stop",
+        "ms": 4981
+      },
+      "off": {
+        "fates": [
+          {
+            "placeholder": "PHONE_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "EMAIL_1",
+            "fate": "restored"
+          }
+        ],
+        "rewrites": [],
+        "invented": [],
+        "finishReason": "stop",
+        "ms": 3567
+      }
+    },
+    {
+      "id": "extract",
+      "what": "a bullet list of contacts",
+      "on": {
+        "fates": [
+          {
+            "placeholder": "PHONE_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "EMAIL_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "EMAIL_2",
+            "fate": "restored"
+          }
+        ],
+        "rewrites": [],
+        "invented": [],
+        "finishReason": "stop",
+        "ms": 4341
+      },
+      "off": {
+        "fates": [
+          {
+            "placeholder": "PHONE_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "EMAIL_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "EMAIL_2",
+            "fate": "restored"
+          }
+        ],
+        "rewrites": [],
+        "invented": [],
+        "finishReason": "stop",
+        "ms": 2465
+      }
+    },
+    {
+      "id": "log",
+      "what": "a log line",
+      "on": {
+        "fates": [
+          {
+            "placeholder": "IP_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "EMAIL_1",
+            "fate": "restored"
+          }
+        ],
+        "rewrites": [],
+        "invented": [],
+        "finishReason": "stop",
+        "ms": 4184
+      },
+      "off": {
+        "fates": [
+          {
+            "placeholder": "IP_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "EMAIL_1",
+            "fate": "restored"
+          }
+        ],
+        "rewrites": [],
+        "invented": [],
+        "finishReason": "stop",
+        "ms": 2607
+      }
+    },
+    {
+      "id": "grammar",
+      "what": "a grammar correction",
+      "on": {
+        "fates": [
+          {
+            "placeholder": "PASSPORT_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "DOB_1",
+            "fate": "restored"
+          }
+        ],
+        "rewrites": [],
+        "invented": [],
+        "finishReason": "stop",
+        "ms": 4901
+      },
+      "off": {
+        "fates": [
+          {
+            "placeholder": "PASSPORT_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "DOB_1",
+            "fate": "restored"
+          }
+        ],
+        "rewrites": [],
+        "invented": [],
+        "finishReason": "stop",
+        "ms": 3317
+      }
+    },
+    {
+      "id": "bank-email",
+      "what": "an email to a bank",
+      "on": {
+        "fates": [
+          {
+            "placeholder": "CARD_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "PHONE_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "NUMBER_1",
+            "fate": "restored"
+          }
+        ],
+        "rewrites": [],
+        "invented": [],
+        "finishReason": "stop",
+        "ms": 13521
+      },
+      "off": {
+        "fates": [
+          {
+            "placeholder": "CARD_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "PHONE_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "NUMBER_1",
+            "fate": "restored"
+          }
+        ],
+        "rewrites": [],
+        "invented": [],
+        "finishReason": "stop",
+        "ms": 20635
+      }
+    },
+    {
+      "id": "chat",
+      "what": "a confirmation in a three-message chat",
+      "on": {
+        "fates": [
+          {
+            "placeholder": "PHONE_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "EMAIL_1",
+            "fate": "restored"
+          }
+        ],
+        "rewrites": [],
+        "invented": [],
+        "finishReason": "stop",
+        "ms": 4776
+      },
+      "off": {
+        "fates": [
+          {
+            "placeholder": "PHONE_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "EMAIL_1",
+            "fate": "restored"
+          }
+        ],
+        "rewrites": [],
+        "invented": [],
+        "finishReason": "stop",
+        "ms": 9303
+      }
+    },
+    {
+      "id": "csv",
+      "what": "a CSV row",
+      "on": {
+        "fates": [
+          {
+            "placeholder": "AADHAAR_1",
+            "fate": "dropped"
+          },
+          {
+            "placeholder": "PAN_1",
+            "fate": "dropped"
+          },
+          {
+            "placeholder": "VOTER_1",
+            "fate": "dropped"
+          },
+          {
+            "placeholder": "PHONE_1",
+            "fate": "dropped"
+          }
+        ],
+        "rewrites": [],
+        "invented": [],
+        "finishReason": "stop",
+        "ms": 3171
+      },
+      "off": {
+        "fates": [
+          {
+            "placeholder": "AADHAAR_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "PAN_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "VOTER_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "PHONE_1",
+            "fate": "restored"
+          }
+        ],
+        "rewrites": [],
+        "invented": [],
+        "finishReason": "stop",
+        "ms": 3413
+      }
+    },
+    {
+      "id": "hinglish",
+      "what": "a reply in Hinglish",
+      "on": {
+        "fates": [
+          {
+            "placeholder": "UPI_1",
+            "fate": "restored"
+          }
+        ],
+        "rewrites": [],
+        "invented": [],
+        "finishReason": "stop",
+        "ms": 8940
+      },
+      "off": {
+        "fates": [
+          {
+            "placeholder": "UPI_1",
+            "fate": "restored"
+          }
+        ],
+        "rewrites": [],
+        "invented": [],
+        "finishReason": "stop",
+        "ms": 9418
+      }
+    },
+    {
+      "id": "code",
+      "what": "a config snippet",
+      "on": {
+        "fates": [
+          {
+            "placeholder": "EMAIL_1",
+            "fate": "restored"
+          },
+          {
+            "placeholder": "SECRET_1",
+            "fate": "restored"
+          }
+        ],
+        "rewrites": [],
+        "invented": [],
+        "finishReason": "stop",
+        "ms": 3360
+      },
+      "off": {
+        "fates": [
+          {
+            "placeholder": "EMAIL_1",
+            "fate": "held"
+          },
+          {
+            "placeholder": "SECRET_1",
+            "fate": "held"
+          }
+        ],
+        "rewrites": [],
+        "invented": [],
+        "finishReason": "stop",
+        "ms": 1990
+      }
+    }
+  ],
+  "totals": {
+    "on": {
+      "values": 34,
+      "restored": 30,
+      "held": 0,
+      "rewritten": 0,
+      "dropped": 4,
+      "invented": 0
+    },
+    "off": {
+      "values": 34,
+      "restored": 32,
+      "held": 2,
+      "rewritten": 0,
+      "dropped": 0,
+      "invented": 0
+    }
+  },
+  "decision": "off"
+}
