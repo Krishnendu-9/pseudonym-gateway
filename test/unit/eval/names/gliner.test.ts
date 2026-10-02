@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   decode,
+  glinerFedTokens,
   feeds,
   glinerSpans,
   glinerWindows,
@@ -118,5 +119,20 @@ describe('glinerSpans', () => {
       [0, 5],
       [40, 45],
     ]);
+  });
+});
+
+describe('glinerFedTokens', () => {
+  it('counts exactly what glinerSpans sends, window by window', async () => {
+    for (const sizes of [[1, 1, 1, 1, 1, 1], [3, 3, 3], [9, 1], []]) {
+      const words = encoded(sizes);
+      let sent = 0;
+      await glinerSpans(words, SETUP, async (f) => {
+        sent += f.inputIds.length;
+        return new Float32Array(f.textLength * SETUP.maxWidth).fill(-20);
+      });
+      expect([sizes.join(','), glinerFedTokens(words, SETUP)]).toEqual([sizes.join(','), sent]);
+    }
+    expect(glinerFedTokens(encoded([1, 1, 1, 1, 1, 1]), SETUP)).toBe(18);
   });
 });

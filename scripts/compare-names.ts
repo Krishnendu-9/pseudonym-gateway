@@ -2,9 +2,19 @@
 // E and F on the generated set, the stopping rule applied to the results.
 //
 //   npx tsx scripts/compare-names.ts --held-out-committed --out <dir outside the repo>
-//       [--runtime D:/pseudonym-6a] [--candidates A,B,D,E,F] [--ollama-model <name>]
+//       [--runtime D:/pseudonym-6a] [--candidates A,B,D,F,E] [--ollama-model <name>]
 //   npx tsx scripts/compare-names.ts --held-out-committed --out <dir> --held-out <id>
 //       runs the chosen configuration once on the held-out set (PERSON row only)
+//   npx tsx scripts/compare-names.ts --held-out-committed --out <dir> --smoke
+//       loads every candidate and runs it on one fixed sentence that is in no
+//       dataset; prints how many spans each found (a check of the wiring)
+//   npx tsx scripts/compare-names.ts --held-out-committed --out <dir> --latency
+//       added latency at 1, 4, 16 and 64 KiB per candidate, tokens per KiB for
+//       the models, and Ollama's own time to first token (in E's child)
+//
+// Each child prints progress (counts, never text). One that prints nothing
+// for 10 minutes is killed, and the run stops, writing why to STOPPED.txt
+// in --out; so does a candidate that fails. Nothing is retried.
 //
 // No model runs without --held-out-committed: 6a waits until the extra
 // held-out PERSON cases are committed, so that set stays blind (ADR-035).
@@ -25,18 +35,25 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { cpus } from 'node:os';
-import { join, relative, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { parseArgs } from 'node:util';
 import { generateCases } from '../eval/generate.js';
 import { loadHeldOut } from '../eval/held-out.js';
 import { listSpans } from '../eval/names/gazetteer.js';
-import { glinerSpans, type GlinerFeeds, type GlinerSetup } from '../eval/names/gliner.js';
-import { locate, namesMessages, parseNames } from '../eval/names/llm.js';
+import {
+  glinerFedTokens,
+  glinerSpans,
+  type GlinerFeeds,
+  type GlinerSetup,
+} from '../eval/names/gliner.js';
+import { LATENCY_SIZES_KIB, median, perKiB, tokensByScript } from '../eval/names/latency.js';
+import { isContextRefusal, locate, namesMessages, parseNames } from '../eval/names/llm.js';
 import { fpPer1000, measure, share, type Metrics } from '../eval/names/measure.js';
 import { choosePoint, decide, failedLimits, LIMITS, type Measured } from '../eval/names/rule.js';
 import { detectionsAt, grid, merge, type Point, type ScoredSpan } from '../eval/names/spans.js';
 import {
+  fedTokens,
   labelWords,
   personSpans,
   type BertSetup,
@@ -48,7 +65,9 @@ import { WIKIDATA_NAMES } from '../src/synthetic/wikidata-names.js';
 import { leftoverMutation } from './mutation-marker.js';
 
 const REPO = resolve(import.meta.dirname, '..');
-const CANDIDATES = ['A', 'B', 'D', 'E', 'F'] as const;
+// E last: it is by far the slowest, and each candidate's results are saved
+// as it finishes, so a stop during E keeps the others.
+const CANDIDATES = ['A', 'B', 'D', 'F', 'E'] as const;
 type CandidateId = (typeof CANDIDATES)[number];
 const MODEL_DIRS: Readonly<Record<'A' | 'B' | 'D', string>> = {
   A: 'models/Xenova__bert-base-NER@8e892123e8b7',
@@ -61,6 +80,10 @@ const WARM_UP_BYTES = 16 * 1024;
 const SPEED_BUDGET_MS = LIMITS.msPerKiB * 256;
 const OLLAMA_SEED = 20_261_003;
 const OLLAMA_TIMEOUT_MS = 300_000;
+/** A child that prints no progress for this long is stopped, and so is the run. */
+const STALL_MS = 10 * 60 * 1000;
+/** A child prints progress at most this often (and at every phase). */
+const PROGRESS_EVERY_MS = 30_000;
 
 const { values: args } = parseArgs({
   options: {
@@ -73,6 +96,8 @@ const { values: args } = parseArgs({
     child: { type: 'string' },
     'held-out': { type: 'string' },
     point: { type: 'string' },
+    smoke: { type: 'boolean', default: false },
+    latency: { type: 'boolean', default: false },
   },
 });
 
@@ -91,7 +116,9 @@ if (!args['held-out-committed']) {
 }
 if (!args.out) fail('usage: --out <directory outside the repo> is required');
 const out = resolve(args.out!);
-if (!relative(REPO, out).startsWith('..')) fail('--out must be outside the repo');
+// On another drive, relative() gives an absolute path, not one starting "..".
+const fromRepo = relative(REPO, out);
+if (!fromRepo.startsWith('..') && !isAbsolute(fromRepo)) fail('--out must be outside the repo');
 mkdirSync(out, { recursive: true });
 
 // ---------------------------------------------------------------------------
@@ -124,7 +151,19 @@ const readJson = (path: string): unknown => JSON.parse(readFileSync(path, 'utf8'
 const int64 = (values: readonly number[]): BigInt64Array =>
   BigInt64Array.from(values, (v) => BigInt(v));
 
-type Find = (text: string) => Promise<ScoredSpan[]>;
+/** A candidate's names in `text`; `timeoutMs` bounds E's call (the models cannot be stopped). */
+type Find = (text: string, timeoutMs?: number) => Promise<ScoredSpan[]>;
+
+/** A loaded candidate; the models also count tokens: the text's own, and what the model is fed. */
+interface Loaded {
+  readonly find: Find;
+  readonly count?: (text: string) => { readonly text: number; readonly fed: number };
+}
+
+/** Ollama refused a request for being longer than its context (bug-log 55). */
+class ContextRefusal extends Error {
+  override readonly name = 'ContextRefusal';
+}
 
 /** Encodes each word on its own, without special tokens; words that encode to nothing are dropped. */
 function encodeWords(tokenizer: Tokenizer, words: readonly Word[]): EncodedWord[] {
@@ -133,7 +172,7 @@ function encodeWords(tokenizer: Tokenizer, words: readonly Word[]): EncodedWord[
     .filter((w) => w.ids.length > 0);
 }
 
-async function bertCandidate(id: 'A' | 'B'): Promise<Find> {
+async function bertCandidate(id: 'A' | 'B'): Promise<Loaded> {
   const { ort, Tokenizer } = runtime();
   const dir = join(resolve(args.runtime), MODEL_DIRS[id]);
   const tokenizer = new Tokenizer(
@@ -165,13 +204,19 @@ async function bertCandidate(id: 'A' | 'B'): Promise<Find> {
     }
     return (await session.run(feeds)).logits!.data;
   };
-  return async (text) => {
-    const words = encodeWords(tokenizer, bertWords(text));
-    return personSpans(words, await labelWords(words, setup, run));
+  return {
+    find: async (text) => {
+      const words = encodeWords(tokenizer, bertWords(text));
+      return personSpans(words, await labelWords(words, setup, run));
+    },
+    count: (text) => {
+      const words = encodeWords(tokenizer, bertWords(text));
+      return { text: words.reduce((n, w) => n + w.ids.length, 0), fed: fedTokens(words, setup) };
+    },
   };
 }
 
-async function glinerCandidate(): Promise<Find> {
+async function glinerCandidate(): Promise<Loaded> {
   const { ort, Tokenizer } = runtime();
   const dir = join(resolve(args.runtime), MODEL_DIRS.D);
   const tokenizer = new Tokenizer(
@@ -206,13 +251,22 @@ async function glinerCandidate(): Promise<Find> {
     });
     return result.logits!.data;
   };
-  return async (text) => glinerSpans(encodeWords(tokenizer, glinerWords(text)), setup, run);
+  return {
+    find: async (text) => glinerSpans(encodeWords(tokenizer, glinerWords(text)), setup, run),
+    count: (text) => {
+      const words = encodeWords(tokenizer, glinerWords(text));
+      return {
+        text: words.reduce((n, w) => n + w.ids.length, 0),
+        fed: glinerFedTokens(words, setup),
+      };
+    },
+  };
 }
 
 let invented = 0;
 let unparsed = 0;
 function llmCandidate(): Find {
-  return async (text) => {
+  return async (text, timeoutMs = OLLAMA_TIMEOUT_MS) => {
     const response = await fetch(`${args['ollama-url']}/v1/chat/completions`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -223,9 +277,12 @@ function llmCandidate(): Find {
         seed: OLLAMA_SEED,
         stream: false,
       }),
-      signal: AbortSignal.timeout(OLLAMA_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
-    if (!response.ok) fail(`Ollama answered HTTP ${response.status}`);
+    if (!response.ok) {
+      if (isContextRefusal(response.status, await response.text())) throw new ContextRefusal();
+      fail(`Ollama answered HTTP ${response.status}`);
+    }
     const body = (await response.json()) as { choices: { message: { content: string } }[] };
     const names = parseNames(body.choices[0]!.message.content);
     if (names === undefined) {
@@ -246,11 +303,11 @@ const GAZETTEER: ReadonlySet<string> = new Set(
   ),
 );
 
-async function candidate(id: CandidateId): Promise<Find> {
+async function candidate(id: CandidateId): Promise<Loaded> {
   if (id === 'A' || id === 'B') return bertCandidate(id);
   if (id === 'D') return glinerCandidate();
-  if (id === 'E') return llmCandidate();
-  return async (text) => listSpans(text, GAZETTEER);
+  if (id === 'E') return { find: llmCandidate() };
+  return { find: async (text) => listSpans(text, GAZETTEER) };
 }
 
 // ---------------------------------------------------------------------------
@@ -270,21 +327,45 @@ interface ChildResult {
   /** SHA-256 of the spans, to compare runs (and machines) without the spans. */
   readonly spanHash: string;
   readonly threads: number;
+  /** Why the speed is over the limit when no 256 KiB run was made. */
+  readonly overReason?: 'time' | 'context';
 }
 
 const messagesOf = (cases: readonly LabelledCase[]): string[] =>
   cases.flatMap((c) => c.messages.map((m) => m.text));
 
-/** Generated messages joined until the next would pass `bytes` of UTF-8. */
-function speedText(texts: readonly string[], bytes: number): string {
-  let joined = '';
-  for (const text of texts) {
-    const next = joined === '' ? text : `${joined}\n\n${text}`;
-    if (Buffer.byteLength(next) > bytes) break;
-    joined = next;
+/**
+ * Generated messages joined by blank lines, from message `from` (the first
+ * by default) and round again if need be (the whole set is about 248 KiB),
+ * until the next would pass `bytes` of UTF-8.
+ */
+function speedText(texts: readonly string[], bytes: number, from = 0): string {
+  const parts: string[] = [];
+  let size = 0;
+  for (let i = from; ; i++) {
+    const text = texts[i % texts.length]!;
+    const add = Buffer.byteLength(text) + (parts.length > 0 ? 2 : 0);
+    if (size + add > bytes) break;
+    parts.push(text);
+    size += add;
   }
-  return joined;
+  return parts.join('\n\n');
 }
+
+/** Progress on stderr: the candidate, a phase and counts, never text. */
+function progress(id: CandidateId): (line: string, force?: boolean) => void {
+  const started = performance.now();
+  let last = 0;
+  return (line, force = false) => {
+    const now = performance.now();
+    if (!force && now - last < PROGRESS_EVERY_MS) return;
+    last = now;
+    process.stderr.write(`[${id}] ${line} (${Math.round((now - started) / 1000)} s)\n`);
+  };
+}
+
+const isTimeout = (error: unknown): boolean =>
+  error instanceof Error && error.name === 'TimeoutError';
 
 async function ollamaBytes(): Promise<number> {
   const ps = (await (await fetch(`${args['ollama-url']}/api/ps`)).json()) as {
@@ -298,22 +379,47 @@ async function runChild(
   cases: readonly LabelledCase[],
   file: string,
 ): Promise<void> {
+  const say = progress(id);
+  say('loading', true);
   const baseRss = process.memoryUsage.rss();
   const loadStart = performance.now();
-  const find = await candidate(id);
+  const { find } = await candidate(id);
   const loadMs = performance.now() - loadStart;
+  say(`loaded in ${Math.round(loadMs)} ms`, true);
 
   const texts = messagesOf(cases);
   const all = messagesOf(generateCases());
   const warmUp = speedText(all, WARM_UP_BYTES);
   let start = performance.now();
-  await find(warmUp);
+  let warmedUp = true;
+  let overReason: 'time' | 'context' | undefined;
+  try {
+    // Past the whole budget is over the limit whatever follows, so E's
+    // call is cut there; a model run cannot be cut, and finishes. A text
+    // the LLM refuses as longer than its context is over the limit too
+    // (bug-log 55; the user's option 1, 2026-10-03).
+    await find(warmUp, SPEED_BUDGET_MS);
+  } catch (error) {
+    if (isTimeout(error)) overReason = 'time';
+    else if (error instanceof ContextRefusal) overReason = 'context';
+    else throw error;
+    warmedUp = false;
+  }
   let msPerKiB = Number.POSITIVE_INFINITY;
-  if (performance.now() - start <= SPEED_BUDGET_MS) {
+  if (warmedUp && performance.now() - start <= SPEED_BUDGET_MS) {
+    say('warm-up done; speed text', true);
     const full = speedText(all, SPEED_BYTES);
     start = performance.now();
     await find(full);
     msPerKiB = (performance.now() - start) / (Buffer.byteLength(full) / 1024);
+    say(`speed ${msPerKiB.toFixed(1)} ms per KiB`, true);
+  } else {
+    say(
+      overReason === 'context'
+        ? 'warm-up refused as longer than the context: speed recorded as over the limit'
+        : 'warm-up over the budget: speed recorded as over the limit',
+      true,
+    );
   }
 
   // Too slow for the whole set: the names block only, for the record.
@@ -321,13 +427,16 @@ async function runChild(
   const delay = monitorEventLoopDelay({ resolution: 10 });
   delay.enable();
   const inBlock = cases.flatMap((c) => c.messages.map(() => c.tags.includes('shape:names')));
+  const todo = namesBlockOnly ? inBlock.filter(Boolean).length : texts.length;
+  let done = 0;
   const spans: (readonly [number, number, number])[][] = [];
   for (const [i, text] of texts.entries()) {
-    spans.push(
-      namesBlockOnly && !inBlock[i]
-        ? []
-        : (await find(text)).map((s) => [s.start, s.end, s.score] as const),
-    );
+    if (namesBlockOnly && !inBlock[i]) {
+      spans.push([]);
+      continue;
+    }
+    spans.push((await find(text)).map((s) => [s.start, s.end, s.score] as const));
+    say(`${++done} of ${todo} messages`, done === todo);
   }
   delay.disable();
 
@@ -345,22 +454,249 @@ async function runChild(
     unparsed,
     spanHash: createHash('sha256').update(JSON.stringify(spans)).digest('hex'),
     threads: cpus().length,
+    ...(overReason ? { overReason } : {}),
   };
   writeFileSync(file, JSON.stringify(result));
+  say('results saved', true);
+}
+
+// ---------------------------------------------------------------------------
+// Latency at request sizes and tokens per KiB (asked for by the user after
+// the first run, 2026-10-03). Reported beside ms per KiB, which stays the
+// rule's measure (ADR-035).
+
+const LATENCY_REPS = 5;
+/** E's calls and Ollama's first tokens take seconds each: fewer repetitions. */
+const OLLAMA_REPS = 3;
+/** Each repetition starts this many messages further on, so no two texts repeat (Ollama caches prompts). */
+const REP_STRIDE = 211;
+/** Ollama's time to first token is measured on its own texts, apart from E's. */
+const TTFT_OFFSET = 97;
+const ANSWER_PROMPT = 'You are a customer-support assistant. Reply to the customer.';
+
+type Timing = number | 'refused';
+
+interface LatencyResult {
+  readonly id: CandidateId;
+  /** Per size in KiB, every run in milliseconds, or "refused" (too long for E's context). */
+  readonly runsMs: Record<string, Timing[]>;
+  /** Text tokens per KiB of the generated messages, by script; fed tokens per KiB of the speed text. */
+  readonly tokens?: {
+    readonly latin: number;
+    readonly devanagari: number;
+    readonly all: number;
+    readonly fedPerKiB: number;
+    readonly speedTextPerKiB: number;
+  };
+  /** Ollama's own time to first token for a support answer, per size (E's child only). */
+  readonly ttftMs?: Record<string, Timing[]>;
+}
+
+/** Ollama's time to first token on `text`, streamed, or "refused" when it is too long. */
+async function timeToFirstToken(text: string): Promise<Timing> {
+  const started = performance.now();
+  const response = await fetch(`${args['ollama-url']}/v1/chat/completions`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: args['ollama-model'],
+      messages: [
+        { role: 'system', content: ANSWER_PROMPT },
+        { role: 'user', content: text },
+      ],
+      temperature: 0,
+      seed: OLLAMA_SEED,
+      stream: true,
+      max_tokens: 8,
+    }),
+    signal: AbortSignal.timeout(OLLAMA_TIMEOUT_MS),
+  });
+  if (!response.ok) {
+    if (isContextRefusal(response.status, await response.text())) return 'refused';
+    return fail(`Ollama answered HTTP ${response.status}`);
+  }
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let pending = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return fail('Ollama ended the stream without content');
+    pending += decoder.decode(value, { stream: true });
+    const lines = pending.split('\n');
+    pending = lines.pop()!;
+    for (const line of lines) {
+      if (!line.startsWith('data: ') || line === 'data: [DONE]') continue;
+      const chunk = JSON.parse(line.slice(6)) as {
+        choices?: { delta?: { content?: string } }[];
+      };
+      if (chunk.choices?.[0]?.delta?.content) {
+        const ms = performance.now() - started;
+        await reader.cancel();
+        return ms;
+      }
+    }
+  }
+}
+
+async function runLatency(id: CandidateId, file: string): Promise<void> {
+  const say = progress(id);
+  say('loading', true);
+  const loaded = await candidate(id);
+  const all = messagesOf(generateCases());
+  const timed = async (work: () => Promise<unknown>): Promise<Timing> => {
+    const started = performance.now();
+    try {
+      await work();
+    } catch (error) {
+      if (error instanceof ContextRefusal) return 'refused';
+      throw error;
+    }
+    return performance.now() - started;
+  };
+  await timed(() => loaded.find(speedText(all, 1024, 1_000)));
+  say('warmed up', true);
+
+  const reps = id === 'E' ? OLLAMA_REPS : LATENCY_REPS;
+  const runsMs: Record<string, Timing[]> = {};
+  for (const kib of LATENCY_SIZES_KIB) {
+    runsMs[kib] = [];
+    for (let rep = 0; rep < reps; rep++) {
+      const text = speedText(all, kib * 1024, rep * REP_STRIDE);
+      runsMs[kib].push(await timed(() => loaded.find(text)));
+      say(`${kib} KiB, run ${rep + 1} of ${reps}`, true);
+    }
+  }
+
+  let tokens: LatencyResult['tokens'];
+  if (loaded.count) {
+    const count = loaded.count;
+    const byScript = tokensByScript(all, (text) => count(text).text);
+    const full = speedText(all, SPEED_BYTES);
+    const fullKiB = Buffer.byteLength(full) / 1024;
+    const fullCount = count(full);
+    tokens = {
+      latin: perKiB(byScript.latin),
+      devanagari: perKiB(byScript.devanagari),
+      all: perKiB(byScript.all),
+      fedPerKiB: fullCount.fed / fullKiB,
+      speedTextPerKiB: fullCount.text / fullKiB,
+    };
+  }
+
+  let ttftMs: Record<string, Timing[]> | undefined;
+  if (id === 'E') {
+    ttftMs = {};
+    for (const kib of LATENCY_SIZES_KIB) {
+      ttftMs[kib] = [];
+      for (let rep = 0; rep < OLLAMA_REPS; rep++) {
+        const text = speedText(all, kib * 1024, rep * REP_STRIDE + TTFT_OFFSET);
+        ttftMs[kib].push(await timeToFirstToken(text));
+        say(`first token at ${kib} KiB, run ${rep + 1} of ${OLLAMA_REPS}`, true);
+      }
+    }
+  }
+  const result: LatencyResult = {
+    id,
+    runsMs,
+    ...(tokens ? { tokens } : {}),
+    ...(ttftMs ? { ttftMs } : {}),
+  };
+  writeFileSync(file, JSON.stringify(result));
+  say('results saved', true);
+}
+
+/** A row's median: milliseconds rounded, or "refused" when every run was refused. */
+function latencyCell(runs: readonly Timing[] | undefined): string {
+  const times = (runs ?? []).filter((t): t is number => t !== 'refused');
+  if (times.length === 0) return runs && runs.length > 0 ? 'refused (context)' : '-';
+  const refused = runs!.length - times.length;
+  return `${Math.round(median(times)!)} ms${refused > 0 ? ` (${refused} refused)` : ''}`;
+}
+
+function latencyReport(results: readonly LatencyResult[]): void {
+  const write = (line = ''): void => void process.stdout.write(`${line}\n`);
+  write('## Tokens per KiB (A, B, D)');
+  write();
+  write(
+    '| Candidate | Latin messages | Devanagari messages | All messages | Speed text | Fed to the model (speed text) | ms per KiB (run) | ms per fed token |',
+  );
+  write('| --- | --- | --- | --- | --- | --- | --- | --- |');
+  for (const r of results.filter((x) => x.tokens)) {
+    const run = existsSync(childFile(r.id))
+      ? (readJson(childFile(r.id)) as ChildResult).msPerKiB
+      : Number.NaN;
+    const t = r.tokens!;
+    write(
+      `| ${r.id} | ${t.latin.toFixed(0)} | ${t.devanagari.toFixed(0)} | ${t.all.toFixed(0)} | ${t.speedTextPerKiB.toFixed(0)} | ${t.fedPerKiB.toFixed(0)} | ${run.toFixed(1)} | ${(run / t.fedPerKiB).toFixed(2)} |`,
+    );
+  }
+  write();
+  write(
+    `## Added latency per request (median of ${LATENCY_REPS} runs; E and first token: ${OLLAMA_REPS})`,
+  );
+  write();
+  write(`| Candidate | ${LATENCY_SIZES_KIB.map((k) => `${k} KiB`).join(' | ')} |`);
+  write(`| --- | ${LATENCY_SIZES_KIB.map(() => '---').join(' | ')} |`);
+  for (const r of results) {
+    write(`| ${r.id} | ${LATENCY_SIZES_KIB.map((k) => latencyCell(r.runsMs[k])).join(' | ')} |`);
+  }
+  const e = results.find((r) => r.ttftMs);
+  if (e) {
+    write(
+      `| Ollama, first token of an answer (${args['ollama-model']}) | ${LATENCY_SIZES_KIB.map((k) => latencyCell(e.ttftMs![k])).join(' | ')} |`,
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
 // The parent: a child per candidate, then the scores and the decision.
 
+/**
+ * Runs one candidate in a child process. Rejects, with the reason, when
+ * the child fails or prints no progress for STALL_MS (it is then killed).
+ * Never retries: a stop is for the user to look at.
+ */
 function spawnChild(childArgs: readonly string[]): Promise<void> {
+  const name = childArgs[childArgs.length - 1]!;
   return new Promise((done, failed) => {
     const child = spawn(
       process.execPath,
       [...process.execArgv, import.meta.filename, ...childArgs],
-      { stdio: 'inherit' },
+      { stdio: ['ignore', 'inherit', 'pipe'] },
     );
-    child.on('exit', (code) => (code === 0 ? done() : failed(new Error(`child exited ${code}`))));
+    let lastSeen = Date.now();
+    let stalled = false;
+    child.stderr.on('data', (chunk: Buffer) => {
+      lastSeen = Date.now();
+      process.stderr.write(chunk);
+    });
+    const watch = setInterval(() => {
+      if (Date.now() - lastSeen < STALL_MS) return;
+      stalled = true;
+      child.kill();
+    }, 15_000);
+    child.on('exit', (code) => {
+      clearInterval(watch);
+      if (stalled) {
+        failed(new Error(`${name} stalled: no progress for ${STALL_MS / 60_000} minutes; stopped`));
+      } else if (code === 0) {
+        done();
+      } else {
+        failed(new Error(`${name} failed (exit code ${code}); its error is above`));
+      }
+    });
   });
+}
+
+/** Stops the whole run, saying why on the console and in STOPPED.txt in --out. */
+async function orStop(work: () => Promise<void>): Promise<void> {
+  try {
+    await work();
+  } catch (error) {
+    const message = `STOPPED at ${new Date().toISOString()}: ${(error as Error).message}. Not retried.`;
+    writeFileSync(join(out, 'STOPPED.txt'), `${message}\n`);
+    fail(message);
+  }
 }
 
 const pct = (c: { hit: number; of: number }): string =>
@@ -476,7 +812,8 @@ function report(results: readonly ChildResult[], rows: readonly Measured[]): voi
 }
 
 const childFile = (id: string): string => join(out, `${id}.json`);
-const childArgs = (id: CandidateId, set: 'generated' | 'held-out'): string[] => [
+type ChildSet = 'generated' | 'held-out' | 'latency';
+const childArgs = (id: CandidateId, set: ChildSet): string[] => [
   '--held-out-committed',
   '--out',
   out,
@@ -491,15 +828,39 @@ const childArgs = (id: CandidateId, set: 'generated' | 'held-out'): string[] => 
 ];
 
 if (args.child) {
-  const [id, set] = args.child.split(':') as [CandidateId, 'generated' | 'held-out'];
-  const cases = set === 'held-out' ? loadHeldOut() : generateCases();
-  await runChild(id, cases, childFile(set === 'held-out' ? `held-out-${id}` : id));
+  const [id, set] = args.child.split(':') as [CandidateId, ChildSet];
+  if (set === 'latency') {
+    await runLatency(id, childFile(`latency-${id}`));
+  } else {
+    const cases = set === 'held-out' ? loadHeldOut() : generateCases();
+    await runChild(id, cases, childFile(set === 'held-out' ? `held-out-${id}` : id));
+  }
+} else if (args.latency) {
+  const ids = args.candidates.split(',') as CandidateId[];
+  for (const id of ids) {
+    if (!existsSync(childFile(`latency-${id}`))) {
+      await orStop(() => spawnChild(childArgs(id, 'latency')));
+    }
+  }
+  const results = ids.map((id) => readJson(childFile(`latency-${id}`)) as LatencyResult);
+  latencyReport(results);
+  writeFileSync(join(out, 'latency-summary.json'), JSON.stringify(results, null, 2));
+} else if (args.smoke) {
+  // Not a measurement: every candidate once, in this process, on a fixed
+  // sentence written for this check.
+  for (const id of args.candidates.split(',') as CandidateId[]) {
+    const started = performance.now();
+    const spans = await (await candidate(id)).find('Hello, my name is Ravi and I live in Pune.');
+    process.stdout.write(
+      `${id}: loaded and ran in ${Math.round(performance.now() - started)} ms, ${spans.length} span(s)\n`,
+    );
+  }
 } else if (args['held-out']) {
   // The chosen configuration, once, on the held-out set: the PERSON row only.
   const ids = args['held-out'].split('+') as CandidateId[];
   const [high, mid] = (args.point ?? '0.5').split('/').map(Number) as [number, number?];
   const point: Point = mid === undefined ? { high } : { high, mid };
-  for (const id of ids) await spawnChild(childArgs(id, 'held-out'));
+  for (const id of ids) await orStop(() => spawnChild(childArgs(id, 'held-out')));
   const cases = loadHeldOut();
   const results = ids.map((id) => readJson(childFile(`held-out-${id}`)) as ChildResult);
   const finds = results.map((r, i) => findFor(cases, r, i === 0 ? point : NO_SCORE));
@@ -512,7 +873,7 @@ if (args.child) {
   for (const id of ids) {
     if (!CANDIDATES.includes(id)) fail(`unknown candidate ${id}`);
     if (!existsSync(childFile(id))) {
-      await spawnChild(childArgs(id, 'generated'));
+      await orStop(() => spawnChild(childArgs(id, 'generated')));
     }
   }
   const cases = generateCases();

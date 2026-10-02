@@ -96,6 +96,15 @@ export function glinerWindows(
   return out;
 }
 
+/** Tokens the model is given for `words`: per window, [CLS], the prompt, the words, [SEP]. */
+export function glinerFedTokens(words: readonly EncodedWord[], setup: GlinerSetup): number {
+  return glinerWindows(words, setup).reduce(
+    (n, { from, to }) =>
+      n + 2 + setup.prompt.length + words.slice(from, to).reduce((m, w) => m + w.ids.length, 0),
+    0,
+  );
+}
+
 const sigmoid = (x: number): number => 1 / (1 + Math.exp(-x));
 
 /**

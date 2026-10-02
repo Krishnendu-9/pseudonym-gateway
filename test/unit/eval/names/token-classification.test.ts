@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  fedTokens,
   labelWords,
   personSpans,
   windows,
@@ -121,5 +122,20 @@ describe('personSpans', () => {
       [0, 1],
       [2, 3],
     ]);
+  });
+});
+
+describe('fedTokens', () => {
+  it('counts exactly what labelWords sends, window by window', async () => {
+    for (const sizes of [[1, 2, 3, 1, 1, 2, 2, 1, 3, 1, 1], [1, 9, 1], [9], []]) {
+      const words = encoded(sizes);
+      let sent = 0;
+      await labelWords(words, SETUP, async (ids) => {
+        sent += ids.length;
+        return new Float32Array(ids.length * LABELS.length);
+      });
+      expect([sizes.join(','), fedTokens(words, SETUP)]).toEqual([sizes.join(','), sent]);
+    }
+    expect(fedTokens(encoded([1, 2, 3, 1, 1, 2, 2, 1, 3, 1, 1]), SETUP)).toBe(29);
   });
 });

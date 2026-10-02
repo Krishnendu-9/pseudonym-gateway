@@ -17,6 +17,14 @@ export function namesMessages(text: string): { role: 'system' | 'user'; content:
 }
 
 /**
+ * True when Ollama refused a request for being longer than its context
+ * (bug-log 55): HTTP 400 with llama.cpp's "exceeds the available context
+ * size". Ollama 0.35.1 refuses such a request instead of cutting it.
+ */
+export const isContextRefusal = (status: number, body: string): boolean =>
+  status === 400 && body.includes('exceeds the available context size');
+
+/**
  * The names in the model's answer: the JSON array of strings it holds
  * (inside a code fence or not), or undefined if it holds none.
  */

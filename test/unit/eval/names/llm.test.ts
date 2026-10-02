@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { locate, namesMessages, NAMES_PROMPT, parseNames } from '../../../../eval/names/llm.js';
+import {
+  isContextRefusal,
+  locate,
+  namesMessages,
+  NAMES_PROMPT,
+  parseNames,
+} from '../../../../eval/names/llm.js';
 
 describe('namesMessages', () => {
   it('sends the prompt as a system message and the text as the user message', () => {
@@ -51,5 +57,15 @@ describe('locate', () => {
       spans: [],
       invented: 2,
     });
+  });
+});
+
+describe('isContextRefusal', () => {
+  const said =
+    'request (7725 tokens) exceeds the available context size (4096 tokens), try increasing it';
+  it('is a 400 that says the request exceeds the context, and nothing else', () => {
+    expect(isContextRefusal(400, JSON.stringify({ error: { message: said } }))).toBe(true);
+    expect(isContextRefusal(500, said)).toBe(false);
+    expect(isContextRefusal(400, 'model not found')).toBe(false);
   });
 });

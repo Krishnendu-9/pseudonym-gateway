@@ -80,6 +80,19 @@ const softmaxMax = (row: Float32Array): { label: number; probability: number } =
   return { label: best, probability: 1 / sum };
 };
 
+/**
+ * Tokens the model is given for `words`, window by window: each window's
+ * words (a word cut to the core budget, as labelWords cuts it), context
+ * included, plus [CLS] and [SEP].
+ */
+export function fedTokens(words: readonly EncodedWord[], setup: BertSetup): number {
+  const coreBudget = setup.maxTokens - 2 - 2 * setup.context;
+  return windows(words, setup).reduce(
+    (n, w) => n + 2 + words.slice(w.from, w.to).reduce((m, word) => m + fit(word, coreBudget), 0),
+    0,
+  );
+}
+
 /** Each word's label and score, from the model run window by window. */
 export async function labelWords(
   words: readonly EncodedWord[],
