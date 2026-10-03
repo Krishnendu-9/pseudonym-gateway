@@ -34,7 +34,9 @@ import { createRng } from '../../src/synthetic/rng.js';
 import { PUBLISHED_TEST_CARDS } from '../fixtures/published-test-cards.js';
 
 const ROOT = join(import.meta.dirname, '..', '..');
-const SCANNED = ['src', 'test', 'scripts', 'eval', 'README.md'];
+// docs/ is public since 2026-10-03 (the decision record, bug log, testing
+// guide and user manual), so it is held to the same rules.
+const SCANNED = ['src', 'test', 'scripts', 'eval', 'docs', 'README.md'];
 const TEXT_FILE = /\.(ts|js|mjs|cjs|json|md|txt)$/;
 
 function* files(path: string): Generator<string> {
