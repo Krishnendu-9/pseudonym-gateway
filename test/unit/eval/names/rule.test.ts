@@ -8,7 +8,7 @@ import {
   weakRows,
   type Measured,
 } from '../../../../eval/names/rule.js';
-import type { Point } from '../../../../eval/names/spans.js';
+import type { Point } from '../../../../src/detection/names/spans.js';
 
 /** Metrics with R = hit / 100, rows given, `fp` plain-text over-redactions per 1,000 words. */
 function metrics(hit: number, rows: Record<string, [number, number]> = {}, fp = 0): Metrics {

@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
-  fedTokens,
   labelWords,
   personSpans,
   windows,
   type BertSetup,
   type EncodedWord,
-} from '../../../../eval/names/token-classification.js';
+} from '../../../../src/detection/names/token-classification.js';
+import { fedTokens } from '../../../../eval/names/token-classification.js';
 
 const LABELS = ['O', 'B-PER', 'I-PER', 'B-LOC'];
 // 12 tokens a window: 10 after [CLS] and [SEP], a core of 6 and 2 of context a side.

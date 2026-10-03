@@ -9,7 +9,7 @@ import {
   type GlinerFeeds,
   type GlinerSetup,
 } from '../../../../eval/names/gliner.js';
-import type { EncodedWord } from '../../../../eval/names/token-classification.js';
+import type { EncodedWord } from '../../../../src/detection/names/token-classification.js';
 
 const SETUP: GlinerSetup = {
   clsId: 1,

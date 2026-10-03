@@ -5,7 +5,7 @@ import {
   CUES_AFTER,
   CUES_BEFORE,
   hasCue,
-} from '../../../../eval/names/cues.js';
+} from '../../../../src/detection/names/cues.js';
 
 /** hasCue for the span of `word` in `text` (its first occurrence). */
 const cued = (text: string, word: string): boolean => {

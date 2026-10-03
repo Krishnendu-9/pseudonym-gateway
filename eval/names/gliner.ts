@@ -13,8 +13,8 @@
 // Long texts are cut into windows of at most `maxWords` words and
 // `maxTokens` tokens, without overlap, as GLiNER.js does.
 
-import type { ScoredSpan } from './spans.js';
-import type { EncodedWord } from './token-classification.js';
+import type { ScoredSpan } from '../../src/detection/names/spans.js';
+import type { EncodedWord } from '../../src/detection/names/token-classification.js';
 
 export interface GlinerSetup {
   readonly clsId: number;

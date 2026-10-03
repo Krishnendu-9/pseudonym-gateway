@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { detectionsAt, grid, merge, widenToWords } from '../../../../eval/names/spans.js';
+import { detectionsAt, merge, widenToWords } from '../../../../src/detection/names/spans.js';
+import { grid } from '../../../../eval/names/spans.js';
 
 describe('widenToWords', () => {
   it('widens a piece of a word to the whole word, on both sides', () => {

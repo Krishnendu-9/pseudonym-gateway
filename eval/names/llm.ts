@@ -3,7 +3,7 @@
 // text: every whole-word occurrence becomes a span (score 1), and a name
 // that is not in the text at all is counted as invented.
 
-import type { ScoredSpan } from './spans.js';
+import type { ScoredSpan } from '../../src/detection/names/spans.js';
 
 export const NAMES_PROMPT =
   "List every person's name in the user's text, exactly as it is written there. " +

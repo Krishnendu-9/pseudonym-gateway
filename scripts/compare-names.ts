@@ -28,7 +28,7 @@
 // live outside the repo, in --runtime; they are not project dependencies.
 //
 // Wiring only (files in, processes, text out); every decision is in a
-// tested module under eval/names.
+// tested module under eval/names or src/detection/names.
 
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -40,7 +40,7 @@ import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { parseArgs } from 'node:util';
 import { generateCases } from '../eval/generate.js';
 import { loadHeldOut } from '../eval/held-out.js';
-import { listSpans } from '../eval/names/gazetteer.js';
+import { listSpans } from '../src/detection/names/gazetteer.js';
 import {
   glinerFedTokens,
   glinerPrompt,
@@ -54,15 +54,17 @@ import { isContextRefusal, locate, namesMessages, parseNames } from '../eval/nam
 import { compareCard, parseCard } from '../eval/names/gliner-card.js';
 import { fpPer1000, measure, share, type Metrics } from '../eval/names/measure.js';
 import { choosePoint, decide, failedLimits, LIMITS, type Measured } from '../eval/names/rule.js';
-import { detectionsAt, grid, merge, type Point, type ScoredSpan } from '../eval/names/spans.js';
+import { grid } from '../eval/names/spans.js';
+import { fedTokens } from '../eval/names/token-classification.js';
+import { glinerWords } from '../eval/names/words.js';
+import { detectionsAt, merge, type Point, type ScoredSpan } from '../src/detection/names/spans.js';
 import {
-  fedTokens,
   labelWords,
   personSpans,
   type BertSetup,
   type EncodedWord,
-} from '../eval/names/token-classification.js';
-import { bertWords, glinerWords, type Word } from '../eval/names/words.js';
+} from '../src/detection/names/token-classification.js';
+import { bertWords, type Word } from '../src/detection/names/words.js';
 import type { LabelledCase } from '../eval/types.js';
 import { WIKIDATA_NAMES } from '../src/synthetic/wikidata-names.js';
 import { leftoverMutation } from './mutation-marker.js';

@@ -2,7 +2,7 @@
 // model run: a change here after one needs its own note in ADR-035.
 
 import { fpPer1000, JUDGED_GROUPS, share, type Metrics } from './measure.js';
-import type { Point } from './spans.js';
+import type { Point } from '../../src/detection/names/spans.js';
 
 /** Hard limits: a candidate over any of them is not eligible. */
 export const LIMITS = {

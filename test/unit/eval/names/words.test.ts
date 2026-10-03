@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { bertWords, glinerWords, type Word } from '../../../../eval/names/words.js';
+import { bertWords, type Word } from '../../../../src/detection/names/words.js';
+import { glinerWords } from '../../../../eval/names/words.js';
 
 const texts = (words: readonly Word[]): string[] => words.map((w) => w.text);
 

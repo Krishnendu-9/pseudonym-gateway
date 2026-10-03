@@ -2,7 +2,7 @@
 // name list is needed and no full name is written here).
 
 import { describe, expect, it } from 'vitest';
-import { listSpans, words } from '../../../../eval/names/gazetteer.js';
+import { listSpans, words } from '../../../../src/detection/names/gazetteer.js';
 
 const LIST: ReadonlySet<string> = new Set(['zorvan', 'quellik', 'तारोमी']);
 const found = (text: string): string[] =>
