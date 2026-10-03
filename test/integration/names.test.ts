@@ -275,6 +275,26 @@ describe('names on: when names cannot be found, the request is refused and the p
     expect(g.provider.requests).toHaveLength(0);
   });
 
+  it('a model held past the timeout: health is 503 until the call ends, then ok again', async () => {
+    const running = gate();
+    const model = new FakeNameModel(() => running.promise);
+    const { gateway: g } = await namesGateway(model, { timeoutMs: 20, maxQueue: 0 });
+    expect((await post(g, body)).statusCode).toBe(503);
+    // Node's timer clock is coarser than performance.now(): wait a little
+    // past the timeout before asking.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const held = await g.app.inject({ method: 'GET', url: '/health' });
+    expect(held.statusCode).toBe(503);
+    expect(held.json()).toEqual({ status: 'unhealthy' });
+    model.answer = (texts) => texts.map(() => []);
+    running.open([[]]);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect((await g.app.inject({ method: 'GET', url: '/health' })).json()).toEqual({
+      status: 'ok',
+    });
+    expect(g.provider.requests).toHaveLength(0);
+  });
+
   it('also when streaming: the 503 comes before any byte of a stream', async () => {
     const { gateway: g } = await namesGateway(
       new FakeNameModel(() => {

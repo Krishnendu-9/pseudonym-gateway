@@ -2677,6 +2677,41 @@ installed. `libphonenumber-js` is pinned with a tilde (`~1.13.14`, ADR-004)
 so that patch releases bring new metadata; a release that makes a 10-digit
 mobile range invalid, or a shorter number valid, makes them real
 mutants that no test catches. Their checks are cheap (seconds) and are
-worth repeating whenever the lockfile moves that package. M9 needs no new
+worth repeating whenever the lockfile moves that package.
+
+**Done the same day:** the package is now pinned exactly (`"1.13.14"`,
+recorded in ADR-036 next to the runtime pin, with ADR-004 marked
+superseded), and both facts are a test,
+`test/unit/detection/phone-metadata.test.ts` (S6: every 5-digit prefix
+60000–99999 with two endings is valid; S4: 40,000 random 6- to 9-digit
+numbers starting 6–9, none valid; 2.1 s). A bump that breaks either fails
+the suite. M9 needs no new
 mutant: its filter is now exercised by the pinned bug-58 tests, and the
 PERSON cut beside it by `redact-names.test.ts`.
+
+### After the step 3 review (2026-10-03)
+
+**Health under a held model.** `names.test.ts` (unit): a model held past
+the timeout is unhealthy until the call ends, then healthy and serving
+again; a model that answers in time stays healthy with the queue full.
+`integration/names.test.ts`: the same through `GET /health` (503, then
+ok), the provider never called. The tests wait 5 ms past a 20 ms timeout
+before asking: Node's timer clock is coarser than `performance.now()`.
+
+**The token widening, measured (generated set only).** Scratch copies of
+`src/` and `eval/` (the held-out file not copied), B's spans from the
+saved 6a run `D:\pseudonym-6a\runs\2026-10-03-join-after\B.json`, the real
+finder path (`nameSpans` with the gazetteer: 933 name detections over
+1,998 messages, D0's count, so the saved spans line up with today's
+messages), then `detect()` as it is against a copy where PERSON is
+widened only to digit runs. Result: 11 messages with more redacted, 64
+characters (57 visible), 0 with less; the breakdown is in ADR-037's
+amendment. Printed: counts, character classes, which side of the name,
+the generated labels and shape tags of the values the extra characters
+fall in; never text.
+
+**Which form comes back.** `redact-names.test.ts`, "one name written
+several ways": requests of up to four texts, each with up to four
+mentions of three names in six forms that share a value key; every
+placeholder must restore the first form written (a verbatim slice of the
+request) and every mention must come back in it (500 runs).

@@ -264,6 +264,11 @@ other dependencies. Its patch releases mostly update the phone-number metadata
 stale. `package-lock.json` still makes installs reproducible, and a patch
 update is a deliberate `npm update` that shows up in review.
 
+> **Superseded (2026-10-03):** now pinned exactly, `"1.13.14"`, because
+> two mutation judgements and every published PHONE number rest on this
+> version's metadata. Reasoning and the bump procedure: ADR-036, under
+> "The runtime is pinned exactly" ([ADR-036](#adr-036)).
+
 _Measured cost (2026-09-28, Node 22.17.1, this dev machine)._ Pseudonym is a
 Node server, not a browser bundle, so the numbers that matter are what
 `import 'libphonenumber-js/max'` actually loads, plus time and memory:
@@ -1162,6 +1167,17 @@ overlap: 0 of 139,986 probes (every tag, both separators, every index
 (mutation M9, testing guide). Kept for now as a guard for Phase 5 detectors
 (IFSC, UPI, secrets), whose shapes are not known yet. Decide in Phase 5:
 keep it plus a sampled "no detector overlaps a literal" test, or remove it.
+
+> **Correction (2026-10-03, bug-log 58):** the filter was never
+> unreachable. The probes placed a placeholder-shaped text and values near
+> each other, never glued to each other. Glued, a detection reaches into
+> the literal through steps that run after a pattern matches: the safety
+> net joins digits across `[` and `]` and takes the glued token (ADR-011,
+> ADR-029), a keyword secret's value runs to the next blank (ADR-022), and
+> an email's local part may start with a combining mark in the `]`'s
+> cluster. The filter then dropped that detection whole and its value was
+> sent. Mutation M9 survived for the same reason the probes missed it. See
+> bug-log 58 and [ADR-037](#adr-037).
 
 **Test data:** generated Aadhaar/PAN/email/phone values (ADR-009) are
 compared with `assertTextEqualQuietly` (`test/support/quiet-text.ts`) rather
@@ -2448,6 +2464,15 @@ tests were final.
 - ADR-013's literal-overlap filter stays unreachable: a UPI name cannot
   contain `[` or `]`, so no UPI detection can overlap `[TYPE_N]`.
 
+  > **Correction (2026-10-03, bug-log 58):** the conclusion is wrong. A
+  > UPI detection itself still never overlaps a literal (probed with
+  > `[PAN_1]` glued before and after a UPI ID), but the filter is reachable:
+  > a UPI ID whose name starts with a digit right after `[PAN_1]` makes the
+  > safety net take the literal's `1` as digits joined to it (ADR-029), and
+  > that NUMBER overlaps the literal; keyword secrets, emails and glued
+  > numbers reach it too. The overlapping detection was dropped whole and
+  > its value sent. See bug-log 58 and [ADR-037](#adr-037).
+
 **Amendment to ADR-003 (2026-10-01):** "validated" for UPI means a known
 handle (item 2). UPI takes its listed place between PHONE and EMAIL.
 
@@ -2655,6 +2680,14 @@ counts should be read for the generated set only.
   measures that.
 - ADR-013's literal-overlap filter stays unreachable: an IFSC cannot
   contain `[` or `]`.
+
+  > **Correction (2026-10-03, bug-log 58):** the conclusion is wrong. An
+  > IFSC detection itself still never overlaps a literal (probed with
+  > `[PAN_1]` glued before and after a code, and after a keyword), but the
+  > filter is reachable through other types: the safety net's joined
+  > digits, keyword secrets, emails and glued numbers. The overlapping
+  > detection was dropped whole and its value sent. See bug-log 58 and
+  > [ADR-037](#adr-037).
 
 ---
 
@@ -2958,6 +2991,15 @@ it never ran.
 - MAC addresses are not a detected type and are sent as written.
 - ADR-013's literal-overlap filter stays unreachable: an address cannot
   contain `[` or `]` (brackets end a run).
+
+  > **Correction (2026-10-03, bug-log 58):** the conclusion is wrong. An
+  > address detection itself still never overlaps a literal (probed with
+  > `[PAN_1]` glued before and after IPv4 and IPv6 addresses), but an
+  > address right after `[PAN_1]` makes the safety net take the literal's
+  > `1` as digits joined to it (ADR-029), and that NUMBER overlaps the
+  > literal; keyword secrets, emails and glued numbers reach it too. The
+  > overlapping detection was dropped whole and its value sent. See
+  > bug-log 58 and [ADR-037](#adr-037).
 
 **Mutation checks:** 52, one at a time with the 15-minute limit (the
 testing guide has the table). The first run was cut off by a usage limit
@@ -4617,6 +4659,23 @@ below). The exact pin closes that gap: the lockfile's hash is checked by
    The same applies to `@huggingface/tokenizers`, whose token ids feed the
    model.
 
+**`libphonenumber-js` is pinned exactly too (2026-10-03, after step 3).**
+The same hazard for a different input: ADR-004 pinned it with a tilde on
+purpose, so that patch releases would bring new phone-number metadata. But
+two mutations of the spaced-mobile detector, S4 and S6, are equivalent
+only because of facts in that metadata (no 6- to 9-digit number starting
+6 to 9 is valid for India; every 10-digit one is), and every published
+PHONE number was measured with it. A patch release could change either
+fact or any number without a code change. So `package.json` and the
+lockfile's root entry now say `"1.13.14"` (the version already installed;
+nothing was installed or upgraded), and the two facts are a test
+(`test/unit/detection/phone-metadata.test.ts`). **To bump it:** change the
+exact version, nothing else in the same commit; the metadata test, the
+whole suite and `npm run eval` must pass; if any evaluation count moves,
+accept it with a note here saying it came from the metadata, not from
+tuning. The cost, accepted: validation goes stale until someone bumps it,
+which ADR-004 had wanted to avoid.
+
 ### (b) How the model file reaches a machine
 
 1. **Committed to the repo.** Not possible for B: 178.5 MB is over GitHub's
@@ -4971,10 +5030,11 @@ Decided by this ADR:
   behind it.
 - A model call that fails is a 503 for that request only; the detector
   stays healthy. Only a crash (the model's `onCrash`; in step 4, the
-  worker's exit) is permanent. So a model that hangs for ever keeps health
-  "ok" while every request times out or finds the queue full; step 4
-  decides whether a timed-out worker is terminated, which would make it a
-  crash.
+  worker's exit) is permanent. ~~So a model that hangs for ever keeps
+  health "ok" while every request times out or finds the queue full.~~
+  **Superseded by the amendment below:** a model held past the timeout
+  makes health unhealthy until the call ends. Step 4 decides whether a
+  timed-out worker is terminated, which would make it a crash.
 - `timeoutMs` and `maxQueue` have no defaults: step 4 sets them from its
   measurements. Until then `main.ts` refuses to start with names on
   (`NAME_MODEL_LOAD_FAILED`), through the same `nameFinder` wiring step 4
@@ -5067,3 +5127,50 @@ worker and measured values for `timeoutMs` and `maxQueue`. The README and
 the user manual describe names as wired but not available yet. Bug 58's
 options are with the user; deciding it also decides bug 59's names-off
 rule.
+
+### Amendment after step 3 (2026-10-03, the user's review)
+
+**Health reflects the ability to serve, not only the absence of a crash
+(decided by the user, rule proposed here).** A model that hangs used to
+leave health "ok" while every request got a 503. Rule: `healthy` is false
+once the model has crashed (permanent, until the process restarts), **and
+while the model is held by a call that has run longer than `timeoutMs`**.
+Such a call's own request has already been refused, nothing else can run
+until it ends, so every request meanwhile times out or finds the queue
+full. Health is true again when the call ends. A full queue behind a model
+that still answers in time stays healthy: that is load, and each refused
+request already gets its 503. Whether a held call is interrupted (which
+would make it a crash) stays a step 4 question. Tested in
+`test/unit/gateway/names.test.ts` and through `GET /health`.
+
+**The token widening, measured on the unmodified generated set.** B's
+saved 6a spans (`2026-10-03-join-after`, generated set only) through the
+real finder path (933 name detections, exactly D0's count, so the spans
+line up), `detect()` with the token widening against a copy without it
+(PERSON widened only to digit runs, like every type): **11 of 1,998
+messages have more redacted, 64 more characters (57 visible), none less.**
+
+| What the widening added                                                                                     | Messages | Characters       |
+| ----------------------------------------------------------------------------------------------------------- | -------- | ---------------- |
+| Digits glued after letters B called a name, in a labelled **passport (3) or voter ID (1)**: sent without it | 4        | 35 (7 invisible) |
+| The same in a labelled lookalike (product code, batch, ticket code, SKU)                                    | 4        | 26               |
+| A validated IFSC (2) or a keyword secret (1) the model's span reached into, taken into the name             | 3        | 3 (a space each) |
+
+So it is not zero. In 4 messages it closes a partial leak of a real value
+(the model took the letters of a passport or voter number as a name, and
+the digits glued to them went out); in 4 it over-redacts a code; in 3 a
+value keeps being redacted but is typed PERSON instead of IFSC or SECRET,
+with the space between them. Recorded, not changed.
+
+**Which form comes back when one name is written several ways.** One
+value key per name (case, spacing, full width and invisible characters
+ignored), so one placeholder, and it restores to **the first form written
+in the request**, in `requestTexts` order (messages, then stop sequences):
+`ASHA RAO` first, then `Asha Rao` later, and both places come back as
+`ASHA RAO`. So it can restore a form that was not at that position, but
+never a form the request did not contain: the value is a verbatim slice
+of the text where the name was first seen. This is ADR-013's rule for
+every type; for names it is tested by the property "every placeholder
+restores the first form written, a verbatim slice of the request, in every
+later place" (`redact-names.test.ts`), and the echo measurement counts it
+as "back with a later mention as first written".

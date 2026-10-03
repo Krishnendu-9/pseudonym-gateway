@@ -817,8 +817,9 @@ restoration safety, the placeholder instruction). The timeout covers the
 whole call when not streaming; when streaming it applies to each wait (for
 the first chunk, then between chunks), so a long answer that keeps arriving
 is never cut off by it. `GET /health` answers `{"status":"ok"}`; with
-person names on it answers 503 `{"status":"unhealthy"}` once the name model
-has crashed, until the process is restarted
+person names on it answers 503 `{"status":"unhealthy"}` while the name model
+is held by a call past its timeout, and from a crash on, until the process
+is restarted
 ([ADR-037](docs/decisions.md#adr-037)).
 
 ## Continuous integration

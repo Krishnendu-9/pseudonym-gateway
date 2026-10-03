@@ -238,6 +238,72 @@ describe('names off, and the text-identity check', () => {
   });
 });
 
+describe('one name written several ways: which form comes back (ADR-013)', () => {
+  // Forms of one name that share its value key: case, spacing, full width,
+  // a soft hyphen.
+  const FORMS: readonly ((name: string) => string)[] = [
+    (n) => n,
+    (n) => n.toUpperCase(),
+    (n) => n.toLowerCase(),
+    (n) => n.replace(' ', '  '),
+    (n) => n.replace(/[A-Za-z]/gu, (c) => String.fromCodePoint(c.codePointAt(0)! + 0xfee0)),
+    (n) => `${n.slice(0, 2)}\u00AD${n.slice(2)}`,
+  ];
+  const NAMES = ['Asha Rao', 'Ravi Iyer', 'Meena Das'];
+  const mention = fc.record({ name: fc.nat(NAMES.length - 1), form: fc.nat(FORMS.length - 1) });
+  const request = fc.array(fc.array(mention, { minLength: 1, maxLength: 4 }), {
+    minLength: 1,
+    maxLength: 4,
+  });
+
+  it('every placeholder restores the first form written, a verbatim slice of the request, in every later place', () => {
+    assertPropertyQuietly(
+      fc.property(request, (texts) => {
+        const mapping = new PlaceholderMapping();
+        const firstForm = new Map<number, string>();
+        const built = texts.map((mentions) => {
+          let text = 'Note:';
+          const spans: Span[] = [];
+          const written: { name: number; start: number; end: number }[] = [];
+          for (const m of mentions) {
+            text += ' ';
+            const form = FORMS[m.form]!(NAMES[m.name]!);
+            if (!firstForm.has(m.name)) firstForm.set(m.name, form);
+            spans.push({ start: text.length, end: text.length + form.length });
+            written.push({ name: m.name, start: text.length, end: text.length + form.length });
+            text += form;
+          }
+          return { text: `${text}.`, spans, written };
+        });
+        const redacted = built.map(({ text, spans }) =>
+          redactMessage(text, mapping, { text, spans }),
+        );
+        // Each name is one placeholder, numbered by first appearance, and
+        // restores to its first form, which is in the request as written.
+        const order = [...firstForm.keys()];
+        for (const [index, name] of order.entries()) {
+          const entry = mapping.lookup('PERSON', index + 1);
+          if (entry === undefined || entry.value !== firstForm.get(name)) return false;
+          if (!built.some(({ text }) => text.includes(entry.value))) return false;
+        }
+        if (mapping.lookup('PERSON', order.length + 1) !== undefined) return false;
+        // The round trip: every mention comes back in its name's first form.
+        return built.every(({ text, written }, i) => {
+          let expected = '';
+          let cursor = 0;
+          for (const w of written) {
+            expected += text.slice(cursor, w.start) + firstForm.get(w.name)!;
+            cursor = w.end;
+          }
+          expected += text.slice(cursor);
+          return restore(redacted[i]!, mapping) === expected;
+        });
+      }),
+      { numRuns: 500 },
+    );
+  });
+});
+
 describe('known gap, bug-log 58: a value glued to a typed placeholder is sent whole (names off too)', () => {
   // Pinned as it is, so that a fix shows up as a deliberate change here.
   // Digits are kept short of anything a detector would call a real value.

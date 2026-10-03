@@ -1198,7 +1198,9 @@ What names on will do (ADR-037):
   model failed, did not answer in time, is busy with too many requests, or
   has crashed. After a crash every request is refused and `GET /health`
   answers 503 `{"status":"unhealthy"}` until the gateway is restarted; it
-  does not restart the model by itself.
+  does not restart the model by itself. Health is also 503 while the model
+  is still busy with a call that has run past the timeout (nothing can be
+  served meanwhile), and ok again when that call ends.
 - The model's restoration rules are the usual ones: `[PERSON_1]` in any
   case and `PERSON_1` / `Person_1` are restored; `Person 1` is not (it is
   ordinary English).

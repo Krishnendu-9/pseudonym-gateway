@@ -183,6 +183,36 @@ describe('NameDetector: fail closed, always a 503 (ADR-036)', () => {
     expect(d.healthy).toBe(false);
   });
 
+  it('a model held past the timeout is unhealthy until the call ends, then healthy again', async () => {
+    const running = gate();
+    const model = new FakeNameModel(() => running.promise);
+    const d = detector(model, { timeoutMs: 20, maxQueue: 0 });
+    const a = d.find(['a']);
+    expect(d.healthy).toBe(true);
+    expect(await outcome(a)).toBe('timeout');
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(d.healthy).toBe(false);
+    // Meanwhile nothing can be served.
+    expect(await outcome(d.find(['b']))).toBe('queue_full');
+    running.open([[]]);
+    await tick();
+    await tick();
+    expect(d.healthy).toBe(true);
+    model.answer = (texts) => texts.map(() => []);
+    expect(await outcome(d.find(['c']))).toBe('resolved');
+  });
+
+  it('a model that answers in time stays healthy, even with the queue full', async () => {
+    const running = gate();
+    const d = detector(new FakeNameModel(() => running.promise), { maxQueue: 0 });
+    const a = d.find(['a']);
+    expect(await outcome(d.find(['b']))).toBe('queue_full');
+    expect(d.healthy).toBe(true);
+    running.open([[]]);
+    expect(await outcome(a)).toBe('resolved');
+    expect(d.healthy).toBe(true);
+  });
+
   it('a request that timed out while running stays a timeout when the model then crashes', async () => {
     const running = gate();
     const model = new FakeNameModel(() => running.promise);

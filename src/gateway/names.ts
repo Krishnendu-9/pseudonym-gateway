@@ -14,7 +14,8 @@
 // A request that times out while the model is working on it stops waiting,
 // but the model is not interrupted (it cannot be), so the next request
 // starts only when the model has finished: a timeout never lets work pile
-// up behind a busy model.
+// up behind a busy model. While the model is held that way, past the
+// timeout, health says unhealthy, and recovers when the call ends.
 
 import { createHash } from 'node:crypto';
 import { GAZETTEER } from '../detection/names/gazetteer.js';
@@ -58,6 +59,8 @@ export class NameDetector implements NameFinder {
   readonly #queue: Job[] = [];
   #running: Job | undefined;
   #busy = false;
+  /** When the model started its current call (performance.now()). */
+  #busySince = 0;
   #crashed = false;
 
   constructor(model: NameModel, options: NameDetectorOptions, list: ReadonlySet<string>) {
@@ -67,9 +70,18 @@ export class NameDetector implements NameFinder {
     model.onCrash(() => this.#crash());
   }
 
-  /** False once the model has crashed; it stays false until the process restarts. */
+  /**
+   * Whether the detector can serve names now. False once the model has
+   * crashed, until the process restarts. Also false while the model is held
+   * by a call that has run longer than timeoutMs: that call's request has
+   * already been refused, nothing else can run until it ends, so every
+   * request meanwhile times out or finds the queue full. True again when
+   * the call ends. A full queue behind a model that still answers in time
+   * is load, not inability, and stays healthy.
+   */
   get healthy(): boolean {
-    return !this.#crashed;
+    const held = this.#busy && performance.now() - this.#busySince >= this.#options.timeoutMs;
+    return !this.#crashed && !held;
   }
 
   find(texts: readonly string[], signal?: AbortSignal): Promise<NameSpans[]> {
@@ -96,6 +108,7 @@ export class NameDetector implements NameFinder {
     const job = this.#queue.shift();
     if (!job) return;
     this.#busy = true;
+    this.#busySince = performance.now();
     this.#running = job;
     let answer: Promise<unknown>;
     try {
