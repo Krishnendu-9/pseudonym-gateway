@@ -56,6 +56,10 @@ export default defineConfig({
         },
       },
     ],
+    // `npm run test:coverage` runs with --maxWorkers=4 (package.json): half
+    // the memory at no measured cost in time. A mitigation, not a proven fix:
+    // the failures it guards against came from memory taken outside the
+    // test run (bug-log 57).
     coverage: {
       provider: 'v8',
       // The evaluation's code decides what the published numbers are, so it
