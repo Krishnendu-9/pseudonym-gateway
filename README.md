@@ -88,32 +88,39 @@ What Pseudonym is being built to do:
 - **OpenAI-compatible API.** `POST /v1/chat/completions`; switch by changing the
   base URL and the model name. Every request field is on an allowlist:
   message text and `stop` are redacted, numeric settings are forwarded,
-  `user` is dropped, and anything else is rejected rather than forwarded.
+  `user` is dropped, and anything else is rejected rather than forwarded
+  ([ADR-014](docs/decisions.md#adr-014)).
 - **Stateless by design.** Chat APIs resend the full history on every request, so
   Pseudonym re-pseudonymises it deterministically each time. The same value
   always gets the same placeholder (`[EMAIL_1]` in every message), without
-  storing anything between requests.
+  storing anything between requests ([ADR-012](docs/decisions.md#adr-012),
+  [ADR-013](docs/decisions.md#adr-013)).
 - **India-aware detection.** Aadhaar (Verhoeff check digit), PAN, UPI IDs
   (known app and bank handles) and IFSC codes (bank codes from RBI's list)
   alongside emails, phone numbers, card numbers (Luhn check) and IPv4 and
   IPv6 addresses (a hand-written parser). Passport numbers, voter IDs and
   dates of birth only next to a word naming them: their shapes alone are
-  every other order code and date.
+  every other order code and date ([ADR-010](docs/decisions.md#adr-010),
+  [ADR-024](docs/decisions.md#adr-024), [ADR-025](docs/decisions.md#adr-025),
+  [ADR-026](docs/decisions.md#adr-026), [ADR-031](docs/decisions.md#adr-031)).
 - **Unicode-hardened.** Digits in any script (full-width, mathematical,
   Devanagari, Bengali, Tamil and every other Unicode decimal digit) are
   normalised, and invisible characters that can hide data (zero-width spaces,
   soft hyphens, direction marks) are removed before detection. Values are still
-  replaced in the original text, so a hidden value is replaced completely.
+  replaced in the original text, so a hidden value is replaced completely
+  ([ADR-007](docs/decisions.md#adr-007)).
 - **Placeholder instruction.** Pseudonym can add one short system message
   asking the model to copy placeholders exactly, since a placeholder the
   model rewrites ("email 1") cannot be restored. Off by default
   (`PSEUDONYM_PLACEHOLDER_INSTRUCTION`): measured on the demo model, it
-  did not help (see "What a real model does with placeholders").
+  did not help (see "What a real model does with placeholders";
+  [ADR-017](docs/decisions.md#adr-017)).
 - **Streaming.** `stream: true` returns OpenAI-style server-sent events
   (with `stream_options.include_usage` if asked). Placeholders split across
   streamed chunks (`[CAR` + `D_1]`) are restored correctly, holding back
   at most 16 characters and only while the text could still become a
-  placeholder. A property test checks that any way of cutting an answer
+  placeholder ([ADR-018](docs/decisions.md#adr-018),
+  [ADR-019](docs/decisions.md#adr-019)). A property test checks that any way of cutting an answer
   gives exactly the same result as restoring it whole. If the provider
   fails after the stream has started, the client gets what was already
   decided, then an `error` event (the same fixed messages as an HTTP
@@ -121,7 +128,8 @@ What Pseudonym is being built to do:
 - **Injection-aware.** Values are not restored inside URLs, markdown links or
   HTML attributes, or where they would become part of a hostname
   (`CARD_1.attacker.example`), blocking a known image-URL exfiltration trick.
-  This covers that one path, not prompt injection in general.
+  This covers that one path, not prompt injection in general
+  ([ADR-013](docs/decisions.md#adr-013), [ADR-018](docs/decisions.md#adr-018)).
 - **Proof.** Built: no-leak tests, streaming and non-streaming (seeded
   histories full of planted values through the real gateway to a recording
   mock provider; none may arrive in any form), and canary tests (every error
@@ -131,7 +139,8 @@ What Pseudonym is being built to do:
   tests; an evaluation (`npm run eval`) that scores the detectors on a
   seeded, generated dataset and on a held-out adversarial one, counts what
   restoration safety leaves unrestored when a model echoes every message,
-  and fails if any count differs from the recorded baseline.
+  and fails if any count differs from the recorded baseline
+  ([ADR-021](docs/decisions.md#adr-021), [ADR-033](docs/decisions.md#adr-033)).
 
 ## Supported data types
 
@@ -160,7 +169,19 @@ protect real data.
 | Date of birth                       | a real calendar date in a common form, only near "DOB", "birth", "born", "birthday", जन्म or "janm"/"janam"                                                                                   | redacted |
 | Person names                        | local NER model                                                                                                                                                                               | planned  |
 
-Which detected matches count:
+Why each type is checked the way it is: phone numbers
+[ADR-004](docs/decisions.md#adr-004); checks and keywords
+[ADR-010](docs/decisions.md#adr-010); the 9+-digit safety net
+[ADR-011](docs/decisions.md#adr-011); secrets
+[ADR-022](docs/decisions.md#adr-022); UPI IDs
+[ADR-024](docs/decisions.md#adr-024); IFSC codes
+[ADR-025](docs/decisions.md#adr-025); IP addresses
+[ADR-026](docs/decisions.md#adr-026); passport numbers, voter IDs and
+dates of birth [ADR-031](docs/decisions.md#adr-031); person names
+[ADR-035](docs/decisions.md#adr-035) and
+[ADR-036](docs/decisions.md#adr-036).
+
+Which detected matches count ([ADR-010](docs/decisions.md#adr-010)):
 
 - **Validated** (passes the checks above): always.
 - **Right shape, failed checks** (for example an Aadhaar with a typo in its
@@ -241,7 +262,8 @@ hai`): when the way it is written says it is a value. That is: after `=`;
   bracket, `+`, a dot or a hyphen to a detected value are taken however few
   (`<mobile>(12345`), since they were written as one number.
 
-**When readings overlap.** A checked value wins over an unchecked one, then
+**When readings overlap** ([ADR-003](docs/decisions.md#adr-003),
+[ADR-029](docs/decisions.md#adr-029)). A checked value wins over an unchecked one, then
 the reading with more letters and digits (separators do not count), then the
 type order. A reading that wholly contains the winners it touches replaces
 them: `<PAN>.x@example.com` is one email, `token: abc-<mobile>` one secret.
@@ -261,7 +283,8 @@ Digits in any script (Devanagari, Bengali, Tamil, full-width…) and numbers
 split by invisible characters are detected. Detection fails closed: a value
 found inside a longer number takes the whole number with it (up to where
 the next value starts: two values in one stretch of digits keep two
-placeholders), and no input is skipped for being too long.
+placeholders), and no input is skipped for being too long
+([ADR-010](docs/decisions.md#adr-010), [ADR-028](docs/decisions.md#adr-028)).
 
 **Mobiles written in two groups of five** are found even with other digits
 beside them (`Room 3 <mobile>`, `<mobile> 411038`, two mobiles side by
@@ -277,7 +300,8 @@ containing a digit (`Q1`) 5 → 130, in 68 of the 200 tables; two rows of
 three 5-digit amounts 1 → 151; two rows of a row number and two amounts
 25 → 80. Two 5-digit amounts per row were already read as phone numbers
 before this (763 in 200 tables, unchanged). Amounts written with commas
-(`65,000`, `1,25,000`) and plain 6-digit amounts are not affected.
+(`65,000`, `1,25,000`) and plain 6-digit amounts are not affected
+([ADR-027](docs/decisions.md#adr-027)).
 
 **Numbers wrapped onto the next line** (`2345 6789`, a line break, `0123`)
 are read as one number when only one line break (LF or CRLF, with at most
@@ -295,9 +319,10 @@ of the 200 messages; three 4-digit codes per line 96 → 155; one 6-digit
 number per line 0 → 70, in 55 messages; one 5-digit number per line with
 "phone" in the first line 0 → 539, in all 200. Statements, logs, addresses,
 numbered steps, dates and amounts written with commas, one per line, are
-not affected (0 before and after).
+not affected (0 before and after) ([ADR-030](docs/decisions.md#adr-030)).
 
-**Secrets are found in two ways and no third.** There is no entropy
+**Secrets are found in two ways and no third**
+([ADR-022](docs/decisions.md#adr-022)). There is no entropy
 scanning: a random-looking string with no known prefix and no credential
 word directly before it is sent as written. So are a password made only of
 letters when it is written in a sentence ("my password is sunshine"), a
@@ -328,8 +353,8 @@ standard, RFC 5322, but not issued by mail providers) is redacted only from
 the character after the last of them: `a/b@example.com` sends `a/`. This
 is a deliberate trade, so that an address inside a URL
 (`https://a.example/?id=priya@example.com`) is redacted alone and the URL
-stays a URL. **Short
-personal identifiers need their word:** a passport number, voter ID or date
+stays a URL ([ADR-034](docs/decisions.md#adr-034)). **Short
+personal identifiers need their word** ([ADR-031](docs/decisions.md#adr-031)): a passport number, voter ID or date
 of birth with no keyword within 40 characters is sent as written (the
 safety net needs 9 digits). Nor are these caught with one: a passport
 number with a space after its letter, voter IDs in the older state formats,
@@ -343,7 +368,7 @@ before a long number (`1 23456789(12345`) leave the lone digit visible: the
 safety net does not join across spaces, and widening the number over them
 was measured to redact the quantity and price columns of tables (on
 2026-10-01: 4,893 digits redacted instead of 5 in 200 tables of an id, a
-quantity and a price per row). **IP addresses:** one written
+quantity and a price per row; [ADR-029](docs/decisions.md#adr-029)). **IP addresses:** one written
 inside a host name (`<address>.nip.io`, reverse-DNS names) is not
 recognised; an address with a prefix length whose digits also read as a
 valid phone number (some `203.x.x.x/24`) is replaced as a phone number,
@@ -361,7 +386,8 @@ letter for one digit in 500 generated values of each type: 208 of 494 Aadhaar nu
 mobiles); postal addresses; and vehicle registration numbers. The
 evaluation's case format cannot express any of the four yet
 ([eval/HELD-OUT-FORMAT.md](eval/HELD-OUT-FORMAT.md), "Not expressible
-yet"), so neither dataset contains them.
+yet"), so neither dataset contains them
+([ADR-021](docs/decisions.md#adr-021)).
 
 ## Measured results
 
@@ -525,7 +551,7 @@ The counts are recorded in `eval/baseline.json` and act as thresholds: both
 datasets are deterministic, so `npm run eval` fails if any count is worse
 than recorded, and also if one is better until the record is updated. A
 worse count can only be accepted with a written reason, which is kept in
-that file.
+that file ([ADR-021](docs/decisions.md#adr-021)).
 
 The echo table is the cost of restoration safety in the best case, a model
 that repeats every placeholder exactly. In the generated main cases 7 of
@@ -544,7 +570,7 @@ and the `](` reads as a link target. The rules added for streaming (an
 unclosed `<` or `="`, the host rule) hold nothing back in the generated
 set, which has no such text. Every message comes back exactly with the
 rules switched off. A model that rewrites or drops placeholders is a
-separate measurement.
+separate measurement ([ADR-033](docs/decisions.md#adr-033)).
 
 **Known costs of restoration safety** (values the user sees as
 placeholders, not as the real value): any placeholder inside a URL, a
@@ -555,7 +581,8 @@ because Pseudonym's own bracket followed by `(` reads as a link target; and
 as an HTML attribute, so `API_KEY = "[SECRET_1]"` stays unrestored. The
 echo table above cannot show that last one, because neither dataset
 contains code; the model measurement below found it (2 of 34 values in one
-task).
+task) ([ADR-018](docs/decisions.md#adr-018),
+[ADR-033](docs/decisions.md#adr-033)).
 
 How the held-out set was made, stated exactly: it was drafted with AI
 assistance in a separate session that did not write the detectors, then
@@ -568,7 +595,8 @@ several points. Its format is described in
 [eval/HELD-OUT-FORMAT.md](eval/HELD-OUT-FORMAT.md). That format cannot yet
 express some things people really write: numbers spelled out in words, letters
 standing in for digits in scanned text (O for 0, l for 1), postal addresses
-and vehicle numbers. None of those is measured, and none is detected.
+and vehicle numbers. None of those is measured, and none is detected
+([ADR-021](docs/decisions.md#adr-021)).
 
 ### What a real model does with placeholders
 
@@ -589,7 +617,7 @@ below therefore rests on a single task out of 15. With the instruction
 off, the model often wrote placeholders without their brackets (`EMAIL_1`), which restoration reads anyway. The 2 held back were
 code, `API_KEY = "[SECRET_1]"` (a known cost, above). No answer
 rewrote a placeholder into a form restoration cannot read, and none made
-one up. By a rule fixed before measuring (ADR-017: keep the instruction
+one up. By a rule fixed before measuring ([ADR-017](docs/decisions.md#adr-017): keep the instruction
 only if it leaves fewer values unrestored and invents no more), the
 instruction is off by default. This is one model; other models may differ.
 
@@ -602,7 +630,7 @@ restoration does not read.
 ### Choosing a person-name detector (Phase 6a)
 
 Measured on 2026-10-03, on one machine (Intel i5-12450H, no GPU), by a
-rule fixed before any model ran (ADR-035): recall on the generated set's
+rule fixed before any model ran ([ADR-035](docs/decisions.md#adr-035)): recall on the generated set's
 612-name block of at least 60% to ship at all, and three limits for being
 on by default: at most 1.0 false positive per 1,000 words (over the whole
 generated set, 1,998 messages), at most 60 ms per KiB of text, at most
@@ -652,7 +680,9 @@ what Phase 6 builds, **off by default** behind `PSEUDONYM_NAMES`. It
 fails the false-positive limit by 5.85 times (about one wrongly redacted
 word in every 170) and the speed limit. Names in all lower case are
 almost never found (3 of 59). Until Phase 6 is built, names are not
-detected.
+detected. How the model runtime, the model file and the name list will
+reach a machine, and what the held-out figure depends on, is
+[ADR-036](docs/decisions.md#adr-036).
 
 **Observed after the measurement, not before:** B alone meets both
 accuracy requirements (62.5% of names, 0.96 false positives per 1,000
@@ -668,7 +698,7 @@ rule was not changed after seeing this.
 
 Pseudonym handles text chat messages (system, user and assistant roles),
 streamed or not. Everything else is **rejected with a 4xx error**, never
-forwarded unredacted:
+forwarded unredacted ([ADR-014](docs/decisions.md#adr-014)):
 
 - a message `name` (names cannot be redacted until Phase 6);
 - tool/function calls and tool messages, the `developer` role;
@@ -679,7 +709,8 @@ forwarded unredacted:
 - a `model` other than the one Pseudonym is configured for;
 - **any request field Pseudonym does not know**;
 - other endpoints (embeddings, `/v1/models`, …), bodies over 256 KiB, and
-  anything that is not `application/json`.
+  anything that is not `application/json` (the body limit:
+  [ADR-015](docs/decisions.md#adr-015)).
 
 The `user` and `safety_identifier` fields are accepted and dropped: they
 exist to identify the end user to the provider. Error messages never repeat
@@ -695,7 +726,8 @@ is about 130,000 to 160,000 tokens: room for a 32,768-token answer after as
 many reasoning tokens (13.4 to 16.3 MiB, depending on the model name and
 the script). These figures are computed from Ollama's chunk format, and a
 recorded stream from Ollama 0.35.0 matches them: 516,575 bytes in 2,335
-events, 2,332 of them tokens, about 221 bytes per token.
+events, 2,332 of them tokens, about 221 bytes per token
+([ADR-020](docs/decisions.md#adr-020)).
 
 ## Threat model (summary)
 
@@ -718,12 +750,13 @@ manipulates answers (only the URL-exfiltration path is mitigated).
 exists only in memory for one request, and is never logged, stored or put in
 an error. It is not encrypted (the key would sit in the same process), and
 JavaScript strings cannot be reliably wiped, so someone who can read the
-process's memory can read values. In production (`NODE_ENV=production`)
+process's memory can read values ([ADR-012](docs/decisions.md#adr-012)). In production (`NODE_ENV=production`)
 Pseudonym refuses to start if the debugger, heap snapshots or diagnostic
 reports could be switched on, or, on Linux, if core dumps are enabled or
 `--disable-sigusr1` is missing. It cannot stop a host that pipes core dumps
 to a handler (the kernel then ignores the limit; Pseudonym warns), and it can
-verify none of this on Windows or macOS. Production means Linux.
+verify none of this on Windows or macOS. Production means Linux
+([ADR-016](docs/decisions.md#adr-016)).
 
 Logs contain the method, route, status and timing of each request, never a
 body, a URL or an error message.
@@ -758,7 +791,11 @@ files at a time (one in CI), and they need the machine mostly to themselves. Mea
 on 2026-10-02: run alongside two other test suites, they failed 5 ratio
 checks and timed out 6 times in two runs (178 checks); on their own, one
 or three files at a time, they passed all 890 checks in 10 runs. A failure
-prints its input sizes and every run's time.
+prints its input sizes and every run's time
+([ADR-023](docs/decisions.md#adr-023), [ADR-032](docs/decisions.md#adr-032)).
+Any test can also time out when the machine is short of memory (bug-log 57
+in the [bug log](docs/bug-log.md)): check free memory before a full run, as
+the [testing guide](docs/testing-guide.md) describes.
 
 Point your OpenAI client at `http://127.0.0.1:3000/v1` and use the same model
 name as `PSEUDONYM_MODEL`; requests naming any other model are rejected.
@@ -778,7 +815,8 @@ typecheck, lint, format check, the tests with coverage (the run fails below
 timing tests as their own step, then `npm run eval`, which fails if any
 count moves from `eval/baseline.json` or the README's results block is out
 of date. The timing tests run one file at a time there: the three at a time
-used locally was measured on 12 cores, and the runner has 4.
+used locally was measured on 12 cores, and the runner has 4
+([ADR-032](docs/decisions.md#adr-032)).
 
 Not covered by CI:
 
@@ -794,6 +832,18 @@ Not covered by CI:
 - **One platform and one Node version**: Linux with Node 22.23.3, not
   Windows or macOS, and not the oldest version `engines` allows (22.20).
 - **Docker** does not exist yet (Phase 8).
+
+## Documentation
+
+- [Decision record](docs/decisions.md): every design decision as a short
+  ADR (context, options, decision, consequences), ADR-001 onwards. Its
+  provenance note says what the git history does and does not show about
+  when each was written.
+- [Bug log](docs/bug-log.md): real bugs found during development, each with
+  its root cause and the test that now guards it.
+- [Testing guide](docs/testing-guide.md): how every part is tested, with the
+  mutation checks that show the tests can fail.
+- [User manual](docs/user-manual.md): how each part works, phase by phase.
 
 ## Tech stack
 
