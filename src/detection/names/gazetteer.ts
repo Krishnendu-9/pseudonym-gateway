@@ -13,6 +13,7 @@
 // Wikidata lists, which shares no name with the dataset's `eval` half, so
 // on the generated set rule 2 does nearly all the work.
 
+import { WIKIDATA_NAMES } from '../../synthetic/wikidata-names.js';
 import { CUES_AFTER, CUES_BEFORE } from './cues.js';
 import type { ScoredSpan } from './spans.js';
 
@@ -155,3 +156,15 @@ export function listSpans(text: string, list: ReadonlySet<string>): ScoredSpan[]
   }
   return spans;
 }
+
+/**
+ * F's list as measured in 6a: the `gazetteer` half, Latin spellings lower
+ * case, Devanagari as written (moved from scripts/compare-names.ts, ADR-036).
+ */
+export const GAZETTEER: ReadonlySet<string> = new Set(
+  Object.values(WIKIDATA_NAMES).flatMap((r) =>
+    [...r.gazetteerGiven, ...r.gazetteerFamily].flatMap(([latin, devanagari]) =>
+      devanagari === undefined ? [latin.toLowerCase()] : [latin.toLowerCase(), devanagari],
+    ),
+  ),
+);

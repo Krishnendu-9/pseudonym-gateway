@@ -40,7 +40,8 @@ import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { parseArgs } from 'node:util';
 import { generateCases } from '../eval/generate.js';
 import { loadHeldOut } from '../eval/held-out.js';
-import { listSpans } from '../src/detection/names/gazetteer.js';
+import { GAZETTEER, listSpans } from '../src/detection/names/gazetteer.js';
+import { joinDetections, NO_SCORE } from '../src/detection/names/join.js';
 import {
   glinerFedTokens,
   glinerPrompt,
@@ -66,7 +67,6 @@ import {
 } from '../src/detection/names/token-classification.js';
 import { bertWords, type Word } from '../src/detection/names/words.js';
 import type { LabelledCase } from '../eval/types.js';
-import { WIKIDATA_NAMES } from '../src/synthetic/wikidata-names.js';
 import { leftoverMutation } from './mutation-marker.js';
 
 const REPO = resolve(import.meta.dirname, '..');
@@ -320,14 +320,6 @@ function llmCandidate(): Find {
     return found.spans;
   };
 }
-
-const GAZETTEER: ReadonlySet<string> = new Set(
-  Object.values(WIKIDATA_NAMES).flatMap((r) =>
-    [...r.gazetteerGiven, ...r.gazetteerFamily].flatMap(([latin, devanagari]) =>
-      devanagari === undefined ? [latin.toLowerCase()] : [latin.toLowerCase(), devanagari],
-    ),
-  ),
-);
 
 async function candidate(id: CandidateId): Promise<Loaded> {
   if (id === 'A' || id === 'B') return bertCandidate(id);
@@ -748,8 +740,6 @@ function findFor(
   return (text) => detectionsAt(text, byText.get(text) ?? [], point);
 }
 
-const NO_SCORE: Point = { high: 0.5 };
-
 function measured(cases: readonly LabelledCase[], result: ChildResult): Measured {
   const scoreCases = result.namesBlockOnly
     ? cases.filter((c) => c.tags.includes('shape:names'))
@@ -780,7 +770,7 @@ function combine(
   const f = findFor(cases, list, NO_SCORE);
   const metrics: Metrics = measure(
     m.partial ? cases.filter((c) => c.tags.includes('shape:names')) : cases,
-    (text) => merge([...a(text), ...f(text)]),
+    (text) => joinDetections(a(text), f(text)),
   );
   return {
     id: `${m.id}+F`,
