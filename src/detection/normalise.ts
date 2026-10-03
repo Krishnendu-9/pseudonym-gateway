@@ -123,6 +123,21 @@ export class NormalisedText {
   }
 }
 
+/**
+ * Throws unless `a` and `b` map every normalised code unit to the same
+ * source range: the same length, the same offset map. Two texts that differ
+ * only in characters that normalise one to one (a literal and its filler,
+ * detect.ts) are aligned, so an offset in one is the same place in the other.
+ */
+export function checkAligned(a: NormalisedText, b: NormalisedText): void {
+  if (a.text.length !== b.text.length) throw new Error('checkAligned: lengths differ');
+  for (let i = 0; i < a.text.length; i++) {
+    const x = a.toOriginal({ start: i, end: i + 1 });
+    const y = b.toOriginal({ start: i, end: i + 1 });
+    if (x.start !== y.start || x.end !== y.end) throw new Error('checkAligned: offsets differ');
+  }
+}
+
 /** The first index whose value passes `test`, which fails and then passes along `values`. */
 function firstIndex(values: readonly number[], test: (value: number) => boolean): number {
   let lo = 0;

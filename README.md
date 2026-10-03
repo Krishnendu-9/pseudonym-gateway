@@ -482,22 +482,23 @@ _Measured on 2026-10-03 (UTC date) by `npm run eval`. This block is generated, a
 | SECRET  | 153    | 147/153 (96.0%)     | 0               | 147/153 (96.0%)     | 147/147 (100.0%)       | 98.0%  | 0               |
 | PERSON  | 153    | 0/153 (0.0%)        | 0               | 0/153 (0.0%)        | -                      | -      | 0               |
 
-**Generated dataset, shape block** (1921 labelled personal values, in cases apart from the main ones). Each row is a way of writing values that is hard on purpose: a line break inside a value, a value split across two messages, two values side by side, digits beside a mobile, a checked value inside an address or key, digits joined by a bracket, passport and voter ID numbers and dates of birth, contact sheets of mobiles in columns (aligned, and with one row out of line), values inside markup (a URL, a markdown link or image, an HTML tag), and person names written the ways people write them, beside words that are not names (Phase 6). These rows measure hard layouts one at a time; they are not part of the numbers above.
+**Generated dataset, shape block** (2017 labelled personal values, in cases apart from the main ones). Each row is a way of writing values that is hard on purpose: a line break inside a value, a value split across two messages, two values side by side, digits beside a mobile, a checked value inside an address or key, digits joined by a bracket, passport and voter ID numbers and dates of birth, contact sheets of mobiles in columns (aligned, and with one row out of line), values inside markup (a URL, a markdown link or image, an HTML tag), and person names written the ways people write them, beside words that are not names (Phase 6). These rows measure hard layouts one at a time; they are not part of the numbers above.
 
-| Written as       | Values | Redacted (any type) | Partly redacted | Recall (right type) | Over-redactions |
-| ---------------- | ------ | ------------------- | --------------- | ------------------- | --------------- |
-| line-break       | 120    | 113/120 (94.1%)     | 0               | 112/120 (93.3%)     | 12              |
-| message-split    | 60     | 0/60 (0.0%)         | 2               | 0/60 (0.0%)         | 0               |
-| side-by-side     | 80     | 80/80 (100.0%)      | 0               | 66/80 (82.5%)       | 5               |
-| digit-beside     | 40     | 40/40 (100.0%)      | 0               | 40/40 (100.0%)      | 4               |
-| contained        | 70     | 70/70 (100.0%)      | 0               | 70/70 (100.0%)      | 9               |
-| joined-digits    | 30     | 21/30 (70.0%)       | 9               | 6/30 (20.0%)        | 4               |
-| short-id         | 459    | 305/459 (66.4%)     | 0               | 304/459 (66.2%)     | 25              |
-| contact-sheet    | 120    | 120/120 (100.0%)    | 0               | 120/120 (100.0%)    | 0               |
-| misaligned-sheet | 132    | 132/132 (100.0%)    | 0               | 132/132 (100.0%)    | 0               |
-| in-markup        | 90     | 90/90 (100.0%)      | 0               | 90/90 (100.0%)      | 8               |
-| names            | 612    | 0/612 (0.0%)        | 0               | 0/612 (0.0%)        | 79              |
-| glued-literal    | 108    | 105/108 (97.2%)     | 0               | 92/108 (85.1%)      | 41              |
+| Written as         | Values | Redacted (any type) | Partly redacted | Recall (right type) | Over-redactions |
+| ------------------ | ------ | ------------------- | --------------- | ------------------- | --------------- |
+| line-break         | 120    | 113/120 (94.1%)     | 0               | 112/120 (93.3%)     | 12              |
+| message-split      | 60     | 0/60 (0.0%)         | 2               | 0/60 (0.0%)         | 0               |
+| side-by-side       | 80     | 80/80 (100.0%)      | 0               | 66/80 (82.5%)       | 5               |
+| digit-beside       | 40     | 40/40 (100.0%)      | 0               | 40/40 (100.0%)      | 4               |
+| contained          | 70     | 70/70 (100.0%)      | 0               | 70/70 (100.0%)      | 9               |
+| joined-digits      | 30     | 21/30 (70.0%)       | 9               | 6/30 (20.0%)        | 4               |
+| short-id           | 459    | 305/459 (66.4%)     | 0               | 304/459 (66.2%)     | 25              |
+| contact-sheet      | 120    | 120/120 (100.0%)    | 0               | 120/120 (100.0%)    | 0               |
+| misaligned-sheet   | 132    | 132/132 (100.0%)    | 0               | 132/132 (100.0%)    | 0               |
+| in-markup          | 90     | 90/90 (100.0%)      | 0               | 90/90 (100.0%)      | 8               |
+| names              | 612    | 0/612 (0.0%)        | 0               | 0/612 (0.0%)        | 79              |
+| glued-literal      | 108    | 105/108 (97.2%)     | 0               | 92/108 (85.1%)      | 41              |
+| keyword-in-literal | 96     | 96/96 (100.0%)      | 0               | 96/96 (100.0%)      | 0               |
 
 **Held-out adversarial dataset** (drafted with AI assistance in a separate session that did not write the detectors, then reviewed by the author; never run against the detectors before it was committed, and never used for tuning; 80 messages in 76 cases, 118 labelled personal values).
 
@@ -522,9 +523,9 @@ _Measured on 2026-10-03 (UTC date) by `npm run eval`. This block is generated, a
 
 | Echoed unchanged                                    | Generated, main   | Shape block: in-markup | Shape block: other shapes | Held-out      |
 | --------------------------------------------------- | ----------------- | ---------------------- | ------------------------- | ------------- |
-| Messages                                            | 600               | 90                     | 1416                      | 80            |
-| Placeholders                                        | 1667              | 98                     | 1242                      | 74            |
-| Restored                                            | 1660/1667 (99.5%) | 26/98 (26.5%)          | 1233/1242 (99.2%)         | 70/74 (94.5%) |
+| Messages                                            | 600               | 90                     | 1512                      | 80            |
+| Placeholders                                        | 1667              | 98                     | 1437                      | 74            |
+| Restored                                            | 1660/1667 (99.5%) | 26/98 (26.5%)          | 1428/1437 (99.3%)         | 70/74 (94.5%) |
 | Left: in a markdown link or image target            | 0                 | 18                     | 9                         | 0             |
 | Left: after "[label]:"                              | 0                 | 9                      | 0                         | 0             |
 | Left: in a quoted HTML attribute value              | 0                 | 18                     | 0                         | 2             |
@@ -533,7 +534,7 @@ _Measured on 2026-10-03 (UTC date) by `npm run eval`. This block is generated, a
 | Left: rest of the text after an unclosed `="`       | 0                 | 0                      | 0                         | 0             |
 | Left: host rule (`[TYPE_N].x`)                      | 0                 | 0                      | 0                         | 0             |
 | `Type N` text, never restored (ADR-013)             | 0                 | 0                      | 0                         | 0             |
-| Messages back exactly                               | 600               | 90                     | 1416                      | 80            |
+| Messages back exactly                               | 600               | 90                     | 1512                      | 80            |
 | Messages back with a later mention as first written | 0                 | 0                      | 0                         | 0             |
 | Messages not restored correctly                     | 0                 | 0                      | 0                         | 0             |
 

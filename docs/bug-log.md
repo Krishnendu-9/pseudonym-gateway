@@ -2480,3 +2480,26 @@ Document it.
 
 **Tests:** none pinned yet; the generated set counts the 3 values as
 missed SECRETs, so a fix shows as a better count.
+
+**Follow-up (same day): option 2 built, measured, and stopped before
+anything else.** `redactMessage` now detects on the text with each
+literal replaced, unit for unit, by U+2591 (ADR-038). The guard passed:
+no generated count outside `glued-literal` moved (that shape's echo went
+222 to 225: these 3 values are now redacted), and the whole suite,
+restoration included, passed. Two findings:
+
+- **It does not replace bug 58's cut-around.** With literals masked,
+  detections still reach into a literal's positions: in the generated set
+  SECRET 18 and EMAIL 6 (of 108 texts with a literal); in 100,000 fuzzed
+  texts SECRET 9,611, EMAIL 96, NUMBER 142, and without combining marks
+  only SECRET (10,357). A keyword secret's value runs to the next blank,
+  and the filler is not blank; a combining mark after a literal shares
+  the filler's cluster.
+- **It hides keywords the user did write**, which is what stopped it. A
+  value that is only found with a keyword nearby, whose only keyword is
+  inside a placeholder-shaped text (`replace [AADHAAR_1] with <value>`),
+  was redacted before and is now sent: 1,200 of 1,200 probed (200 each
+  for AADHAAR failing its check, PASSPORT, VOTER, IFSC at an unknown
+  bank, UPI at an unknown handle, DOB); with the keyword also written
+  outside the placeholder, 0. The generated set has no such case outside
+  the new shape, so no count showed it. Waiting for the user.

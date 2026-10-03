@@ -243,6 +243,13 @@
         "partial": 0,
         "typed": 92,
         "overRedactions": 41
+      },
+      "keyword-in-literal": {
+        "values": 96,
+        "redacted": 96,
+        "partial": 0,
+        "typed": 96,
+        "overRedactions": 0
       }
     },
     "echo": {
@@ -464,8 +471,8 @@
       },
       "glued-literal": {
         "messages": 108,
-        "placeholders": 222,
-        "restored": 222,
+        "placeholders": 225,
+        "restored": 225,
         "heldBack": {
           "markdown-destination": 0,
           "reference-label": 0,
@@ -477,6 +484,24 @@
           "bare-space": 0
         },
         "exact": 108,
+        "firstForm": 0,
+        "broken": 0
+      },
+      "keyword-in-literal": {
+        "messages": 96,
+        "placeholders": 192,
+        "restored": 192,
+        "heldBack": {
+          "markdown-destination": 0,
+          "reference-label": 0,
+          "html-attribute": 0,
+          "url": 0,
+          "unclosed-angle": 0,
+          "unclosed-quote": 0,
+          "host": 0,
+          "bare-space": 0
+        },
+        "exact": 96,
         "firstForm": 0,
         "broken": 0
       }
@@ -850,6 +875,14 @@
       "note": "ADR-037: glued-literal shape added (108 values glued to placeholder-shaped text, bug-log 58's class); dataset change only, detectors unchanged",
       "changes": [
         "generated shape glued-literal: over-redactions 35 -> 41"
+      ]
+    },
+    {
+      "date": "2026-10-03",
+      "note": "ADR-038: keyword-in-literal shape added (96 values whose only keyword is inside a placeholder; dataset change); glued-literal echo restored 222 -> 225 is bug-log 61's fix (detection reads no value in a literal)",
+      "changes": [
+        "generated shape keyword-in-literal: 0 values -> 96",
+        "generated echo keyword-in-literal: 0 messages -> 96"
       ]
     }
   ]

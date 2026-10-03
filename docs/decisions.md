@@ -5262,3 +5262,139 @@ digit as joined to the value; the text sent keeps the literal there) and
 9 filler lookalikes. **Open, for the user:** the scores measure what
 `detect()` finds, not what is sent; scoring the text `redactMessage`
 sends would make the leak counts themselves see this class of bug.
+
+<a id="adr-038"></a>
+
+## ADR-038: Detection never reads placeholder-shaped text, and the evaluation counts what is sent (2026-10-03; bug-logs 58 and 61)
+
+**Status.** Decided by the user (bug-log 61, option 2; and the scoring
+question left open in ADR-037). This entry is written in two parts: the
+plan and its guard first, before any measurement; the results after.
+
+### Part 1: detection reads no literal (bug-log 61, option 2)
+
+**Decision.** `redactMessage` runs `detect()` on the text with every
+literal (placeholder-shaped text, ADR-002) replaced, code unit for code
+unit, by a filler character, so offsets do not move. The hole is not in
+one detector but in letting any detector read placeholder text: the
+keyword secret took `[pan` as its value (bug 61), the safety net joined
+the literal's digit to the value next to it, and a literal such as
+`[Aadhaar 2]` could supply the keyword another type needs. Patching the
+secret detector alone would leave the others to be found one at a time.
+
+**The filler: U+2591 `░`** (Symbol, Other). Not a letter, digit or mark,
+so it is never glue or part of a token; in no detector's alphabet (email
+local part, UPI name, IP, JWT and base64url, digit runs and the safety
+net's joiners); not blank, so it does not join spaced digits or end a
+line; not invisible (normalisation would remove it and glue its
+neighbours); unchanged by NFKC; it cannot form a value or a keyword.
+
+**Guard, fixed before measuring (the user's).** If any generated count
+outside the `glued-literal` shape moves, or any restoration behaviour
+changes (a restoration test, or an echo count outside that shape), stop
+and report instead of going on: the change alters the detection input of
+every request, so an unrelated count moving means it did more than
+intended.
+
+**Whether it replaces bug 58's cut-around rule:** to be measured. A
+keyword secret's value runs to the next blank, filler included, and a
+mark after a literal shares the filler's cluster, so some detections may
+still reach into a literal's positions; name spans come from outside
+`detect()`.
+
+**Result (2026-10-03): built, guard passed, stopped for a decision.** The
+guard's two conditions held (only the `glued-literal` echo moved, 222 to
+225; every test passed). But masking hides keywords the user wrote: a
+value found only with a keyword, whose only keyword is inside a
+placeholder-shaped text, is now sent (1,200 of 1,200 probed; bug-log 61
+follow-up). And it does not replace the cut-around: keyword secret values
+and combining marks still reach into a literal's positions. Part 2 not
+started.
+
+**Part 1 as built (2026-10-03, the user's option 1: mask the values, keep
+the keywords).** `detect(original, names, hidden)` takes the literal spans
+and builds the masked copy itself (`maskSpans`). **Values are matched in
+the masked copy; the keyword check (`hasContext`, the only keyword check
+outside a detector's own pattern) reads the original**, at the same
+offsets. The correspondence is structural, not hoped for: `maskSpans`
+changes one code unit for one and `checkMasked` verifies its output (the
+same length; every position that differs is inside a span and holds the
+filler), and `checkAligned` verifies that the two normalisations have the
+same offset map, which holds because a literal's characters normalise one
+to one (ASCII, and the long s `ſ` that case-insensitive matching lets
+stand for an `s` in IFSC, PASSPORT, SECRET and PERSON: NFKC makes it
+`s`). A failed check throws, refusing the request (a 500), never reading
+the wrong place. Each check is its own function, tested directly with bad
+input, since by construction no request can reach a throw.
+
+**Intended behaviour, not a side effect:** a type word inside a
+placeholder acts as a keyword for a value near it, so `[AADHAAR_1]
+12345678` may redact those digits, and `replace [AADHAAR_1] with <a
+number that fails the check>` redacts the number. That is over-redaction,
+the safe direction, and it is how detection behaved before masking.
+
+**Measured.** The 1,200 probe values (keyword only inside a placeholder):
+0 sent (masking alone sent all 1,200). Bug 61: fixed (`password: [pan
+1]<value>` goes out as `password: [LITERAL_1][SECRET_1]`). A secret whose
+keyword is only inside a placeholder (`[SECRET_1] = <value>`) is sent
+before and after alike: the keyword secret needs its value directly after
+the word, a documented limit, not this change. The guard held: the only
+generated count that moved was the `glued-literal` echo (222 to 225).
+
+**The cut-around stays.** With literals masked, detections still reach
+into a literal's positions (keyword secret values, which run to the next
+blank, filler included; a combining mark after a literal, which shares
+the filler's cluster), so masking does not replace the cut-around; the two do
+different things: masking keeps detectors from reading a literal, the
+cut-around keeps a detection from covering one.
+
+**New generated shape, `keyword-in-literal`: 96 cases, 12 per type**
+(AADHAAR and CARD that fail their checks, a PAN that fails its check, an
+IFSC at an unknown bank, a UPI ID at an unknown handle, PASSPORT, VOTER,
+DOB): a value whose only keyword is the type word inside a placeholder,
+in three spellings (`[TYPE_1]`, `[type 2]`, `[Type_3]`) and six layouts
+(before and after the value), twelve distinct pairs per type, with no
+filler sentence. Measured on scratch copies: today 0 of 96 sent; with the
+masking-only version 93 sent; with the placeholder replaced by a word
+that is no keyword, 93 sent (the other 3 are cards whose first 12 digits
+pass the Aadhaar check: found without any keyword). Accepted as a changed
+dataset.
+
+<a id="adr-039"></a>
+
+## ADR-039: Standing requirement: a change to the detection path is checked by fuzz for "nothing redacted before is sent now" (2026-10-03)
+
+**Status.** A standing requirement, set by the user.
+
+**Requirement.** Any change to the detection path (a detector, the
+pipeline in `detect()`, normalisation, `redactMessage`, the literal
+handling, the name path) is checked, **against fuzz rather than the
+generated set**, for one invariant: **nothing the code redacted before the
+change is sent after it.** The check runs the code before and after the
+change (scratch copies of `src/`, never `git stash` or `git checkout`) on
+generated random texts built from pieces that combine values, keywords,
+placeholder-shaped text, separators, joiners, combining marks, invisible
+characters and characters that normalisation expands or merges, and
+counts texts where a value (or any character of it) went out after the
+change but not before. Any such text is a finding to explain before the
+change goes on; the generated counts passing is not enough.
+
+**Why: the generated set only sees shapes it already contains.** Its
+counts move only for texts like the ones written into it, and three times
+now a real change in what is sent was invisible to them:
+
+1. **Bug 58's class:** values glued to placeholder-shaped text were sent
+   whole, and the eval was green; the fix changed 9,089 of 100,000 fuzzed
+   texts and no generated count (bug-log 58).
+2. **The glued-literal shapes themselves:** they had to be added to the
+   generated set after the fact (ADR-037), and the first draft still
+   measured the wrong thing for two templates until a fuzz-style check
+   compared them with and without the literal.
+3. **The 1,200:** masking literals hid keywords written inside them, and
+   1,200 of 1,200 probed values that had been redacted were sent, with no
+   generated count moving (bug-log 61, ADR-038).
+
+**Consequence.** The fuzz is part of the evidence for a detection change,
+reported with it (texts, what changed, what was sent that was not
+before). New generated shapes are still added for every class it finds,
+so that the eval guards the class from then on.

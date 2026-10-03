@@ -221,7 +221,9 @@ export function redactMessage(
   reserveLooseVariants(text, literalSpans, mapping);
 
   const nameSpans = names && outsideLiterals(text, names.spans, literalSpans);
-  const detectionSpans: ReplacementSpan[] = detect(text, nameSpans)
+  // Literals are hidden from value matching, not from the keyword check
+  // (ADR-038).
+  const detectionSpans: ReplacementSpan[] = detect(text, nameSpans, literalSpans)
     .flatMap((d) => {
       if (!overlapsAny(literalSpans, d.start, d.end)) return [d];
       // Cut around the literal, never dropped: what lies outside it is
@@ -230,7 +232,13 @@ export function redactMessage(
     })
     .map((d) => {
       const value = text.slice(d.start, d.end);
-      return { start: d.start, end: d.end, namespace: d.type, key: valueKey(d.type, value), value };
+      return {
+        start: d.start,
+        end: d.end,
+        namespace: d.type,
+        key: valueKey(d.type, value),
+        value,
+      };
     });
 
   const spans = [...literalSpans, ...detectionSpans].sort((a, b) => a.start - b.start);

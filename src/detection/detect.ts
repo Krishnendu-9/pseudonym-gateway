@@ -13,7 +13,7 @@ import { dobCandidates } from './dob.js';
 import { emailCandidates } from './email.js';
 import { ifscCandidates } from './ifsc.js';
 import { ipCandidates } from './ip.js';
-import { normalise, type Span } from './normalise.js';
+import { checkAligned, normalise, type Span } from './normalise.js';
 import { unclaimedNumbers } from './number.js';
 import { compareCandidates, resolveOverlaps } from './overlap.js';
 import { panCandidates } from './pan.js';
@@ -44,16 +44,80 @@ const DETECTORS: readonly ((text: string) => Iterable<Candidate>)[] = [
 const PATTERN_ONLY: ReadonlySet<DetectionType> = new Set(['EMAIL']);
 
 /**
+ * What a hidden span's characters become before values are matched
+ * (ADR-038): U+2591, a symbol no detector reads as part of a value, a
+ * keyword or a token, that is not blank, not invisible, and unchanged by
+ * normalisation.
+ */
+export const MASK_FILLER = String.fromCharCode(0x2591);
+
+/**
+ * `text` with every code unit inside `spans` (sorted, not overlapping)
+ * replaced by MASK_FILLER. The result is checked, not trusted: the same
+ * length, and every position where it differs from `text` is inside a span
+ * and holds the filler. Anything else is a bug, and throws.
+ */
+export function maskSpans(text: string, spans: readonly Span[]): string {
+  if (spans.length === 0) return text;
+  let masked = '';
+  let cursor = 0;
+  for (const span of spans) {
+    masked += text.slice(cursor, span.start) + MASK_FILLER.repeat(span.end - span.start);
+    cursor = span.end;
+  }
+  masked += text.slice(cursor);
+  checkMasked(text, masked, spans);
+  return masked;
+}
+
+/**
+ * Throws unless `masked` is `text` with characters inside `spans` (sorted,
+ * not overlapping) replaced by MASK_FILLER and nothing else changed: the
+ * same length, and every position where the two differ inside a span and
+ * holding the filler.
+ */
+export function checkMasked(text: string, masked: string, spans: readonly Span[]): void {
+  if (masked.length !== text.length) throw new Error('maskSpans: the length changed');
+  let next = 0;
+  for (let i = 0; i < text.length; i++) {
+    if (masked[i] === text[i]) continue;
+    while (next < spans.length && spans[next]!.end <= i) next++;
+    const span = spans[next];
+    if (!span || span.start > i || masked[i] !== MASK_FILLER) {
+      throw new Error('maskSpans: a change outside a span');
+    }
+  }
+}
+
+/**
  * Finds personal values in `original`. Spans index into `original`, in text
  * order. `names` are person names the name finder found in `original`, in
  * its offsets (ADR-037): each is brought into the normalised text with
  * toNormalised, widened to the whole token it is part of, and resolved
  * with everything else, as PERSON. A name that covers only invisible
  * characters has nothing to hide and is dropped.
+ *
+ * `hidden` are spans no detector may read a value in: the placeholder-shaped
+ * literals of the text (ADR-038). Values are matched in a copy where each
+ * of their code units is MASK_FILLER; whether a keyword is near a value is
+ * read in `original`, so a type word inside a placeholder still counts
+ * (`[AADHAAR_1] <number>`: over-redaction, the safe direction).
  */
-export function detect(original: string, names?: readonly Span[]): Detection[] {
-  const normalised = normalise(original);
+export function detect(
+  original: string,
+  names?: readonly Span[],
+  hidden: readonly Span[] = [],
+): Detection[] {
+  const masked = maskSpans(original, hidden);
+  const normalised = normalise(masked);
   const text = normalised.text;
+  // The keyword check reads the original, at the same offsets: aligned by
+  // construction (one filler unit per literal unit, and a literal's
+  // characters normalise one to one), and checked, so that a mismatch
+  // refuses the request instead of reading the wrong place.
+  const readFrom = masked === original ? normalised : normalise(original);
+  if (readFrom !== normalised) checkAligned(normalised, readFrom);
+  const contextText = readFrom.text;
   const runs = digitRuns(text);
 
   const accepted: Detection[] = [];
@@ -64,7 +128,7 @@ export function detect(original: string, names?: readonly Span[]): Detection[] {
         kept.push(candidate);
         continue;
       }
-      const context = candidate.context ?? hasContext(text, candidate, candidate.type);
+      const context = candidate.context ?? hasContext(contextText, candidate, candidate.type);
       if (candidate.validated || context || PATTERN_ONLY.has(candidate.type)) {
         accepted.push({ ...candidate, context });
       }
