@@ -49,8 +49,7 @@ const PATTERN_ONLY: ReadonlySet<DetectionType> = new Set(['EMAIL']);
  * its offsets (ADR-037): each is brought into the normalised text with
  * toNormalised, widened to the whole token it is part of, and resolved
  * with everything else, as PERSON. A name that covers only invisible
- * characters has nothing to hide and is dropped. Without `names` (names
- * off) the pipeline is exactly the one Phase 5 measured.
+ * characters has nothing to hide and is dropped.
  */
 export function detect(original: string, names?: readonly Span[]): Detection[] {
   const normalised = normalise(original);
@@ -91,8 +90,8 @@ export function detect(original: string, names?: readonly Span[]): Detection[] {
   // still beats an Aadhaar found in its first 12 digits) and no part of a
   // number is left visible; but never past its neighbours (ADR-028). Then
   // the safety net claims long numbers nobody else did (ADR-011). Finally
-  // map back, and resolve once more: rounding out to whole clusters could,
-  // in principle, make two neighbours share a character.
+  // map back, and resolve once more: rounding out to whole clusters can
+  // make two neighbours share a character (resolveRounded).
   const widenOne = (d: Detection): Span =>
     d.type === 'IP'
       ? widenAddress(text, d, runs)
@@ -111,18 +110,16 @@ export function detect(original: string, names?: readonly Span[]): Detection[] {
   const claimed = resolveOverlaps([...final, ...kept.filter((k) => !overlapsAny(final, k))]);
   const numbers = unclaimedNumbers(text, claimed).map((d) => ({ ...d, context: false }));
   const mapped = [...final, ...numbers].map((d) => ({ ...d, ...normalised.toOriginal(d) }));
-  return names === undefined ? resolveOverlaps(mapped) : resolveRounded(mapped);
+  return resolveRounded(mapped);
 }
 
 /**
- * The last overlap pass with names on, after rounding out to whole clusters
- * made two neighbours share a character (a name and an email glued across
- * the 18 letters U+FDFA becomes; a card and an email on either side of a
- * "½"). The plain rule drops the loser whole, and its value is sent. Here
- * the loser keeps its parts outside the winners instead, whatever the
- * types: a name can be lost in a clash it is not part of, when its letters
- * went to the loser. Names off keeps the plain rule (bug-log 59), to be
- * unified when bug 58 is decided.
+ * The last overlap pass, after rounding out to whole clusters made two
+ * neighbours share a character (a name and an email glued across the 18
+ * letters U+FDFA becomes; a card and an email on either side of a "½").
+ * The plain rule would drop the loser whole and send its value. Here the
+ * loser keeps its parts outside the winners instead, whatever the types
+ * (bug-log 59, made the rule for every request with bug 58).
  */
 export function resolveRounded(mapped: readonly Detection[]): Detection[] {
   const winners = resolveOverlaps(mapped);

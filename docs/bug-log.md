@@ -2280,7 +2280,7 @@ that span are the Ollama app's version and model-list checks at 10:42, an
 internal scheduling line at 12:27, and the `ollama ps` itself at 12:57.
 The swing came from something else; still not attributed.
 
-## 58. A value glued to a typed placeholder was sent whole (2026-10-03, found in Phase 6b step 3; pre-existing, names off too; not fixed, waiting for the user)
+## 58. A value glued to a typed placeholder was sent whole (2026-10-03, found in Phase 6b step 3; pre-existing, names off too; fixed the same day, own commit)
 
 **Symptom:** a property test written for person names in step 3 (a name
 in Greek letters, which nothing else in the text uses, must not reach the
@@ -2357,7 +2357,29 @@ The published detection scores never saw this bug: `eval/score.ts` scores
 `detect()`, which has no literal filter, so option 1 cannot move a score;
 only the echo goes through `redactMessage`.
 
-## 59. A detection that shared a character with its neighbour after rounding was dropped whole (2026-10-03, found in Phase 6b step 3; fixed with names on, pre-existing and pinned with names off)
+**Fixed (2026-10-03, its own commit; option 1 with bug 59's rule, the
+user's decision).** `redactMessage` now cuts every detection that
+overlaps a literal around it (`outsideLiterals`, the same cut name spans
+already had), so what lies outside the literal is still redacted, as its
+own value; nothing is dropped. And `detect()` applies bug 59's rule to
+every request, names on or off. `password: [PAN_1]xyz789!` now goes out as
+`password: [LITERAL_1][SECRET_1]` and comes back as typed. The pinned
+tests became tests of the fix (each also checks the round trip), and the
+Greek-letter property glues literals to values again; mutation M9 (no cut)
+is now killed by 5 tests.
+
+**The evaluation, and why the held-out counts were allowed to move.** The
+baseline was to be updated blind: `npm run eval` with its default output
+only, counts by data type, no per-case or per-tag output. Held-out counts
+were permitted to move, because the fix came from the generated set and
+the step 3 property tests, and no held-out case drove it or was looked at:
+it is a correctness fix, not tuning. **None moved:** every count, generated
+and held-out, scores and echo, matched the baseline, so `baseline.json`
+and the README block are unchanged. This agrees with the measurement
+above: the published scores come from `detect()`, which never had the
+literal filter, and on the generated set neither change moved the echo.
+
+## 59. A detection that shared a character with its neighbour after rounding was dropped whole (2026-10-03, found in Phase 6b step 3; fixed with names on, then for every request with bug 58)
 
 **Symptom:** the step 3 property "every visible letter, digit and mark of
 a name span lands inside a detection" failed. Replayed with the text
@@ -2395,7 +2417,8 @@ PERSON in them; the card-and-email case showed that was not enough.
 names off drops. **They must be unified when bug 58 is decided** (the same
 family: a detection dropped whole, its value sent), so that the names-off
 rule does not settle in as permanent. Until then the names-off case is
-pinned.
+pinned. **Unified with bug 58's fix (same day):** every request cuts; the
+card-and-email case comes back whole with names off too.
 
 **Tests:** the property above (3,000 runs), and exact cases in
 `redact-names.test.ts`: "a name and an email that share U+FDFA", and the

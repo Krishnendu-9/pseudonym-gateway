@@ -2715,3 +2715,17 @@ several ways": requests of up to four texts, each with up to four
 mentions of three names in six forms that share a value key; every
 placeholder must restore the first form written (a verbatim slice of the
 request) and every mention must come back in it (500 runs).
+
+### Bug 58 fixed (2026-10-03, its own commit)
+
+What changed in the tests: the "known gap, bug-log 58" block in
+`redact-names.test.ts` became "bug-log 58, fixed": the same four names-off
+inputs now go out with the value redacted around the placeholder, and each
+comes back as typed; the bug-59 card-and-email case is redacted whole with
+names off too; the Greek-letter property glues literals to values again
+(the workaround is gone). Mutation M9, re-run on a scratch copy as "no
+cut" (every overlapping detection passed through): 5 tests fail.
+
+`npm run eval` after the fix, default output only (counts by data type):
+every count, generated and held-out, scores and echo, matched the
+baseline, so nothing was updated.

@@ -1178,6 +1178,8 @@ keep it plus a sampled "no detector overlaps a literal" test, or remove it.
 > cluster. The filter then dropped that detection whole and its value was
 > sent. Mutation M9 survived for the same reason the probes missed it. See
 > bug-log 58 and [ADR-037](#adr-037).
+> **Fixed the same day:** such a detection is now cut around the literal,
+> never dropped (bug-log 58).
 
 **Test data:** generated Aadhaar/PAN/email/phone values (ADR-009) are
 compared with `assertTextEqualQuietly` (`test/support/quiet-text.ts`) rather
@@ -2472,6 +2474,8 @@ tests were final.
   > that NUMBER overlaps the literal; keyword secrets, emails and glued
   > numbers reach it too. The overlapping detection was dropped whole and
   > its value sent. See bug-log 58 and [ADR-037](#adr-037).
+  > **Fixed the same day:** such a detection is now cut around the literal,
+  > never dropped (bug-log 58).
 
 **Amendment to ADR-003 (2026-10-01):** "validated" for UPI means a known
 handle (item 2). UPI takes its listed place between PHONE and EMAIL.
@@ -2688,6 +2692,8 @@ counts should be read for the generated set only.
   > digits, keyword secrets, emails and glued numbers. The overlapping
   > detection was dropped whole and its value sent. See bug-log 58 and
   > [ADR-037](#adr-037).
+  > **Fixed the same day:** such a detection is now cut around the literal,
+  > never dropped (bug-log 58).
 
 ---
 
@@ -3000,6 +3006,8 @@ it never ran.
   > literal; keyword secrets, emails and glued numbers reach it too. The
   > overlapping detection was dropped whole and its value sent. See
   > bug-log 58 and [ADR-037](#adr-037).
+  > **Fixed the same day:** such a detection is now cut around the literal,
+  > never dropped (bug-log 58).
 
 **Mutation checks:** 52, one at a time with the 15-minute limit (the
 testing guide has the table). The first run was cut off by a usage limit
@@ -5091,7 +5099,8 @@ meant, so nothing can say what it left visible.
 **Two behaviours by configuration, on purpose and for now.** With names
 off, a detection that overlaps a literal, or that shares a character with
 a neighbour after rounding, is dropped whole, as before; with names on it
-is cut. Both are to be unified when bug 58 is decided.
+is cut. Both are to be unified when bug 58 is decided. **Unified the same
+day** (below, "Bug 58 fixed"): every request cuts, names on or off.
 
 ### Proof (step 3)
 
@@ -5174,3 +5183,20 @@ every type; for names it is tested by the property "every placeholder
 restores the first form written, a verbatim slice of the request, in every
 later place" (`redact-names.test.ts`), and the echo measurement counts it
 as "back with a later mention as first written".
+
+### Bug 58 fixed (2026-10-03, its own commit; the user chose option 1 with bug 59's rule)
+
+- **Every detection that overlaps a literal is cut around it, never
+  dropped** (`redactMessage`, `outsideLiterals`); the PERSON-only cut
+  above is now the rule for every type.
+- **The last overlap pass cuts for every request** (`resolveRounded`),
+  names on or off.
+- Names-off output changes only where a value used to be sent: measured
+  before the fix on 100,000 random texts, 9,089 (option 1) and 1,215 (bug
+  59's rule) changed, each one text the old code sent and the fix redacts.
+- **The evaluation did not move:** every count, generated and held-out,
+  scores and echo, matched the baseline; `baseline.json` and the README
+  block are unchanged. Held-out counts had been permitted to move (a
+  correctness fix from the generated set and the step 3 properties, no
+  held-out case involved; bug-log 58), and none did.
+- Corrections marked "fixed" at ADR-013, ADR-024, ADR-025 and ADR-026.

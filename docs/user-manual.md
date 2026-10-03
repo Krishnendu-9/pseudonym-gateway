@@ -1207,9 +1207,10 @@ What names on will do (ADR-037):
 
 `GET /health` exists with names off too, and answers 200 `{"status":"ok"}`.
 
-Known gaps found in this step and not fixed yet (bug-logs 58 and 59): a
-value glued to text shaped like a placeholder (`password: [PAN_1]xyz789!`)
-is sent whole, with names on or off; and with names off, part of a value
-can be sent when it shares one written character with a neighbouring
-value after normalisation (an email right after a `½` that a card number
-took).
+Two leaks found in this step were fixed the same day (bug-logs 58 and
+59), with names on or off: a value glued to text shaped like a placeholder
+(`password: [PAN_1]xyz789!`) used to be sent whole and is now redacted
+around the placeholder (`password: [LITERAL_1][SECRET_1]`); and part of a
+value that shared one written character with a neighbouring value after
+normalisation (an email right after a `½` that a card number took) is no
+longer dropped.

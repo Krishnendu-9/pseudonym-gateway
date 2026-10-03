@@ -123,11 +123,15 @@ describe('names and the other detectors', () => {
     expect(redactNames(text, [{ start: 0, end: 4 }])).toBe('[PERSON_1][EMAIL_1]');
   });
 
-  it('two other values that share a "½" once rounded: names on, the loser keeps its part; names off, it is dropped (bug-log 59, pinned)', () => {
+  it('two other values that share a "½" once rounded: the loser keeps its part, names on or off (bug-log 59)', () => {
     // A published test card, then an email whose local part is the "2" of "½".
+    // Names off sent "@example.com" before the fix.
     const text = '4111 1111 1111 1111-½@example.com';
     expect(redactNames(text, [])).toBe('[CARD_1][EMAIL_1]');
-    expect(redactMessage(text, new PlaceholderMapping())).toBe('[CARD_1]@example.com');
+    const mapping = new PlaceholderMapping();
+    const redacted = redactMessage(text, mapping);
+    expect(redacted).toBe('[CARD_1][EMAIL_1]');
+    expect(restore(redacted, mapping)).toBe(text);
   });
 
   it('a name span inside an email loses to the email (PERSON is after EMAIL)', () => {
@@ -304,21 +308,26 @@ describe('one name written several ways: which form comes back (ADR-013)', () =>
   });
 });
 
-describe('known gap, bug-log 58: a value glued to a typed placeholder is sent whole (names off too)', () => {
-  // Pinned as it is, so that a fix shows up as a deliberate change here.
-  // Digits are kept short of anything a detector would call a real value.
+describe('bug-log 58, fixed: a value glued to a typed placeholder is cut around it, never dropped', () => {
+  // Before the fix each of these was sent with the value in it. Digits are
+  // kept short of anything a detector would call a real value.
   it.each([
-    ['password: [PAN_1]xyz789!', 'password: [LITERAL_1]xyz789!'],
-    ['api_key=abc[PAN_1]def123', 'api_key=abc[LITERAL_1]def123'],
-    ['[PAN_1]123456789012', '[LITERAL_1]123456789012'],
-    ['[PAN_1]\u0301asha@example.com', '[LITERAL_1]\u0301asha@example.com'],
+    ['password: [PAN_1]xyz789!', 'password: [LITERAL_1][SECRET_1]'],
+    ['api_key=abc[PAN_1]def123', 'api_key=[SECRET_1][LITERAL_1][SECRET_2]'],
+    ['[PAN_1]123456789012', '[LITERAL_1][NUMBER_1]'],
+    ['[PAN_1]\u0301asha@example.com', '[LITERAL_1]\u0301[EMAIL_1]'],
   ])('names off: %#', (text, sent) => {
-    expect(redactMessage(text, new PlaceholderMapping())).toBe(sent);
+    const mapping = new PlaceholderMapping();
+    const redacted = redactMessage(text, mapping);
+    expect(redacted).toBe(sent);
+    expect(restore(redacted, mapping)).toBe(text);
   });
 
-  it('a name inside such a value is lost with it; a name next to a literal is not', () => {
+  it('a name inside such a value is redacted with it; a name next to a literal stays a name', () => {
     const glued = 'password=Asha[PAN_1]x';
-    expect(redactNames(glued, [{ start: 9, end: 13 }])).toBe('password=Asha[LITERAL_1]x');
+    expect(redactNames(glued, [{ start: 9, end: 13 }])).toBe(
+      'password=[SECRET_1][LITERAL_1][SECRET_2]',
+    );
     const apart = 'Asha[PAN_1] said';
     expect(redactNames(apart, [{ start: 0, end: 4 }])).toBe('[PERSON_1][LITERAL_1] said');
     const marked = '[PAN_1]\u0301Asha Rao';
@@ -517,9 +526,8 @@ describe('properties: a stub name span in random mixed text (item 7)', () => {
         maxLength: 10,
       })
       .map((p) => p.join(''));
-    // Around the name, pieces are separated by spaces: a value glued to a
-    // literal is still sent whole (bug-log 58, not fixed), and that is
-    // pinned below, not tested here. Inside the name, literals are glued.
+    // Literals glued to values on both sides of the name, and inside it
+    // (bug-log 58: such a value is cut around the literal).
     const parts = fc.tuple(
       fc.array(fc.constantFrom(...PIECES, '[PAN_1]', '[LITERAL_1]'), { maxLength: 8 }),
       greekName,
@@ -527,8 +535,8 @@ describe('properties: a stub name span in random mixed text (item 7)', () => {
     );
     assertPropertyQuietly(
       fc.property(parts, ([left, name, right]) => {
-        const before = left.map((piece) => `${piece} `).join('');
-        const after = right.map((piece) => ` ${piece}`).join('');
+        const before = left.join('');
+        const after = right.join('');
         const { text, span } = textWith(before, name, after);
         const out = redactMessage(text, new PlaceholderMapping(), { text, spans: [span] });
         return !GREEK.test(out);

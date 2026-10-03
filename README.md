@@ -747,13 +747,6 @@ keyword nearby, a passport number, voter ID or date of birth with no
 keyword nearby, an IP address inside a host name, the part of an email
 address before a `/`, `=` or `?` in its local part, numbers written as
 words or with letters for digits, postal addresses and vehicle numbers);
-**a value glued to text shaped like a Pseudonym placeholder**
-(`password: [PAN_1]xyz789!`, `[PAN_1]` followed by a 12-digit number),
-which is sent whole, and, rarely, part of a value whose first or last
-character shares one written character with a neighbouring value (an
-email right after a `½` that a card number took): both found on
-2026-10-03, not fixed yet (bug-logs 58 and 59 in the
-[bug log](docs/bug-log.md));
 anything your application
 logs before
 calling Pseudonym; a compromised Pseudonym host; prompt injection that
