@@ -42,6 +42,12 @@ const envSchema = z.object({
   // Off since Phase 5d measured it (ADR-017): with it on, the demo model
   // left more values unrestored, not fewer.
   PSEUDONYM_PLACEHOLDER_INSTRUCTION: booleanFlag('false'),
+  // Person names (ADR-035: off by default, too slow and too many false
+  // positives to be on for everyone). Unlike the switches above it has no
+  // default and stays text: a configuration with names off is then exactly
+  // the configuration from before names existed (ADR-037). nameFinder() in
+  // wiring.ts reads it.
+  PSEUDONYM_NAMES: z.enum(['true', 'false']).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

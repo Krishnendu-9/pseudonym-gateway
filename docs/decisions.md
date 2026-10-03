@@ -4900,3 +4900,170 @@ The name list's hash is pinned in a test and checked at start-up. The
 README says names need `npm run fetch:model` and the runtime, that
 `npm ci --omit=optional` gives a names-off install without them, and the
 model's licence with its open points.
+
+<a id="adr-037"></a>
+
+## ADR-037: Person names in the request path, against a fake model (Phase 6b step 3, 2026-10-03; amends ADR-003, ADR-013)
+
+**Status.** Built and tested in step 3. Decisions marked "the user" were
+settled before or during the step; those marked "this ADR" were made while
+building and are reported for review. No real model, no worker and no
+runtime yet (step 4); nothing installed.
+
+**Context.** ADR-035 chose B+F behind `PSEUDONYM_NAMES`, off by default;
+ADR-036 settled how the runtime, model and list reach a machine and the
+fail-closed rules. Step 3 wires names into the request path with a fake
+model in B's place, so that everything except inference is real and
+tested before the model arrives.
+
+### Decided before building (the user)
+
+- **Coordinates, option 3.** The name finder reads the original text (as
+  6a measured it). `NormalisedText.toNormalised` brings each span into
+  `detect()`'s normalised text. It reads the same offset arrays as
+  `toOriginal` (no separately computed inverse), rounds outwards to whole
+  clusters, and gives nothing for a span of invisible characters only.
+  PERSON is then resolved with every other type, and `toOriginal` maps it
+  back.
+- **PERSON is never validated**, and comes after every pattern type:
+  `… > EMAIL > SECRET > PERSON > NUMBER` (**ADR-003 amendment**).
+- **Threading:** `detect(original, names?)`, `redactMessage(text, mapping,
+names?)`, `redactRequest(request, mapping, {…, names?})`. Names are found
+  once per request, before redaction, on `requestTexts(request)`: the
+  texts in exactly the order `redactRequest` redacts them. Each text's
+  names carry that text; `redactMessage` throws `NameTextMismatchError` (a 500) for any other text, and `redactRequest` for a different number of
+  entries.
+- **Option 2 for a name cut short at an invisible character** (ADR-036):
+  `extendOverInvisibles` in `src/detection/names/find.ts`, after the join.
+- **PERSON in the one type list (option A of this step).** It is in
+  `DETECTION_TYPES`, so the placeholder grammar knows it everywhere. The
+  one names-off change, accepted by the user: text already shaped like a
+  PERSON placeholder (`[PERSON_1]`, `[person 2]`) becomes a LITERAL and is
+  restored byte for byte, as ADR-002 always intended (**ADR-013
+  amendment**: PERSON has no bare-space form, like every namespace but
+  AADHAAR and LITERAL). The only existing test edited is the pinned type
+  list in `overlap.test.ts`.
+- **`GET /health`**: 200 `{"status":"ok"}`, or 503 `{"status":"unhealthy"}`
+  once the name model has crashed. Names off: always ok.
+
+### The request path with names on
+
+`buildServer`'s `config.names`, absent with names off. In the handler,
+after parsing and the model check and before the mapping exists:
+`names.find(requestTexts(chat), signal)`; a failure is a 503 before the
+provider is called, for streaming too. The finder is `NameDetector`
+(`src/gateway/names.ts`): the model's answer is checked (`modelSpans`),
+then the measured path runs unchanged in its moved code (`detectionsAt` at
+0.9 / 0.6 and at `NO_SCORE`, `joinDetections`), then option 2.
+
+**Fail closed (ADR-036, as built).** The model works on one request at a
+time; at most `maxQueue` wait; `timeoutMs` covers waiting and running
+together. Every failure is `NameDetectionUnavailable`: 503, code
+`name_detection_unavailable`, one fixed message, the reason in the logs
+only (`queue_full`, `timeout`, `failed` for a model that rejected or threw,
+`malformed`, `crashed`, `aborted` for a client that left).
+
+Decided by this ADR:
+
+- A request that times out while the model works on it stops waiting, but
+  the next request starts only when the model has finished: the model
+  cannot be interrupted, and freeing its slot early would let work pile up
+  behind it.
+- A model call that fails is a 503 for that request only; the detector
+  stays healthy. Only a crash (the model's `onCrash`; in step 4, the
+  worker's exit) is permanent. So a model that hangs for ever keeps health
+  "ok" while every request times out or finds the queue full; step 4
+  decides whether a timed-out worker is terminated, which would make it a
+  crash.
+- `timeoutMs` and `maxQueue` have no defaults: step 4 sets them from its
+  measurements. Until then `main.ts` refuses to start with names on
+  (`NAME_MODEL_LOAD_FAILED`), through the same `nameFinder` wiring step 4
+  will use. With names off `nameFinder` never calls its start function,
+  and nothing `main.ts` loads statically reaches a name module (tested by
+  walking the static imports).
+- `PSEUDONYM_NAMES` is `"true"` or `"false"` with no default, absent from
+  the parsed configuration unless set, so that a names-off configuration
+  is exactly the one from before names existed.
+- The name list is checked at start-up against `NAME_LIST_SHA256`
+  (ADR-036's canonical hash) before the model is loaded, and the detector
+  uses the very list it checked.
+
+### What the model may answer (decided by this ADR)
+
+The answer is untrusted: in step 4 it comes from a worker.
+
+| Answer                                                                            | What happens                                                                            |
+| --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Not one list per text; a list that is not an array; a span that is not an object  | **Refused** (503, `malformed`)                                                          |
+| An offset past the end, negative, not an integer or not a number; start after end | **Refused**                                                                             |
+| A score outside [0, 1] or not a number                                            | **Refused**                                                                             |
+| More spans than the text has UTF-16 code units                                    | **Refused** (B gives at most one per word; this bounds the work)                        |
+| A span with no characters (start = end)                                           | **Discarded**: it claims nothing, and widening it would invent a name around a position |
+| Overlapping spans; spans out of order                                             | **Kept**, joined as the measured path joins them                                        |
+| A span over the whole message                                                     | **Kept**: the whole message becomes one PERSON placeholder (over-redaction, not a leak) |
+| Several thousand spans                                                            | **Kept** (tested: 3,000 overlapping spans on a 6.8 KB message)                          |
+| An edge inside a surrogate pair or a cluster                                      | **Kept**, rounded out to the whole character                                            |
+
+Refused because a broken answer cannot say which part of the text it
+meant, so nothing can say what it left visible.
+
+### Inside `detect()` and `redactMessage()` with names (decided by this ADR, from what the tests found)
+
+- **A PERSON span is widened to the whole token** it touches (letters,
+  digits, marks, underscores) and to the digit runs that token reaches,
+  repeatedly. The finder already gives whole words; this keeps a span on
+  part of a word from leaving the rest visible, or from cutting digits out
+  of a token the safety net would have taken whole (found by the "nothing
+  another detector claimed is uncovered" property). It only ever redacts
+  more: `asha_rao92` goes as one placeholder.
+- **A name span over a literal is cut around it** (`outsideLiterals`),
+  trimmed to a letter or digit at each cut, and a PERSON detection that
+  still overlaps a literal after rounding is cut again, never dropped.
+  Other types are still dropped whole: bug-log 58.
+- **With names on, the last overlap pass cuts instead of dropping**
+  (`resolveRounded`, bug-log 59), for every type: rounding to clusters can
+  make two neighbours share a character, and a name can be lost in a clash
+  it is not part of. Names off keeps the plain rule.
+- **PERSON value key:** the normalised text, lower case, whitespace
+  collapsed. `Asha Rao` and `ASHA  RAO` are one value; `Asha` and
+  `Asha Rao` are two (the Phase 6 decision).
+
+**Two behaviours by configuration, on purpose and for now.** With names
+off, a detection that overlaps a literal, or that shares a character with
+a neighbour after rounding, is dropped whole, as before; with names on it
+is cut. Both are to be unified when bug 58 is decided.
+
+### Proof (step 3)
+
+Names off: every existing test file passes (with the one approved edit),
+`npm run eval` matches the baseline, the finder's start function is never
+called, and no name module is in `main.ts`'s static import closure. Names
+on, with the fake model: the per-offset round-trip property of
+`toNormalised` (three properties, 2,000 runs each); exact outputs for a
+Devanagari name after a precomposed nukta letter, a full-width name, a
+zero-width space, zero-width joiner, soft hyphen and word joiner inside a
+name, an invisible character at a name's edge, and U+FDFA, ½, Hangul
+jamo, full-width and Devanagari digits before it; the coverage properties
+(3,000 runs each); no-leak on the mock provider's raw bytes (60 requests,
+540 names, each also checked word by word), with every name restored;
+every failure path a 503 with the provider never called and no name in
+the response, the logs or the handled errors; PERSON placeholders restored
+in an SSE reply cut at every position, one character at a time, and at
+random cuts biased into placeholders. 100% coverage of `src` and `eval`.
+
+### Corrections found on the way
+
+- **ADR-013's literal-overlap filter is reachable** (bug-log 58). ADR-024,
+  ADR-025 and ADR-026 each say it "stays unreachable"; those sentences are
+  wrong, and mutation M9 was misjudged. Recorded here, not edited in place.
+- **Every other mutant recorded as equivalent was re-checked** against
+  today's code, with names on, and holds: `docs/testing-guide.md`, "Every
+  mutant called equivalent or unreachable, re-examined (2026-10-03)".
+
+### Consequences
+
+Names on still refuses to start until step 4 adds the model loader, the
+worker and measured values for `timeoutMs` and `maxQueue`. The README and
+the user manual describe names as wired but not available yet. Bug 58's
+options are with the user; deciding it also decides bug 59's names-off
+rule.

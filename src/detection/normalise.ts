@@ -51,11 +51,18 @@ export class NormalisedText {
   // or a group of clusters that NFKC composes together.
   readonly #starts: readonly number[];
   readonly #ends: readonly number[];
+  readonly #originalLength: number;
 
-  constructor(text: string, starts: readonly number[], ends: readonly number[]) {
+  constructor(
+    text: string,
+    starts: readonly number[],
+    ends: readonly number[],
+    originalLength: number,
+  ) {
     this.text = text;
     this.#starts = starts;
     this.#ends = ends;
+    this.#originalLength = originalLength;
   }
 
   /**
@@ -84,6 +91,48 @@ export class NormalisedText {
     }
     return { start: this.#starts[start]!, end: this.#ends[end - 1]! };
   }
+
+  /**
+   * Maps a span of the original text to the normalised text: every
+   * normalised code unit whose source range overlaps the span. It reads the
+   * same offset map as toOriginal, not an inverse built on its own, so the
+   * two can never disagree about where a character went (ADR-037). It
+   * rounds outwards like toOriginal: touching any part of a cluster (half a
+   * surrogate pair, a letter without its accent, the "½" that became
+   * "1⁄2") takes everything that cluster became, so toOriginal of the
+   * result covers every visible character of the span. Undefined when the
+   * span holds only invisible characters, which have no normalised form.
+   */
+  toNormalised(span: Span): Span | undefined {
+    const { start, end } = span;
+    if (
+      !Number.isInteger(start) ||
+      !Number.isInteger(end) ||
+      start < 0 ||
+      end > this.#originalLength ||
+      start >= end
+    ) {
+      throw new RangeError(
+        `toNormalised: invalid span [${start}, ${end}) for original text of length ${this.#originalLength}`,
+      );
+    }
+    // Sources come in text order, so starts and ends never decrease.
+    const from = firstIndex(this.#ends, (sourceEnd) => sourceEnd > start);
+    const to = firstIndex(this.#starts, (sourceStart) => sourceStart >= end);
+    return from < to ? { start: from, end: to } : undefined;
+  }
+}
+
+/** The first index whose value passes `test`, which fails and then passes along `values`. */
+function firstIndex(values: readonly number[], test: (value: number) => boolean): number {
+  let lo = 0;
+  let hi = values.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (test(values[mid]!)) hi = mid;
+    else lo = mid + 1;
+  }
+  return lo;
 }
 
 /** The zero of the block a decimal digit belongs to: the largest zero <= cp. */
@@ -159,5 +208,5 @@ export function normalise(original: string): NormalisedText {
     groupNormalised = normalised;
   }
   flush();
-  return new NormalisedText(text, starts, ends);
+  return new NormalisedText(text, starts, ends, original.length);
 }

@@ -2,8 +2,8 @@
 //   1. a validated detection beats an unvalidated one;
 //   2. then the longer span wins;
 //   3. then the fixed type priority: IP > Aadhaar > Card > PAN > IFSC >
-//      Phone > UPI > Email > Secret > Number (DETECTION_TYPES; IP first,
-//      ADR-026).
+//      Voter > Passport > DOB > Phone > UPI > Email > Secret > Person >
+//      Number (DETECTION_TYPES; IP first, ADR-026; Person, ADR-037).
 // Ties after that go to the earlier span, so the result never depends on the
 // order the detectors ran in.
 //

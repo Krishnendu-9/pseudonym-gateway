@@ -5,8 +5,8 @@
 
 import { readFileSync } from 'node:fs';
 import { loadEnv } from './config/env.js';
-import { ollamaConfig, serverConfig } from './config/wiring.js';
-import { safeErrorDetails } from './gateway/errors.js';
+import { nameFinder, ollamaConfig, serverConfig } from './config/wiring.js';
+import { NameStartupError, safeErrorDetails } from './gateway/errors.js';
 import { buildServer } from './gateway/server.js';
 import { checkProductionHardening } from './hardening.js';
 import { createOllamaProvider } from './providers/ollama.js';
@@ -52,6 +52,17 @@ if (env.NODE_ENV === 'production') {
   }
 }
 
-const app = buildServer(serverConfig(env), createOllamaProvider(ollamaConfig(env)));
+// Names on: the gateway starts only with a name list that matches its pinned
+// hash and a model that loads (ADR-036). The model runtime and its worker are
+// Phase 6b step 4; until then names on always refuses start-up. Names off
+// never calls this, and nothing here imports a name module.
+const names = await nameFinder(env, () =>
+  Promise.reject(new NameStartupError('NAME_MODEL_LOAD_FAILED')),
+);
+
+const app = buildServer(
+  { ...serverConfig(env), ...(names === undefined ? {} : { names }) },
+  createOllamaProvider(ollamaConfig(env)),
+);
 
 await app.listen({ host: env.HOST, port: env.PORT });

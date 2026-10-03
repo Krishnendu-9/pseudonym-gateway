@@ -3,7 +3,7 @@
 // setting (the two size caps, the two on/off switches) would otherwise go
 // unnoticed, since main.ts only runs as a process.
 
-import type { ServerConfig } from '../gateway/server.js';
+import type { NameFinder, ServerConfig } from '../gateway/server.js';
 import type { OllamaConfig } from '../providers/ollama.js';
 import type { Env } from './env.js';
 
@@ -26,4 +26,17 @@ export function serverConfig(env: Env): ServerConfig {
     placeholderInstruction: env.PSEUDONYM_PLACEHOLDER_INSTRUCTION,
     logLevel: env.LOG_LEVEL,
   };
+}
+
+/**
+ * The name finder, started by `start` only when names are on
+ * (PSEUDONYM_NAMES=true; ADR-037). With names off, `start` is never called,
+ * so nothing that loads the name model runs. A `start` that fails refuses
+ * start-up: its error is thrown.
+ */
+export async function nameFinder(
+  env: Env,
+  start: () => Promise<NameFinder>,
+): Promise<NameFinder | undefined> {
+  return env.PSEUDONYM_NAMES === 'true' ? await start() : undefined;
 }

@@ -2567,3 +2567,116 @@ by the test aimed at it: J1/J2 one side dropped, J3 no merge, J4
 `NO_SCORE` 0.9 (equivalent for F's score-1 spans; only the pin catches
 it), G1 the `eval` half, G2 no Devanagari, G3 no lower-casing, G4 no
 family names.
+
+## Phase 6b step 3 — names in the request path, against a fake model (2026-10-03, ADR-037, bug-logs 58 and 59)
+
+What to run:
+
+```powershell
+npx vitest run test/unit/detection/to-normalised.test.ts test/unit/detection/names test/unit/detection/resolve-rounded.test.ts
+npx vitest run test/unit/redaction/redact-names.test.ts test/unit/gateway/names.test.ts test/unit/gateway/redact-request-names.test.ts test/unit/config/names-wiring.test.ts
+npx vitest run test/integration/names.test.ts
+npm test; npm run test:coverage; npm run eval
+```
+
+No model, no runtime: `test/support/fake-name-model.ts` stands in for B.
+Its answer is whatever a test sets (garbage included), `crash()` plays the
+worker exiting, and `gate()` makes an answer wait.
+
+**What each new file proves.**
+
+- `to-normalised.test.ts`: `toNormalised` on the same offset map as
+  `toOriginal`. The property "for every offset i, `toOriginal(toNormalised(i))`
+  covers i, or i is an invisible character", over text built from
+  expansions (½, U+FDFA), compositions (Hangul jamo, accents), precomposed
+  nukta letters, surrogate pairs and lone halves, full-width and Devanagari
+  digits and every kind of invisible character; plus "every visible unit
+  of any span comes back, and nothing the span does not touch is taken",
+  and the reverse round trip. 2,000 runs each.
+- `names/find.test.ts`: every answer the model may give (refused,
+  discarded or kept; the table in ADR-037), the measured point 0.9 / 0.6,
+  F joined in, option 2's extension.
+- `redact-names.test.ts`: item 6's exact outputs (the redacted text is
+  exactly `…[PERSON_1]…`, everything around it byte-identical, and the
+  round trip restores it); names next to other values and literals; the
+  names-off literal change (`[PERSON_1]` typed by a user becomes a
+  LITERAL); the pinned bug-58 and bug-59 behaviour; and four properties
+  (3,000 runs each): every letter, digit and mark of a stub span lands in a
+  detection; alone, the span is one name over every visible character;
+  nothing outside its reach changes and nothing claimed before is
+  uncovered (only a separator at a cut may become text); and, through
+  `redactMessage`, no Greek letter of a Greek-letter name reaches the
+  output.
+- `names.test.ts` (unit): the queue, the timeout (queued and running),
+  a failing model, every unreadable answer, a crash (running, queued, idle,
+  later requests, no restart), a client that left, the fixed 503, the
+  start-up checks (list hash before the model loads; a load failure keeps
+  nothing of its error).
+- `names-wiring.test.ts`: `PSEUDONYM_NAMES` absent unless set; names off
+  never calls the start function; the static import closure of `main.ts`
+  holds no name module, no name list and no model runtime, and the same
+  walk from `gateway/names.ts` does reach them (so the check is not
+  vacuous).
+- `integration/names.test.ts`: no-leak on the raw bytes the mock provider
+  received (60 histories of four messages and a stop sequence; 540 names in
+  Latin, Devanagari, full width, capitals, and split by a soft hyphen or a
+  zero-width space; each name and each of its words of 4+ letters checked
+  in every leak form), every name restored in the answer, none in the
+  logs; each failure (throws, times out, queue full, garbage, crashed,
+  and streaming) a 503 with the provider never called and the name in no
+  response, log line or handled error; health; PERSON placeholders in an
+  SSE reply cut at every position, one character at a time, and at 60
+  random cuts biased into placeholders; garbage through the gateway.
+
+**A check of the check.** The same history sent through a gateway with
+names off: the leak check finds the name raw, the second word raw, and the
+name without its soft hyphen in normalised form.
+
+**Found by the properties, before any code was final:** bug 58
+(pre-existing, names off too: a value glued to a typed placeholder is sent
+whole; not fixed), bug 59 (a detection that shares a character with its
+neighbour after rounding was dropped whole; fixed with names on), a name
+piece touching a literal with a mark at its edge (fixed: cut again after
+rounding), a stub span on one digit of a token glued to letters (fixed:
+PERSON widens to the whole token). Counterexamples were replayed by seed
+in a scratch test that wrote only masked text (digits as `d`, other
+non-ASCII as code points) to the scratchpad, then deleted.
+
+**Two of my own slips, not bugs:** the Write and Edit tools turn `\u`
+escapes into the raw characters, so the first test files held invisible
+bytes; they are re-escaped with a script and counted (0 raw invisible
+characters in any new file). And a `git stash` / `git checkout` sequence
+left `detect.ts` at HEAD; a guard stopped the repair, the user restored it
+from the stash. Fixes are now compared on scratch copies only.
+
+### Every mutant called equivalent or unreachable, re-examined (2026-10-03)
+
+M9 turned out reachable (bug-log 58), so every other judgement of this
+kind was checked on purpose, against today's code and with names on. A
+mutant is equivalent only if no input can tell it from the code; each
+argument below says why, and what it rests on.
+
+| Mutant                                                      | Recorded as                         | Argument, and what it rests on                                                                                                                                                                                                                                                                                                                                                                                                  | Re-checked                                                                                                                         | Holds?                       |
+| ----------------------------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| M9 literal-overlap filter removed (`redact.ts`)             | unreachable (0 of 139,986 probes)   | Claimed: no detection can overlap a literal. False: the bracketed literal has no glue rule, the safety net joins digits across `[` `]` and takes the glued token, a keyword secret's value runs over a literal, and an email's local part may start with a mark in the `]`'s cluster. The probes never glued a value to a literal.                                                                                              | Probes at HEAD (bug-log 58)                                                                                                        | **No**                       |
+| N9 net widens back one code unit, not one code point        | equivalent (0 of 300,000)           | Stepping back one unit lands between the halves of a pair; `charBefore` there reads the high half with `codePointAt`, which returns the whole letter, so the next step lands where the code would. Differs only if the floor (a claimed span's end) falls inside a pair. Claims are code-point aligned: regex matches with `u`, trimming and `widenName` step by code point, PERSON spans are whole groups from `toNormalised`. | Mutated copy against a pristine copy, 300,000 texts (about 240,000 with random name spans, 169,000 with surrogate pairs): 0 differ | Yes                          |
+| V5 the version check reads the whole text before an address | equivalent                          | The pattern is anchored at the end; its longest match is 16 characters (an 8-letter version word, a dot, 3 spaces, a separator, 3 spaces) against a window of 32. A match could differ only by starting at the window's edge, where the lookbehind sees nothing; no match is that long.                                                                                                                                         | Computed from the source's word list: 12 words, longest 8, longest match 16                                                        | Yes, for any input           |
+| S4 spaced-mobile windows of more than two groups            | equivalent                          | The window is exactly 10 digits starting with a 5-digit group, so a third group makes the second shorter than 5, and the pair is 6 to 9 digits. Rests on libphonenumber-js's metadata: no 6–9-digit number starting 6–9 is valid for India.                                                                                                                                                                                     | 1.13.14: 0 of 400,000 random such numbers valid                                                                                    | Yes, **for this metadata**   |
+| S6 a pair need not be a valid number                        | equivalent                          | Rests on the metadata: every 10-digit number starting 6–9 is a valid Indian number.                                                                                                                                                                                                                                                                                                                                             | 1.13.14: 0 of 120,000 invalid (every 5-digit prefix 60000–99999, three suffixes)                                                   | Yes, **for this metadata**   |
+| R15 remainders with no letter or digit kept (`resolve.ts`)  | equivalent; check simplified        | Every remainder run has a cut on one side (a loser touches what is kept, or another loser's paint), and trimming from a cut removes everything that is not a letter or digit, so a non-empty run holds one.                                                                                                                                                                                                                     | Instrumented copy, the same 300,000 texts with names: 0 remainders without a letter or digit                                       | Yes                          |
+| R4 `delta.reasoning` passed on as content (`ollama.ts`)     | equivalent                          | The chunk and delta schemas are plain `z.object`, which strips unknown keys; only `delta.content` is read.                                                                                                                                                                                                                                                                                                                      | Read: `chunkSchema` and its `delta` are `z.object`, no `passthrough`/`looseObject`                                                 | Yes, while the schema strips |
+| J4 `NO_SCORE` 0.9                                           | equivalent for F; caught by the pin | `listSpans` only emits score 1, so any threshold up to 1 keeps every F span.                                                                                                                                                                                                                                                                                                                                                    | Read: `score: 1` is the only score `listSpans` writes                                                                              | Yes (and caught anyway)      |
+| B3 a type-only `!` (step 0)                                 | survived as a no-op                 | Not a mutant: it compiles to the same JavaScript. Rewritten at the time.                                                                                                                                                                                                                                                                                                                                                        | —                                                                                                                                  | Not applicable               |
+
+The fuzz that checked N9 and R15 was itself checked: with N1 (the net does
+not widen backwards, a mutant the tests catch) applied instead, 1,157 of
+20,000 texts differ.
+
+**What follows.** S4 and S6 are equivalent only for the metadata now
+installed. `libphonenumber-js` is pinned with a tilde (`~1.13.14`, ADR-004)
+so that patch releases bring new metadata; a release that makes a 10-digit
+mobile range invalid, or a shorter number valid, makes them real
+mutants that no test catches. Their checks are cheap (seconds) and are
+worth repeating whenever the lockfile moves that package. M9 needs no new
+mutant: its filter is now exercised by the pinned bug-58 tests, and the
+PERSON cut beside it by `redact-names.test.ts`.

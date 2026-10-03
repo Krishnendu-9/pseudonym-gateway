@@ -6,7 +6,8 @@ reaches an LLM, and restores it in the reply.**
 > **Status: work in progress (Phase 5 of 8 done: detection, the gateway,
 > streaming and the evaluation are built, and a CI workflow runs the checks,
 > tests and evaluation; person names are under way: their test set is
-> built, no detector yet).** Not ready for production
+> built, and the request path is wired and tested against a stand-in
+> model, but the model itself is not built in yet).** Not ready for production
 > use.
 > Pseudonym runs as a gateway: `POST /v1/chat/completions` (OpenAI format,
 > streaming and non-streaming) redacts emails, phone numbers, Aadhaar, PAN,
@@ -680,7 +681,12 @@ what Phase 6 builds, **off by default** behind `PSEUDONYM_NAMES`. It
 fails the false-positive limit by 5.85 times (about one wrongly redacted
 word in every 170) and the speed limit. Names in all lower case are
 almost never found (3 of 59). Until Phase 6 is built, names are not
-detected. How the model runtime, the model file and the name list will
+detected. The request path is wired and tested against a stand-in for
+the model ([ADR-037](docs/decisions.md#adr-037)): with names on, every
+request's names are found before anything is sent, and a request whose
+names cannot be found (the model failed, timed out, is busy or has
+crashed) gets a 503 and is never sent without them. Until the model is
+built in, `PSEUDONYM_NAMES=true` refuses to start. How the model runtime, the model file and the name list will
 reach a machine, and what the held-out figure depends on, is
 [ADR-036](docs/decisions.md#adr-036).
 
@@ -741,6 +747,13 @@ keyword nearby, a passport number, voter ID or date of birth with no
 keyword nearby, an IP address inside a host name, the part of an email
 address before a `/`, `=` or `?` in its local part, numbers written as
 words or with letters for digits, postal addresses and vehicle numbers);
+**a value glued to text shaped like a Pseudonym placeholder**
+(`password: [PAN_1]xyz789!`, `[PAN_1]` followed by a 12-digit number),
+which is sent whole, and, rarely, part of a value whose first or last
+character shares one written character with a neighbouring value (an
+email right after a `½` that a card number took): both found on
+2026-10-03, not fixed yet (bug-logs 58 and 59 in the
+[bug log](docs/bug-log.md));
 anything your application
 logs before
 calling Pseudonym; a compromised Pseudonym host; prompt injection that
@@ -803,7 +816,10 @@ name as `PSEUDONYM_MODEL`; requests naming any other model are rejected.
 restoration safety, the placeholder instruction). The timeout covers the
 whole call when not streaming; when streaming it applies to each wait (for
 the first chunk, then between chunks), so a long answer that keeps arriving
-is never cut off by it.
+is never cut off by it. `GET /health` answers `{"status":"ok"}`; with
+person names on it answers 503 `{"status":"unhealthy"}` once the name model
+has crashed, until the process is restarted
+([ADR-037](docs/decisions.md#adr-037)).
 
 ## Continuous integration
 

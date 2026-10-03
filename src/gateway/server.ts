@@ -3,6 +3,8 @@
 //
 // A request's life: Fastify parses the JSON body (application/json only,
 // capped at the body limit) -> parseChatRequest() applies the allowlist ->
+// with names on, the name finder finds person names in every piece of
+// client text, or the request is refused (ADR-037) ->
 // one PlaceholderMapping is created -> redactRequest() redacts every piece of
 // client text into it -> the provider answers in placeholders -> restoration
 // puts real values back into the answer -> the response is built field by
@@ -27,9 +29,21 @@ import { PlaceholderMapping } from '../redaction/mapping.js';
 import { restore, StreamRestorer } from '../redaction/restore.js';
 import { GatewayError, safeErrorDetails, toGatewayError } from './errors.js';
 import { loggerOptions, type LogStream } from './logging.js';
-import { redactRequest } from './redact-request.js';
+import type { NameSpans } from '../redaction/redact.js';
+import { redactRequest, requestTexts } from './redact-request.js';
 import { parseChatRequest } from './schema.js';
 import { sseEvents } from './stream.js';
+
+/** Finds person names in a request's texts (ADR-037; NameDetector in names.ts). */
+export interface NameFinder {
+  /**
+   * The names in each of `texts`, one entry per text, in order. Rejects
+   * with NameDetectionUnavailable (503) when they cannot be found.
+   */
+  find(texts: readonly string[], signal?: AbortSignal): Promise<NameSpans[]>;
+  /** False once the name model has crashed, until the process restarts. */
+  readonly healthy: boolean;
+}
 
 export interface ServerConfig {
   /** The one model requests must name (ADR-014). */
@@ -37,6 +51,11 @@ export interface ServerConfig {
   readonly bodyLimit: number;
   readonly restoreInUnsafeRegions: boolean;
   readonly placeholderInstruction: boolean;
+  /**
+   * Names on: every request's names are found first, and a request whose
+   * names cannot be found is refused (ADR-036). Absent: no name step at all.
+   */
+  readonly names?: NameFinder;
   readonly logLevel: string;
   /** Where log lines go; stdout when omitted. Tests capture them here. */
   readonly logStream?: LogStream;
@@ -64,6 +83,14 @@ export function buildServer(config: ServerConfig, provider: ChatProvider): Fasti
     reply.code(404).send(new GatewayError(404, 'not_found', 'unknown endpoint').body()),
   );
 
+  // Unhealthy only once the name model has crashed: it is not restarted, so
+  // the process has to be (ADR-036).
+  app.get('/health', (_request, reply) =>
+    config.names === undefined || config.names.healthy
+      ? reply.send({ status: 'ok' })
+      : reply.code(503).send({ status: 'unhealthy' }),
+  );
+
   app.post('/v1/chat/completions', async (request, reply) => {
     const chat = parseChatRequest(request.body);
     if (chat.model !== config.model) {
@@ -74,17 +101,23 @@ export function buildServer(config: ServerConfig, provider: ChatProvider): Fasti
       );
     }
 
-    const mapping = new PlaceholderMapping();
-    const outbound = redactRequest(chat, mapping, {
-      placeholderInstruction: config.placeholderInstruction,
-    });
-    const restoreOptions = { restoreInUnsafeRegions: config.restoreInUnsafeRegions };
-
-    // A client that disconnects should not keep a provider call running.
+    // A client that disconnects should not keep a provider call running, nor
+    // a place in the name queue.
     const controller = new AbortController();
     reply.raw.on('close', () => {
       if (!reply.raw.writableFinished) controller.abort();
     });
+
+    // Names first, on exactly the texts that will be redacted. A failure
+    // here is a 503 before the provider is ever called.
+    const names = config.names && (await config.names.find(requestTexts(chat), controller.signal));
+
+    const mapping = new PlaceholderMapping();
+    const outbound = redactRequest(chat, mapping, {
+      placeholderInstruction: config.placeholderInstruction,
+      ...(names === undefined ? {} : { names }),
+    });
+    const restoreOptions = { restoreInUnsafeRegions: config.restoreInUnsafeRegions };
 
     if (chat.stream === true) {
       const includeUsage = chat.stream_options?.include_usage === true;

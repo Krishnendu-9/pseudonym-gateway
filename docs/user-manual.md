@@ -309,6 +309,7 @@ Node 22.20 or newer is required (`.nvmrc` says 22.23.3). It listens on
 | `PSEUDONYM_MAX_STREAM_BYTES`            | 33554432 (32 MiB)                        | The most of a streamed provider answer Pseudonym reads, counted on the wire (ADR-020 amendment)                               |
 | `PSEUDONYM_RESTORE_IN_UNSAFE_REGIONS`   | `false`                                  | `true` restores inside URLs too (not recommended)                                                                             |
 | `PSEUDONYM_PLACEHOLDER_INSTRUCTION`     | `false`                                  | Adds a short system message asking the model to copy placeholders exactly (ADR-017; off since it did not help the demo model) |
+| `PSEUDONYM_NAMES`                       | unset (off)                              | `true` turns person names on (Phase 6, ADR-037); until the name model is built in, the gateway then refuses to start          |
 | `HOST`, `PORT`, `LOG_LEVEL`, `NODE_ENV` | `127.0.0.1`, 3000, `info`, `development` | The usual                                                                                                                     |
 
 A wrong value stops the server at start-up with a message naming the
@@ -1173,3 +1174,40 @@ and puts the model's raw answers, which hold placeholders only, in the
 `--answers` folder. Thinking models are not recommended: `qwen3:4b` takes
 minutes per answer on a CPU, and with `reasoning_effort: "none"` its
 reasoning lands in the answer itself.
+
+## Phase 6b step 3 — person names in the request path (2026-10-03)
+
+Names are wired into the gateway, but **the name model is not built in
+yet**, so names cannot be used: with `PSEUDONYM_NAMES=true` the gateway
+refuses to start (`NameStartupError`, `NAME_MODEL_LOAD_FAILED`). With it
+unset or `false`, nothing changes, with one exception: text you type that
+already looks like a person placeholder (`[PERSON_1]`, `[person 2]`) is now
+treated like every other placeholder-shaped text: it goes out as
+`[LITERAL_1]` and comes back exactly as you typed it.
+
+What names on will do (ADR-037):
+
+- Before anything is sent, the name finder reads every piece of your
+  request's text (each message, then each stop sequence) and finds the
+  names in it. They are replaced like every other value:
+  `[PERSON_1]`, `[PERSON_2]`, and restored in the answer, streamed or not.
+  The same name written in another case or spacing is one placeholder;
+  "Asha" and "Asha Rao" are two.
+- If the names cannot be found, the request is refused with a 503
+  (`name_detection_unavailable`) and **never sent without them**: the
+  model failed, did not answer in time, is busy with too many requests, or
+  has crashed. After a crash every request is refused and `GET /health`
+  answers 503 `{"status":"unhealthy"}` until the gateway is restarted; it
+  does not restart the model by itself.
+- The model's restoration rules are the usual ones: `[PERSON_1]` in any
+  case and `PERSON_1` / `Person_1` are restored; `Person 1` is not (it is
+  ordinary English).
+
+`GET /health` exists with names off too, and answers 200 `{"status":"ok"}`.
+
+Known gaps found in this step and not fixed yet (bug-logs 58 and 59): a
+value glued to text shaped like a placeholder (`password: [PAN_1]xyz789!`)
+is sent whole, with names on or off; and with names off, part of a value
+can be sent when it shares one written character with a neighbouring
+value after normalisation (an email right after a `½` that a card number
+took).

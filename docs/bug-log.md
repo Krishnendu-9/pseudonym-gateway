@@ -2279,3 +2279,124 @@ runs (10:31, 11:17) and the whole 12:06–12:25 window. Its only entries in
 that span are the Ollama app's version and model-list checks at 10:42, an
 internal scheduling line at 12:27, and the `ollama ps` itself at 12:57.
 The swing came from something else; still not attributed.
+
+## 58. A value glued to a typed placeholder was sent whole (2026-10-03, found in Phase 6b step 3; pre-existing, names off too; not fixed, waiting for the user)
+
+**Symptom:** a property test written for person names in step 3 (a name
+in Greek letters, which nothing else in the text uses, must not reach the
+output) failed. Replayed with the text masked, the failing input was a
+typed placeholder, a combining mark, then an address: `[PAN_1]`, U+0301,
+`@example.com`. The output kept the address. Probing at HEAD, before any
+step 3 change, with names off (digits masked):
+
+| Input                                         | Sent as                                   |
+| --------------------------------------------- | ----------------------------------------- |
+| `password: [PAN_1]xyzddd!`                    | `password: [LITERAL_1]xyzddd!`            |
+| `api_key=abc[PAN_1]defddd`                    | `api_key=abc[LITERAL_1]defddd`            |
+| `[PAN_1]dddddddddddd` (12 digits)             | `[LITERAL_1]dddddddddddd`                 |
+| `[PAN_1]`, U+0301, `asha@example.com`         | `[LITERAL_1]`, U+0301, `asha@example.com` |
+| `ddddddddd[PAN_1]` (9 digits; for comparison) | `[NUMBER_1][LITERAL_1]`                   |
+
+**Root cause:** `redactMessage()` drops every detection that overlaps a
+literal (ADR-002: the literal wins). That filter was believed unreachable
+(mutation M9 survives; 0 of 139,986 probes reached it in Phase 2), because
+no detector's pattern contains `[` or `]`. But detections are widened and
+rounded after the pattern matches, and three of those steps reach into a
+literal glued to a value, which the bracketed literal pattern allows (it
+has no glue rule): the safety net joins digits across `[` and `]` and
+takes the whole glued token (ADR-011, ADR-029), so `1]1234…` is one
+NUMBER starting inside `PAN_1`; a keyword secret's value runs to the next
+blank (ADR-022), over the literal; and an email's local part may start
+with a combining mark (ADR-034's `LOCAL_CHAR` includes `\p{M}`), which is
+in the same grapheme cluster as the literal's `]`, so rounding out to
+clusters (`toOriginal`) starts the email on the `]`. The whole detection
+is then dropped, and its value sent. M9 survived because the probes and
+tests never put a value glued to a literal.
+
+**Fix:** none yet. Fixing it changes what a names-off request sends (only
+for inputs like the ones above), and step 3's brief says names off must
+stay as it is, so the choice is the user's. Options: (1) a detection that
+overlaps a literal keeps its parts outside the literal (cut, with
+separators at the cut left as text, as `outsideLiterals` already does for
+name spans), so nothing outside a literal is ever dropped; (2) a bracketed
+literal glued to a letter, digit, mark or underscore is not a literal
+(the bare forms' glue rule), so the value and the brackets are one
+detection; (3) both.
+
+**What step 3 does about it:** name spans are cut around literals before
+detection (`outsideLiterals` in `redact.ts`), trimmed to a letter or digit
+at each cut, so a name piece never reaches into a literal by itself.
+A name can still be lost through this bug when another detection that
+contains it overlaps a literal (a keyword secret over `Asha[PAN_1]x`).
+
+**Tests:** the current behaviour is pinned in `redact-names.test.ts`
+("known gap, bug-log 58"), so a fix shows up as a deliberate test change.
+The names property that found it keeps literals away from other values
+until the bug is fixed.
+
+**Follow-up (same day): a second place with two behaviours, and the
+options measured.** A name piece that only touches a literal, with a mark
+at its edge, still rounded into the literal's cluster and was dropped, so
+`redactMessage` now cuts a PERSON detection that overlaps a literal
+instead of dropping it, while every other type is still dropped. Names on
+and names off therefore behave differently here too; **like bug 59's
+rule, this is to be unified when bug 58 is decided**, not left as it is.
+
+The options, measured on scratch copies of `src/` and `eval/` (the
+held-out file not copied; generated set only, through the same scoring
+`npm run eval` uses):
+
+| Option                                                                                                             | Generated-set counts moved                                                               | Existing tests that change                                                                      | Names-off output that changes (100,000 random texts, 40,624 with a literal) |
+| ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| 1: a detection that overlaps a literal is cut, never dropped                                                       | **0** (scores and echo)                                                                  | only the five pinned bug-58 tests                                                               | 9,089 texts, each one where HEAD sends a value that the option redacts      |
+| 2: a bracketed literal glued to a letter, digit, mark or `_` is not a literal (in the shared grammar, per ADR-002) | scores 0; **echo, shape `digit-beside`: 12 of 40 messages no longer restored correctly** | the pinned bug-58 tests, a literal test, both no-leak round trips and both streaming properties | not measured further: it breaks restoration                                 |
+| 3: both                                                                                                            | as 2                                                                                     | as 2                                                                                            | as 2                                                                        |
+| Bug 59's rule for every type with names off (decided with this)                                                    | **0**                                                                                    | only the pinned bug-59 test                                                                     | 1,215 texts, each one where HEAD drops a detection whole                    |
+
+The published detection scores never saw this bug: `eval/score.ts` scores
+`detect()`, which has no literal filter, so option 1 cannot move a score;
+only the echo goes through `redactMessage`.
+
+## 59. A detection that shared a character with its neighbour after rounding was dropped whole (2026-10-03, found in Phase 6b step 3; fixed with names on, pre-existing and pinned with names off)
+
+**Symptom:** the step 3 property "every visible letter, digit and mark of
+a name span lands inside a detection" failed. Replayed with the text
+masked: a word, two Hangul compatibility jamo, U+FDFA, then an email, with
+the name span from inside the word to just past U+FDFA. With the span,
+`detect()` returned the email alone: the rest of the word and the jamo
+would have been sent, though the name finder had found them.
+
+**Root cause:** U+FDFA becomes 18 letters and spaces under NFKC, and the
+email's local part starts inside them, so in the normalised text the name
+and the email are neighbours that share no position (resolve.ts gives the
+name the part the email does not cover). Mapped back to the original,
+both round out to the whole U+FDFA character, and the last step of
+`detect()`, `resolveOverlaps(mapped)`, keeps one of two overlapping
+detections and drops the other whole. Its comment had foreseen the
+overlap ("rounding out to whole clusters could, in principle, make two
+neighbours share a character") but not that dropping a loser sends it.
+
+**The same clash without a name (found the same day, by the same
+property):** a test card, `-`, `½`, then an email. The card is widened
+over `½`'s first digit and the email's local part is its second, so both
+round out to `½`, and the email is dropped whole. With names off,
+`4111 1111 1111 1111-½@example.com` is sent as `[CARD_1]@example.com`:
+part of the address reaches the provider. A name can be lost the same way
+in a clash it is not part of, when its letters went to the loser.
+
+**Fix:** `resolveRounded` in `detect.ts`, on the names-on path only: when
+`detect()` is given names, the loser of every such clash, whatever its
+type, keeps its parts outside the winners. With names off `detect()` runs
+the plain rule as before, so names-off output is unchanged (the whole suite
+and `npm run eval` match). A first version cut only clashes with a
+PERSON in them; the card-and-email case showed that was not enough.
+
+**Two behaviours in one function, on purpose and for now:** names on cuts,
+names off drops. **They must be unified when bug 58 is decided** (the same
+family: a detection dropped whole, its value sent), so that the names-off
+rule does not settle in as permanent. Until then the names-off case is
+pinned.
+
+**Tests:** the property above (3,000 runs), and exact cases in
+`redact-names.test.ts`: "a name and an email that share U+FDFA", and the
+card-and-email case, names on and names off (pinned).

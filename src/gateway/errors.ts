@@ -45,6 +45,42 @@ export class GatewayError extends Error {
   }
 }
 
+/**
+ * Why a request's names could not be found (ADR-037). Logged, never
+ * returned: the client always sees the same fixed 503.
+ */
+export type NameFailure = 'timeout' | 'queue_full' | 'crashed' | 'failed' | 'malformed' | 'aborted';
+
+/**
+ * With names on, a request whose names could not be found is refused, never
+ * sent without them (ADR-036). Defined here rather than with the name
+ * detector so that a gateway with names off never loads a names module.
+ */
+export class NameDetectionUnavailable extends GatewayError {
+  readonly reason: NameFailure;
+
+  constructor(reason: NameFailure) {
+    super(503, 'name_detection_unavailable', 'name detection is unavailable');
+    this.name = 'NameDetectionUnavailable';
+    this.reason = reason;
+  }
+}
+
+/**
+ * With names on, the gateway does not start unless the name list matches
+ * its pinned hash and the model loads (ADR-036). `code` says which; the
+ * underlying error is not kept, since its message is not ours.
+ */
+export class NameStartupError extends Error {
+  readonly code: 'NAME_LIST_MISMATCH' | 'NAME_MODEL_LOAD_FAILED';
+
+  constructor(code: NameStartupError['code']) {
+    super('name detection could not start');
+    this.name = 'NameStartupError';
+    this.code = code;
+  }
+}
+
 // Fastify's own errors, by code. Only these codes are recognised; their
 // messages are replaced, not reused.
 function fromFastify(code: string, bodyLimit: number): GatewayError | undefined {
@@ -146,8 +182,8 @@ function stackFrames(error: Error): string[] {
 
 /**
  * What may be logged about an error: its name, a known code, the provider
- * failure kind and status, and for unexpected errors the stack frames
- * without the message.
+ * failure kind and status, why names were unavailable, and for unexpected
+ * errors the stack frames without the message.
  */
 export function safeErrorDetails(error: unknown): Record<string, unknown> {
   if (!(error instanceof Error)) return { name: typeof error };
@@ -155,6 +191,7 @@ export function safeErrorDetails(error: unknown): Record<string, unknown> {
   const code = (error as { code?: unknown }).code;
   if (typeof code === 'string' && /^[A-Z0-9_]{1,64}$/.test(code)) details.code = code;
   if (error instanceof GatewayError) details.code = error.code;
+  if (error instanceof NameDetectionUnavailable) details.reason = error.reason;
   if (error instanceof ProviderError) {
     details.failure = error.failure;
     if (error.status !== undefined) details.status = error.status;

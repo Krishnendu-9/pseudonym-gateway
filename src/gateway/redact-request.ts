@@ -23,7 +23,12 @@ import type {
   SamplingOptions,
 } from '../providers/provider.js';
 import type { PlaceholderMapping } from '../redaction/mapping.js';
-import { redactMessage, type RedactedText } from '../redaction/redact.js';
+import {
+  NameTextMismatchError,
+  redactMessage,
+  type NameSpans,
+  type RedactedText,
+} from '../redaction/redact.js';
 import { PLACEHOLDER_INSTRUCTION } from './instruction.js';
 import type { ChatMessage, ChatRequest } from './schema.js';
 
@@ -49,9 +54,25 @@ function samplingOptions(request: ChatRequest): SamplingOptions {
   return options as SamplingOptions;
 }
 
+/**
+ * Every piece of client text, in the order redactRequest() redacts it: each
+ * message's text (its parts joined), then each stop sequence. The name
+ * finder runs on exactly these strings (ADR-037), so the names it finds
+ * belong to the text that is redacted and sent.
+ */
+export function requestTexts(request: ChatRequest): string[] {
+  const stop = typeof request.stop === 'string' ? [request.stop] : (request.stop ?? []);
+  return [...request.messages.map((message) => messageText(message.content)), ...stop];
+}
+
 export interface RedactRequestOptions {
   /** Add PLACEHOLDER_INSTRUCTION when the request contains any placeholder (ADR-017). */
   readonly placeholderInstruction: boolean;
+  /**
+   * With names on: the names found in requestTexts(request), one entry per
+   * text, in the same order (ADR-037). Each must carry its own text.
+   */
+  readonly names?: readonly NameSpans[];
 }
 
 export function redactRequest(
@@ -59,14 +80,20 @@ export function redactRequest(
   mapping: PlaceholderMapping,
   options: RedactRequestOptions,
 ): ProviderChatRequest {
-  const messages: ProviderMessage[] = request.messages.map((message) => ({
+  const texts = requestTexts(request);
+  const { names } = options;
+  if (names !== undefined && names.length !== texts.length) throw new NameTextMismatchError();
+  const redacted = texts.map((text, i) => redactMessage(text, mapping, names?.[i]));
+
+  const messages: ProviderMessage[] = request.messages.map((message, i) => ({
     role: message.role,
-    content: redactMessage(messageText(message.content), mapping),
+    content: redacted[i]!,
   }));
 
-  let stop: RedactedText[] | undefined;
-  if (typeof request.stop === 'string') stop = [redactMessage(request.stop, mapping)];
-  else if (request.stop) stop = request.stop.map((s) => redactMessage(s, mapping));
+  const stop: RedactedText[] | undefined =
+    request.stop === undefined || request.stop === null
+      ? undefined
+      : redacted.slice(request.messages.length);
 
   // Added after redaction, so its own text is never treated as a literal.
   if (options.placeholderInstruction && mapping.size > 0) {

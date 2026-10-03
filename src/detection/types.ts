@@ -15,8 +15,11 @@ import type { Span } from './normalise.js';
  * the address is the likelier reading of all three. VOTER, PASSPORT and DOB
  * (ADR-031) come before PHONE: a real calendar date near a birth word is a
  * likelier reading of the same digits than a merely possible phone number.
- * NUMBER is the safety net for long numbers nothing else claimed (ADR-011),
- * so it always comes last.
+ * PERSON (ADR-037) is found by the name finder, not by a pattern, and is
+ * never validated: on the same span every pattern type is the more
+ * constrained reading, so PERSON comes after all of them. NUMBER is the
+ * safety net for long numbers nothing else claimed (ADR-011), so it always
+ * comes last.
  */
 export const DETECTION_TYPES = [
   'IP',
@@ -31,6 +34,7 @@ export const DETECTION_TYPES = [
   'UPI',
   'EMAIL',
   'SECRET',
+  'PERSON',
   'NUMBER',
 ] as const;
 
@@ -64,6 +68,9 @@ export interface Candidate extends Span {
 export interface Detection extends Span {
   readonly type: DetectionType;
   readonly validated: boolean;
-  /** A keyword for this type appears near the value (ADR-010). */
+  /**
+   * A keyword for this type appears near the value (ADR-010). Always false
+   * for PERSON: the name finder's own cues have already decided (ADR-035).
+   */
   readonly context: boolean;
 }

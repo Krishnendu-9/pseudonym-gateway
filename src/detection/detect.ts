@@ -7,7 +7,7 @@
 
 import { aadhaarCandidates } from './aadhaar.js';
 import { cardCandidates } from './card.js';
-import { charBefore, digitRuns, isRunSeparator, widenToRuns } from './digit-runs.js';
+import { charAt, charBefore, digitRuns, isRunSeparator, widenToRuns } from './digit-runs.js';
 import { hasContext } from './context.js';
 import { dobCandidates } from './dob.js';
 import { emailCandidates } from './email.js';
@@ -15,7 +15,7 @@ import { ifscCandidates } from './ifsc.js';
 import { ipCandidates } from './ip.js';
 import { normalise, type Span } from './normalise.js';
 import { unclaimedNumbers } from './number.js';
-import { resolveOverlaps } from './overlap.js';
+import { compareCandidates, resolveOverlaps } from './overlap.js';
 import { panCandidates } from './pan.js';
 import { passportCandidates } from './passport.js';
 import { phoneCandidates } from './phone.js';
@@ -43,12 +43,32 @@ const DETECTORS: readonly ((text: string) => Iterable<Candidate>)[] = [
 // Types whose pattern alone is enough evidence (ADR-010).
 const PATTERN_ONLY: ReadonlySet<DetectionType> = new Set(['EMAIL']);
 
-/** Finds personal values in `original`. Spans index into `original`, in text order. */
-export function detect(original: string): Detection[] {
+/**
+ * Finds personal values in `original`. Spans index into `original`, in text
+ * order. `names` are person names the name finder found in `original`, in
+ * its offsets (ADR-037): each is brought into the normalised text with
+ * toNormalised, widened to the whole token it is part of, and resolved
+ * with everything else, as PERSON. A name that covers only invisible
+ * characters has nothing to hide and is dropped. Without `names` (names
+ * off) the pipeline is exactly the one Phase 5 measured.
+ */
+export function detect(original: string, names?: readonly Span[]): Detection[] {
   const normalised = normalise(original);
   const text = normalised.text;
+  const runs = digitRuns(text);
 
   const accepted: Detection[] = [];
+  for (const name of names ?? []) {
+    const span = normalised.toNormalised(name);
+    if (span) {
+      accepted.push({
+        type: 'PERSON',
+        validated: false,
+        context: false,
+        ...widenName(text, span, runs),
+      });
+    }
+  }
   const kept: Candidate[] = [];
   for (const detector of DETECTORS) {
     for (const candidate of detector(text)) {
@@ -73,9 +93,12 @@ export function detect(original: string): Detection[] {
   // the safety net claims long numbers nobody else did (ADR-011). Finally
   // map back, and resolve once more: rounding out to whole clusters could,
   // in principle, make two neighbours share a character.
-  const runs = digitRuns(text);
   const widenOne = (d: Detection): Span =>
-    d.type === 'IP' ? widenAddress(text, d, runs) : widenToRuns(d, runs);
+    d.type === 'IP'
+      ? widenAddress(text, d, runs)
+      : d.type === 'PERSON'
+        ? widenName(text, d, runs)
+        : widenToRuns(d, runs);
   const widened = widenUpToNeighbours(text, resolveCandidates(text, accepted, widenOne), widenOne);
 
   // Addresses no single host owns (ADR-026) take no part in the above, so
@@ -88,7 +111,36 @@ export function detect(original: string): Detection[] {
   const claimed = resolveOverlaps([...final, ...kept.filter((k) => !overlapsAny(final, k))]);
   const numbers = unclaimedNumbers(text, claimed).map((d) => ({ ...d, context: false }));
   const mapped = [...final, ...numbers].map((d) => ({ ...d, ...normalised.toOriginal(d) }));
-  return resolveOverlaps(mapped);
+  return names === undefined ? resolveOverlaps(mapped) : resolveRounded(mapped);
+}
+
+/**
+ * The last overlap pass with names on, after rounding out to whole clusters
+ * made two neighbours share a character (a name and an email glued across
+ * the 18 letters U+FDFA becomes; a card and an email on either side of a
+ * "½"). The plain rule drops the loser whole, and its value is sent. Here
+ * the loser keeps its parts outside the winners instead, whatever the
+ * types: a name can be lost in a clash it is not part of, when its letters
+ * went to the loser. Names off keeps the plain rule (bug-log 59), to be
+ * unified when bug 58 is decided.
+ */
+export function resolveRounded(mapped: readonly Detection[]): Detection[] {
+  const winners = resolveOverlaps(mapped);
+  if (winners.length === mapped.length) return winners;
+  const won = new Set(winners);
+  const kept = [...winners];
+  for (const loser of mapped.filter((d) => !won.has(d)).sort((a, b) => compareCandidates(a, b))) {
+    const clashes = kept
+      .filter((k) => k.start < loser.end && loser.start < k.end)
+      .sort((a, b) => a.start - b.start);
+    let start = loser.start;
+    for (const clash of clashes) {
+      if (clash.start > start) kept.push({ ...loser, start, end: clash.start });
+      start = Math.max(start, clash.end);
+    }
+    if (start < loser.end) kept.push({ ...loser, start, end: loser.end });
+  }
+  return kept.sort((a, b) => a.start - b.start);
 }
 
 const spanKey = (span: Span): string => `${span.start}:${span.end}`;
@@ -132,6 +184,30 @@ function overlapsAny(sorted: readonly Span[], span: Span): boolean {
 }
 
 const GLUED = /[\p{L}\p{M}_]/u;
+const TOKEN_CHAR = /[\p{L}\p{N}\p{M}_]/u;
+
+/**
+ * A name widened to the whole token it is glued into (letters, digits,
+ * marks, underscores) and to the digit runs that token reaches, until
+ * nothing more is added. The finder already gives whole words; this keeps
+ * any other span from leaving the rest of a word, a number or a glued
+ * token visible, or cutting it out of a token the safety net would have
+ * taken whole (ADR-011).
+ */
+function widenName(text: string, span: Span, runs: readonly Span[]): Span {
+  let { start, end } = span;
+  for (;;) {
+    let from = start;
+    let to = end;
+    for (let ch = charBefore(text, from); TOKEN_CHAR.test(ch); ch = charBefore(text, from)) {
+      from -= ch.length;
+    }
+    for (let ch = charAt(text, to); TOKEN_CHAR.test(ch); ch = charAt(text, to)) to += ch.length;
+    const wide = widenToRuns({ start: from, end: to }, runs);
+    if (wide.start === start && wide.end === end) return wide;
+    ({ start, end } = wide);
+  }
+}
 
 // An address is widened like every value, except over a first digit group
 // glued to a letter: the "4" of "IPv4 203.0.113.5" is part of a word, not a
