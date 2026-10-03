@@ -2423,3 +2423,60 @@ card-and-email case comes back whole with names off too.
 **Tests:** the property above (3,000 runs), and exact cases in
 `redact-names.test.ts`: "a name and an email that share U+FDFA", and the
 card-and-email case, names on and names off (pinned).
+
+## 60. With names on, the digits of a passport or voter number could be sent when the model took its letters for a name (2026-10-03, found by measuring the token widening; fixed by it before names were usable)
+
+**Symptom:** none seen in use (names on has never served a request: it
+refuses to start until step 4). Found when the token widening of step 3
+was measured on the generated set (ADR-037 amendment): in 4 of 1,998
+messages B labelled the letter part of a labelled passport number (3) or
+voter ID (1) as a person name, and without the widening the 7 digits
+glued to those letters (7 digits and 7 invisible characters in one case)
+would have been sent.
+
+**Root cause:** these values are keyword-only (ADR-031). In these
+messages no keyword was near, so no detector claimed them, and the
+digits are fewer than the safety net's 9. The name span covered only the
+letters the model read as a name, and nothing else covered the rest of the
+token.
+
+**Fix:** the token widening added in step 3 (a PERSON span grows to the
+whole token it is glued into, and the digit runs that token reaches). It
+was justified as covering a partial name; it turns out also to close
+these four cases. The widening now stops at a validated value (ADR-037
+amendment), which does not affect them: they are not validated.
+
+**Test:** `redact-names.test.ts`, "digits glued after letters the model
+calls a name go with them (bug-log 60)": a passport-shaped value with no
+keyword, a name span on its letter only, redacted whole. The re-measured
+widening still covers the 4 messages.
+
+## 61. A placeholder-shaped text with a space, between a credential word and its value, hides the value (2026-10-03, found by the new glued-literal cases; not fixed, waiting for the user)
+
+**Symptom:** the generated set's new `glued-literal` shape (bug-log 58's
+class) has 108 values. With bug 58's fix, 5 are still sent. 2 are cards
+that fail their check, written in spaced groups with no keyword: sent with
+the literal taken out too, an existing detection gap (in the final cases
+those templates carry the keyword their type needs, so the literal is the
+only difference, and they are redacted). **The other 3 are sent only
+because of the literal:** `password: [pan 1]<password>` and
+`token: [pan 1]<token>` (twice), a literal spelling that contains a
+space; `[Aadhaar 2]` did the same in a first draft of the cases.
+
+**Root cause:** a keyword secret's value is the text after the credential
+word up to the next blank (ADR-022). Here that is `[pan` (or
+`[Aadhaar`), which the literal owns: the secret detection is cut down to
+nothing around the literal (correctly, since bug 58), and the real value
+after the literal is never detected at all. The spellings without a
+space (`[PAN_1]Abcde@12`) are fine: the value then runs over the literal
+and is cut around it.
+
+**Fix:** none yet; options for the user. (1) The secret detector skips a
+placeholder-shaped text right after the credential word and takes the
+value after it. (2) `redactMessage` detects on the text with each literal
+replaced by filler of the same length that is not a blank, so no detector
+reads a literal as a word, then cuts around the literals as now. (3)
+Document it.
+
+**Tests:** none pinned yet; the generated set counts the 3 values as
+missed SECRETs, so a fix shows as a better count.

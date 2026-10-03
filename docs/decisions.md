@@ -5200,3 +5200,65 @@ as "back with a later mention as first written".
   correctness fix from the generated set and the step 3 properties, no
   held-out case involved; bug-log 58), and none did.
 - Corrections marked "fixed" at ADR-013, ADR-024, ADR-025 and ADR-026.
+
+### Amendment after the bug 58 fix (2026-10-03, the user's review)
+
+**The token widening stops at a validated value (the user's decision).**
+An unvalidated guess must not absorb a checksum-verified value: the same
+rule the overlap resolver applies (ADR-003 rule 1). `widenName` never grows
+into the span of a validated candidate; what the model's own span already
+covers of one is left to the resolver, which gives it to the validated
+value. Names are now added to the candidates after the detectors run, so
+that the widening knows them. Re-measured on the generated set (same
+method as the amendment above): **9 messages, 62 characters more, none
+less** (was 11 and 64). The validated IFSC and the AWS-format key (message
+338: my earlier report called it a keyword secret; it is a validated
+known-format key) are no longer taken into the name. **One retyping
+stays:** an IFSC at a bank code not on the list, accepted only by its
+keyword, is not validated, so the rule does not apply to it. The 4
+passport and voter values stay fully redacted (bug-log 60), the 4
+lookalike codes stay over-redacted. A name span reaching into a published
+test card now gives `[PERSON_1] [CARD_1]`, not `[PERSON_1]`.
+
+**Which form comes back is the same rule for every type.** One placeholder
+per value key, restored to the first form written (`mapping.ts`), for
+emails, PANs, cards, UPI IDs, IP addresses and dates of birth as for names
+(probed for each). The exception is SECRET, whose value key keeps case, so
+two spellings are two values and each comes back as written.
+`variants.ts` plays no part: it decides which placeholder spellings are
+recognised, not which value they restore to. The user manual says so in
+one line.
+
+**The generated set gains a `glued-literal` shape: 108 cases, one value
+each** (SECRET 24, NUMBER 18, PHONE 18, AADHAAR 12, CARD 12, EMAIL 12, UPI
+6, IP 6), from 18 templates covering every way bug 58 let a value through:
+digits joined across the literal's `]` before and after it, through a
+joiner (`-`, `.`, brackets), from values that pass their check and values
+that fail it; a keyword secret whose value runs over the literal; a
+combining mark between the literal and an address; a known-format key
+glued to it. Eight literal spellings (`[PAN_1]`, `[CARD_2]`, `[pan 1]`,
+`[LITERAL_1]`, `[PERSON_3]`, `[Aadhaar 2]`, `[EMAIL_1]`, `[number_4]`),
+by case number, so each template meets four, one with a space. A value
+only found with a keyword (a card that fails its check, a UPI ID at an
+unknown handle) gets one, so that the literal is the only difference.
+Accepted as a changed dataset, detectors unchanged; `baseline.json` holds
+two history entries for it, the first draft of the cases and then the
+corrected templates (over-redactions 35 to 41), both with this ADR's note.
+
+Measured on scratch copies (generated set only):
+
+| On the 108 values                                    | Today | With bug 58 put back |
+| ---------------------------------------------------- | ----- | -------------------- |
+| Values sent whole (`redactMessage`)                  | 3     | 46                   |
+| Echo: placeholders restored (pinned by the baseline) | 222   | 179                  |
+| Scores (`detect()`): redacted                        | 105   | 105                  |
+
+So **the eval now fails if bug 58 comes back, through the echo**, whose
+"restored" count may only go up. The scores cannot see it: they read
+`detect()`, which never had the literal filter. The 3 values sent today
+are bug-log 61 (not fixed). The shape's 41 over-redactions are 32
+detections wholly inside a literal (the safety net reading the literal's
+digit as joined to the value; the text sent keeps the literal there) and
+9 filler lookalikes. **Open, for the user:** the scores measure what
+`detect()` finds, not what is sent; scoring the text `redactMessage`
+sends would make the leak counts themselves see this class of bug.

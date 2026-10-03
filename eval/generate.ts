@@ -700,6 +700,7 @@ export const SHAPES = [
   'misaligned-sheet',
   'in-markup',
   'names',
+  'glued-literal',
 ] as const;
 export type Shape = (typeof SHAPES)[number];
 
@@ -716,6 +717,8 @@ export const SHAPE_VALUES: Readonly<Record<Shape, number>> = {
   'misaligned-sheet': 132,
   'in-markup': 90,
   names: 4 * VALUES_PER_TYPE,
+  // Six rounds of the 18 templates in GLUED_LITERAL.
+  'glued-literal': 108,
 };
 
 const SHAPE_SALT = 0x5c5c5c5c;
@@ -981,6 +984,55 @@ const IN_MARKUP: readonly Placement[] = [
   [(s) => `[profile]: https://portal.example/?u=${s}`, ['{{EMAIL}}', '{{PHONE}}']],
   [(s) => `<img src="https://cdn.example/p.png?u=${s}" alt="photo">`, ['{{EMAIL}}', '{{UPI}}']],
 ];
+// A value glued to text shaped like a placeholder (bug-log 58): the steps
+// that run after a pattern matches can take a detection into the literal,
+// and before the fix that detection was dropped whole and its value sent.
+// Every way found is here, each with several literal spellings: digits
+// joined across the literal's "]" (the safety net, ADR-011, ADR-029) before
+// and after it, through a joiner, from values that fail their check and
+// from values that pass it; a keyword secret whose value runs over the
+// literal (ADR-022); a combining mark between the literal and an address
+// (in the "]"'s cluster); a known-format key glued to it. A value that is
+// only found with a keyword (a card that fails its check, a UPI ID at an
+// unknown handle) gets one, so that the literal is the only difference
+// from a value the detectors find.
+const LITERAL_SPELLINGS = [
+  '[PAN_1]',
+  '[CARD_2]',
+  '[pan 1]',
+  '[LITERAL_1]',
+  '[PERSON_3]',
+  '[Aadhaar 2]',
+  '[EMAIL_1]',
+  '[number_4]',
+];
+const COMBINING_ACUTE = String.fromCharCode(0x301);
+const GLUED_LITERAL: readonly ((literal: string, rng: Rng) => string)[] = [
+  (l) => `${l}{{NUMBER:############}}`,
+  (l) => `{{NUMBER:##########}}${l}`,
+  (l) => `${l}-{{NUMBER:###########}}`,
+  (l) => `${l}{{AADHAAR!:############}}`,
+  (l) => `${l}{{AADHAAR:#### #### ####}}`,
+  (l) => `${l}{{CARD:################}}`,
+  (l) => `card {{CARD!:#### #### #### ####}}${l}`,
+  (l) => `${l}{{PHONE:##########}}`,
+  (l) => `({{PHONE:##########}})${l}`,
+  (l) => `${l}.{{PHONE:##########}}`,
+  (l) => `UPI: ${l}{{UPI.mobile-name}}`,
+  (l) => `${l}${COMBINING_ACUTE}{{EMAIL}}`,
+  (l) => `{{EMAIL}}${l}`,
+  (l, rng) => `${l}{{IP=${ipAddress(rng, 'v4')}}}`,
+  (l) => `password: ${l}{{SECRET.password}}`,
+  (l) => `api_key={{SECRET.token}}${l}`,
+  (l) => `token: ${l}{{SECRET.token}}`,
+  (l) => `${l}{{SECRET.github}}`,
+];
+const GLUED_FRAMES: ByTongue = {
+  en: [(s) => `Copied from the old ticket: ${s}`, (s) => `See ${s} in the export.`],
+  hinglish: [(s) => `Purane ticket se copy kiya: ${s}`, (s) => `${s} export mein dekho.`],
+  hi: [(s) => `पुराने टिकट से: ${s}`, (s) => `एक्सपोर्ट में ${s} देखें।`],
+};
+
 const MARKUP_FRAMES: ByTongue = {
   en: [(m) => `Details: ${m}`, (m) => `Please check ${m} and reply.`],
   hinglish: [(m) => `Details yahan hain: ${m}`, (m) => `${m} dekh lijiye.`],
@@ -1103,6 +1155,16 @@ function shapeCases(seed: number, firstNumber: number): RawCase[] {
   for (let i = 0; i < SHAPE_VALUES.names; i++) {
     const { kind, tongue, text, tags } = nameCase(rng);
     add(kind, tongue, 'names', [message(text)], tags);
+  }
+  // Values glued to placeholder-shaped text, after the names (bug-log 58).
+  for (let i = 0; i < SHAPE_VALUES['glued-literal']; i++) {
+    const tongue = pickTongue(rng);
+    const template = GLUED_LITERAL[i % GLUED_LITERAL.length]!;
+    // Spelling by case number: every spelling is used, and each template
+    // meets four of them, one with a space.
+    const literal = LITERAL_SPELLINGS[i % LITERAL_SPELLINGS.length]!;
+    const sentence = rng.pick(GLUED_FRAMES[tongue])(template(literal, rng));
+    add('ticket', tongue, 'glued-literal', [message(ticket(tongue, sentence))]);
   }
   return out;
 }

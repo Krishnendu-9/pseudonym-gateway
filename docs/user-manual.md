@@ -1193,6 +1193,11 @@ What names on will do (ADR-037):
   `[PERSON_1]`, `[PERSON_2]`, and restored in the answer, streamed or not.
   The same name written in another case or spacing is one placeholder;
   "Asha" and "Asha Rao" are two.
+- A name written more than one way comes back in the form it first
+  appeared, so its capitalisation or spacing can change in the answer.
+  Every other type works the same way (an email, PAN, card number, UPI ID,
+  IP address or date of birth), except secrets, which never share a
+  placeholder across case and so always come back exactly as written.
 - If the names cannot be found, the request is refused with a 503
   (`name_detection_unavailable`) and **never sent without them**: the
   model failed, did not answer in time, is busy with too many requests, or

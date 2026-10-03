@@ -139,16 +139,49 @@ describe('names and the other detectors', () => {
     expect(redactNames(text, [{ start: 9, end: 13 }])).toBe('Write to [EMAIL_1] today.');
   });
 
-  it('a name span that reaches into a number takes the whole number, never part of it', () => {
-    // A published test card. The span is widened to the digit runs it
-    // touches, then contains the card and replaces it (ADR-029).
+  it('a name span that reaches into a validated card stops at it: the card keeps its type, whole', () => {
+    // A published test card: validated, so the widening does not enter it
+    // and the resolver gives the card its own digits.
     const text = 'Asha 4111 1111 1111 1111 now';
+    expect(redactNames(text, [{ start: 0, end: 7 }])).toBe('[PERSON_1] [CARD_1] now');
+  });
+
+  it('a name span that reaches into an unvalidated number takes the whole number, never part of it', () => {
+    // Twelve digits that fail the Aadhaar check: the safety net's, not validated.
+    const text = 'Asha 1234 5678 9012 now';
     expect(redactNames(text, [{ start: 0, end: 7 }])).toBe('[PERSON_1] now');
   });
 
   it('a name next to a validated value it does not touch: each its own type', () => {
     const text = 'Asha Rao 4111 1111 1111 1111';
     expect(redactNames(text, [{ start: 0, end: 8 }])).toBe('[PERSON_1] [CARD_1]');
+  });
+
+  it('widening stops at a validated value: a span reaching into a known-format key leaves it a key', () => {
+    // Assembled at run time: an AWS-format key, which the secret detector validates.
+    const key = 'AK' + 'IA' + 'QWERTYUI23456789';
+    const text = `Asha ${key} ok`;
+    expect(detect(text, [{ start: 0, end: 7 }]).map((d) => [d.type, d.start, d.end])).toEqual([
+      ['PERSON', 0, 4],
+      ['SECRET', 5, 25],
+    ]);
+    expect(redactNames(text, [{ start: 0, end: 7 }])).toBe('[PERSON_1] [SECRET_1] ok');
+  });
+
+  it('an unvalidated value is still taken into the name: an IFSC at an unknown bank, accepted by its keyword', () => {
+    // Redacted either way; only its type is lost (ADR-037 amendment).
+    const text = 'IFSC Asha QQQQ0123456 ok';
+    expect(detect(text, [{ start: 5, end: 12 }]).map((d) => [d.type, d.start, d.end])).toEqual([
+      ['PERSON', 5, 21],
+    ]);
+  });
+
+  it('digits glued after letters the model calls a name go with them (bug-log 60)', () => {
+    // A passport-shaped value with no keyword: no detector takes it, and a
+    // name on its letter alone would leave the seven digits visible.
+    const text = 'ID Z1234567 here';
+    expect(detect(text).length).toBe(0);
+    expect(redactNames(text, [{ start: 3, end: 4 }])).toBe('ID [PERSON_1] here');
   });
 
   it('a span on part of a word, or on a digit glued to a word, takes the whole token', () => {

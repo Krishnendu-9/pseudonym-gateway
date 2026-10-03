@@ -1,5 +1,5 @@
 {
-  "measuredOn": "2026-10-02",
+  "measuredOn": "2026-10-03",
   "generated": {
     "cases": 500,
     "messages": 600,
@@ -236,6 +236,13 @@
         "partial": 0,
         "typed": 0,
         "overRedactions": 79
+      },
+      "glued-literal": {
+        "values": 108,
+        "redacted": 105,
+        "partial": 0,
+        "typed": 92,
+        "overRedactions": 41
       }
     },
     "echo": {
@@ -452,6 +459,24 @@
           "bare-space": 0
         },
         "exact": 612,
+        "firstForm": 0,
+        "broken": 0
+      },
+      "glued-literal": {
+        "messages": 108,
+        "placeholders": 222,
+        "restored": 222,
+        "heldBack": {
+          "markdown-destination": 0,
+          "reference-label": 0,
+          "html-attribute": 0,
+          "url": 0,
+          "unclosed-angle": 0,
+          "unclosed-quote": 0,
+          "host": 0,
+          "bare-space": 0
+        },
+        "exact": 108,
         "firstForm": 0,
         "broken": 0
       }
@@ -810,6 +835,21 @@
         "held-out PERSON: 10 values -> 45",
         "generated echo names: 0 messages -> 612",
         "held-out echo all: 58 messages -> 80"
+      ]
+    },
+    {
+      "date": "2026-10-03",
+      "note": "ADR-037: glued-literal shape added (108 values glued to placeholder-shaped text, bug-log 58's class); dataset change only, detectors unchanged",
+      "changes": [
+        "generated shape glued-literal: 0 values -> 108",
+        "generated echo glued-literal: 0 messages -> 108"
+      ]
+    },
+    {
+      "date": "2026-10-03",
+      "note": "ADR-037: glued-literal shape added (108 values glued to placeholder-shaped text, bug-log 58's class); dataset change only, detectors unchanged",
+      "changes": [
+        "generated shape glued-literal: over-redactions 35 -> 41"
       ]
     }
   ]

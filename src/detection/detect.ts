@@ -57,17 +57,6 @@ export function detect(original: string, names?: readonly Span[]): Detection[] {
   const runs = digitRuns(text);
 
   const accepted: Detection[] = [];
-  for (const name of names ?? []) {
-    const span = normalised.toNormalised(name);
-    if (span) {
-      accepted.push({
-        type: 'PERSON',
-        validated: false,
-        context: false,
-        ...widenName(text, span, runs),
-      });
-    }
-  }
   const kept: Candidate[] = [];
   for (const detector of DETECTORS) {
     for (const candidate of detector(text)) {
@@ -79,6 +68,20 @@ export function detect(original: string, names?: readonly Span[]): Detection[] {
       if (candidate.validated || context || PATTERN_ONLY.has(candidate.type)) {
         accepted.push({ ...candidate, context });
       }
+    }
+  }
+  // Names after the detectors, so that their widening knows the validated
+  // values: a guess never grows into a checksum-verified value (below).
+  const validated = accepted.filter((d) => d.validated);
+  for (const name of names ?? []) {
+    const span = normalised.toNormalised(name);
+    if (span) {
+      accepted.push({
+        type: 'PERSON',
+        validated: false,
+        context: false,
+        ...widenName(text, span, runs, validated),
+      });
     }
   }
 
@@ -96,7 +99,7 @@ export function detect(original: string, names?: readonly Span[]): Detection[] {
     d.type === 'IP'
       ? widenAddress(text, d, runs)
       : d.type === 'PERSON'
-        ? widenName(text, d, runs)
+        ? widenName(text, d, runs, validated)
         : widenToRuns(d, runs);
   const widened = widenUpToNeighbours(text, resolveCandidates(text, accepted, widenOne), widenOne);
 
@@ -189,9 +192,17 @@ const TOKEN_CHAR = /[\p{L}\p{N}\p{M}_]/u;
  * nothing more is added. The finder already gives whole words; this keeps
  * any other span from leaving the rest of a word, a number or a glued
  * token visible, or cutting it out of a token the safety net would have
- * taken whole (ADR-011).
+ * taken whole (ADR-011). It never grows into a `validated` value: an
+ * unvalidated guess must not absorb a checksum-verified value, the same
+ * rule the overlap resolver applies (ADR-003 rule 1). What the span itself
+ * already covers of such a value is left to the resolver.
  */
-function widenName(text: string, span: Span, runs: readonly Span[]): Span {
+function widenName(
+  text: string,
+  span: Span,
+  runs: readonly Span[],
+  validated: readonly Span[],
+): Span {
   let { start, end } = span;
   for (;;) {
     let from = start;
@@ -201,8 +212,18 @@ function widenName(text: string, span: Span, runs: readonly Span[]): Span {
     }
     for (let ch = charAt(text, to); TOKEN_CHAR.test(ch); ch = charAt(text, to)) to += ch.length;
     const wide = widenToRuns({ start: from, end: to }, runs);
-    if (wide.start === start && wide.end === end) return wide;
-    ({ start, end } = wide);
+    // How far the span may grow without entering a validated value.
+    let floor = 0;
+    let ceiling = text.length;
+    for (const v of validated) {
+      if (v.end <= start) floor = Math.max(floor, v.end);
+      else if (v.start < start) floor = start;
+      if (v.start >= end) ceiling = Math.min(ceiling, v.start);
+      else if (v.end > end) ceiling = end;
+    }
+    const next = { start: Math.max(wide.start, floor), end: Math.min(wide.end, ceiling) };
+    if (next.start === start && next.end === end) return next;
+    ({ start, end } = next);
   }
 }
 

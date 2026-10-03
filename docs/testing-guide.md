@@ -2729,3 +2729,43 @@ cut" (every overlapping detection passed through): 5 tests fail.
 `npm run eval` after the fix, default output only (counts by data type):
 every count, generated and held-out, scores and echo, matched the
 baseline, so nothing was updated.
+
+### The widening stop, the restored form, and the glued-literal shape (2026-10-03)
+
+- **Widening stops at a validated value:** `redact-names.test.ts` has a
+  known-format key (built at run time) and a published test card that a
+  name span reaches into (each keeps its type), an IFSC at an unknown bank
+  that is still taken in (not validated), a number that fails its check
+  (taken whole), and the bug-60 case (a passport-shaped value with no
+  keyword, a name span on its letter). Re-measured on the generated set
+  with B's saved spans: 9 messages, 62 characters (ADR-037 amendment).
+- **The restored form:** probed for every type (email, PAN, card, UPI, IP,
+  date of birth, secret): the first form written comes back, except a
+  secret, whose case makes a second value.
+- **`glued-literal`:** `test/unit/eval/generate-glued.test.ts` pins its
+  108 cases, one value each, the counts by type, the eight spellings and
+  that every value is glued to a literal. Measured on scratch copies of
+  `src/` and `eval/` (the held-out file not copied): today 3 of 108 values
+  are sent (bug-log 61), with bug 58 put back 46 are, and the echo's
+  restored count for the shape drops from 222 to 179, which fails the eval.
+  Diagnostics printed template numbers, spellings, types, labels and
+  character classes only.
+
+### The names scorer, checked by hand (2026-10-03, before step 4)
+
+`test/unit/eval/names/measure-hand.test.ts`: eight fixtures whose expected
+metrics were worked out by hand from the written definitions (ADR-021
+item 4, ADR-035 "Metrics"), not taken from the code: a name covered
+whole; one letter out (partly, so not redacted, yet the detection is
+precise); two detections covering a name between them; a plain-text
+detection (1 in 5 words = 200 per 1,000); a detection on a `NOT` slot (a
+lookalike, not a false positive, not precise); a name in the names block,
+the main cases or another shape; a detection on another type's value; word
+counting across messages and whitespace (7 words, 2 false positives =
+285.714 per 1,000; no cases = 0, not NaN). **All eight agreed with
+`measure` on the first run.** Two scorer mutations on a scratch copy were
+each caught by the fixture aimed at it (partly covered counted as
+redacted: fixture 2; words split on single spaces only: fixture 8).
+These check `measure`, through which every published names number passed;
+the script's own glue (`findFor`, `combine`) is pinned by the span hashes
+and by D0's comparison of the two joins (ADR-036), not by these fixtures.
