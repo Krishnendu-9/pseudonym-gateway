@@ -35,7 +35,12 @@ In PowerShell:
 (Get-Counter '\Memory\Available MBytes').CounterSamples[0].CookedValue
 ```
 
-Below about 3,500, close memory-heavy programs first. The failures look
+Below about 3,500, close memory-heavy programs first. A model loaded in
+Ollama takes about 3 GB and stays loaded for five minutes after its last
+request: `ollama ps` shows it, `ollama stop <model>` unloads it (it was
+not the cause of the 2026-10-03 failures, but it would add to them).
+`npm run test:coverage` runs with at most 4 workers (bug-log 57: a
+mitigation, half the memory at no measured cost in time). The failures look
 like tests timing out at 30 s that take 2–4 s alone, often
 `detect.test.ts`, and sometimes "Failed to start forks worker"; they are
 not code failures, and the same run passes once memory is free.
@@ -51,6 +56,41 @@ nothing of their own. `npx vitest list --project main` and
 `--project timing` list 82 and 16 files; their test counts are lower
 (1,297 and 26) because `vitest list` shows each `it.each` template once,
 so the per-test split comes from the two run reports.
+
+**What each check does not look at** (swept 2026-10-03 after a Prettier
+check on ignored files reported them clean; a check that cannot fail
+reports success on files it never read):
+
+- **Prettier** (`format:check`): skips `dev_docs/` and `CLAUDE.md`
+  (private), `eval/baseline.json` (written by `npx tsx eval/run.ts
+--update` with `JSON.stringify`, so Prettier would fight it; its content
+  is checked by `npm run eval`), and files it has no parser for (dotfiles,
+  `LICENSE`, `eval/held-out.txt`, the `.sse` fixture). Given only ignored
+  paths, `npx prettier --check` still prints "All matched files use
+  Prettier code style!": it checked nothing.
+- **TypeScript** (`typecheck`): `tsconfig.json` includes `src`, `test`,
+  `scripts`, `eval`, so `vitest.config.ts` is never typechecked (checked
+  once by hand: no errors) and `eslint.config.js` is JavaScript.
+- **ESLint**: lints all 204 tracked code files; nothing skipped.
+- **Coverage** (100% gate): `src` and `eval` only, minus the entry points
+  `src/main.ts`, `eval/run.ts`, `eval/check-held-out.ts`. Nothing in
+  `scripts/` is measured; `compare-names.ts` (the 6a scoring wiring,
+  939 lines) and `fetch-wikidata-names.ts` (the name-list split) have no
+  tests; their outputs are pinned elsewhere (span SHA-256s, the list's
+  hash test).
+- **Repo hygiene**: scans `src`, `test`, `scripts`, `eval`, `docs` and
+  `README.md`, files ending `.ts .js .mjs .cjs .json .md .txt`. Not read:
+  `.env.example`, `.github/workflows/ci.yml`, `package.json`,
+  `package-lock.json`, `tsconfig.json`, `vitest.config.ts`,
+  `eslint.config.js`, `LICENSE`, the dotfiles, and the `.sse` fixture
+  under `test/`. Run once over those 15 files on 2026-10-03: every rule
+  clean. Its "scans a meaningful number of files" test guards against
+  scanning nothing.
+- **README numbers**: `readme-facts.test.ts` checks the numbers that come
+  from code or stored results, and `npm run eval` the generated block;
+  numbers in prose that repeat evaluation output outside the block (the
+  echo paragraph's "7 of 1,667", the shape-block prose) are checked by
+  neither.
 
 ## Ground rules for every test in this repo
 

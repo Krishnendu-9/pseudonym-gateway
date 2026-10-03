@@ -4772,7 +4772,7 @@ Davlan/bert-base-multilingual-cased-ner-hrl`).
 - **A crashed worker is not restarted automatically.** Health reports
   unhealthy until the process is restarted.
 
-### Open: a name cut short at an invisible character (measured 2026-10-03; decision pending)
+### A name cut short at an invisible character (measured and decided 2026-10-03: option 2)
 
 **The gap.** F's word pattern and `widenToWords` stop at a
 Default_Ignorable character (soft hyphen, zero-width space, BOM: they are
@@ -4812,6 +4812,49 @@ characters to the end of the word when it fires: no refusals, the rest of
 the word redacted instead (not measured; costs over-redaction on the 86);
 (3) neither, recorded as a bypass in the README and user manual. Until
 names are wired, nothing ships either way.
+
+**A property of option 1, whatever is chosen:** it refuses on input the
+sender controls. Anyone who can put text into a request (a pasted
+document, a prompt-injected page, a hostile form field) can insert soft
+hyphens next to a name-like word and make the gateway refuse that
+request: it converts a leak into an availability bypass, a way to stop
+requests from being served.
+
+**The decision rule, set by the user before option 2 was measured**
+(given 2026-10-03; written here at 12:56 IST, before the probe for it was
+written or run): measure option 2 on the same worst case as option 1 (the
+generated messages with a soft hyphen in every Latin word of 6+ letters).
+**Choose option 2 unless it over-redacts non-name text in more than 86
+messages** (the count option 1 refuses); above 86, choose option 1. Apply
+it as written whichever way it falls. Also reported: the extra characters
+redacted, how many of the 64 partly covered names option 2 covers in
+full, and that it fires 0 times on the unmodified generated set.
+
+**Option 2 measured (2026-10-03, after the rule above).** Option 2 as
+probed: when a joined name span's edge stops at one or more invisible
+characters with a letter or mark right behind them, the span extends over
+them and the following letters and marks, repeatedly, to the end of the
+word; spans that then meet are merged. Same scratch probe and B run as
+option 1, which reproduced option 1's figures (fires on 134 spans in 131
+messages).
+
+| Text                                  | Fires in | Messages with non-name text pulled in | Extra characters outside names                                              | Partly covered names fully covered | Still partly covered |
+| ------------------------------------- | -------- | ------------------------------------- | --------------------------------------------------------------------------- | ---------------------------------- | -------------------- |
+| Generated set as it is                | 0        | 0                                     | 0                                                                           | 0 of 14                            | 14                   |
+| Soft hyphen in every Latin word of 6+ | 131      | **86**                                | 424 (337 visible, 87 soft hyphens; 29 of them inside other labelled values) | 27 of 64                           | 37                   |
+
+**Decision, by the rule as written: option 2** (86 is not more than 86).
+On every measured input it fires 0 times, so every published
+generated-set number stands. Two facts, recorded and not used to revisit
+the rule: the comparison is close to a tie by construction (both options
+fire on the same spans, and option 2 over-redacts where a firing span has
+no name under it, which is where option 1 refuses falsely); and option 2
+leaves 37 of the 64 partly covered names partly covered, against 20 under
+option 1 (those outside the messages it refuses). When names ship, the
+README and user manual state the remaining case: a name broken by an
+invisible character is covered to the end of the word only when the
+model or the list found part of that word, and a second word of a name is
+not reached this way.
 
 ### Constraint on step 3 (the user, 2026-10-03; settled)
 

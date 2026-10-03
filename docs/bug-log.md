@@ -2258,3 +2258,24 @@ both capped runs fell in the period with memory to spare, so they do not
 show that it prevents the failure; offered to the user, not applied.
 
 **Guarded by:** nothing automatic; a test cannot see the machine's memory.
+
+**Follow-up (2026-10-03, the user's decision): the 4-worker cap is
+applied, as a mitigation, not a proven fix.** `npm run test:coverage` now
+runs `vitest run --coverage --project main --maxWorkers=4`
+(`package.json`; a comment in `vitest.config.ts` points here). Reason: it
+halves Vitest's memory (636–638 MB against 1,288–1,451 MB) at no measured
+cost in time. It does not remove the cause, which is outside Vitest: if a
+failure recurs under the cap, that is further evidence the cause is memory
+taken by something else. `npm test` is unchanged (its main project still
+uses up to 11 workers); CI's 4-CPU runner already used fewer than 4.
+
+**Ollama checked and ruled out (same day).** The user suggested Ollama
+keeping a model loaded (about 3 GB for `qwen3:4b`, kept for five minutes
+after the last request by default) as the source of the 6 GB swing.
+`ollama ps` showed nothing loaded; the Ollama server process held 56 MB;
+and Ollama's own server log has no model load and no chat or generate
+request between 10:42 and 12:57 IST, which covers both failed coverage
+runs (10:31, 11:17) and the whole 12:06–12:25 window. Its only entries in
+that span are the Ollama app's version and model-list checks at 10:42, an
+internal scheduling line at 12:27, and the `ollama ps` itself at 12:57.
+The swing came from something else; still not attributed.
