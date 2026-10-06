@@ -11,6 +11,10 @@ coverage/
 # gitlink with no .gitmodules entry, and actions/checkout fails on it (CI #8)
 .head-worktree/
 
+# The name model, downloaded by `npm run fetch:model` (ADR-036): 178.5 MB,
+# over GitHub's file limit, and not ours to redistribute
+models/
+
 # Secrets: ignore every .env file except the example
 .env
 .env.*

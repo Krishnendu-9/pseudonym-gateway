@@ -7,3 +7,4 @@ coverage/
 .head-worktree/
 dev_docs/
 .git/
+models/

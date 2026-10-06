@@ -175,21 +175,30 @@ export const listSha256 = (list: ReadonlySet<string>): string =>
     .update([...list].sort().join('\n'))
     .digest('hex');
 
+/** The start-up check on the list (ADR-036): refuses unless it is the measured one. */
+export function checkNameList(list: ReadonlySet<string>): void {
+  if (listSha256(list) !== NAME_LIST_SHA256) throw new NameStartupError('NAME_LIST_MISMATCH');
+}
+
 /**
  * Starts name detection, or refuses (ADR-036): the list the detector will
- * use must match NAME_LIST_SHA256, and the model must load. Either failure
- * is a NameStartupError, and the gateway does not start.
+ * use must match NAME_LIST_SHA256 (checked first), and the model must load,
+ * which includes its own file check (loadNameModel). Either failure is a
+ * NameStartupError, and the gateway does not start. A NameStartupError from
+ * the loader keeps its code and file; any other error becomes
+ * NAME_MODEL_LOAD_FAILED, keeping nothing of it.
  */
 export async function startNameDetection(
   loadModel: () => Promise<NameModel>,
   options: NameDetectorOptions,
   list: ReadonlySet<string> = GAZETTEER,
 ): Promise<NameDetector> {
-  if (listSha256(list) !== NAME_LIST_SHA256) throw new NameStartupError('NAME_LIST_MISMATCH');
+  checkNameList(list);
   let model: NameModel;
   try {
     model = await loadModel();
-  } catch {
+  } catch (error) {
+    if (error instanceof NameStartupError) throw error;
     throw new NameStartupError('NAME_MODEL_LOAD_FAILED');
   }
   return new NameDetector(model, options, list);

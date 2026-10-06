@@ -4,9 +4,10 @@
 // (config/wiring.ts). Excluded from coverage (vitest.config.ts).
 
 import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { loadEnv } from './config/env.js';
 import { nameFinder, ollamaConfig, serverConfig } from './config/wiring.js';
-import { NameStartupError, safeErrorDetails } from './gateway/errors.js';
+import { safeErrorDetails } from './gateway/errors.js';
 import { buildServer } from './gateway/server.js';
 import { checkProductionHardening } from './hardening.js';
 import { createOllamaProvider } from './providers/ollama.js';
@@ -53,12 +54,18 @@ if (env.NODE_ENV === 'production') {
 }
 
 // Names on: the gateway starts only with a name list that matches its pinned
-// hash and a model that loads (ADR-036). The model runtime and its worker are
-// Phase 6b step 4; until then names on always refuses start-up. Names off
-// never calls this, and nothing here imports a name module.
-const names = await nameFinder(env, () =>
-  Promise.reject(new NameStartupError('NAME_MODEL_LOAD_FAILED')),
-);
+// hash, model files that match theirs, and a model that loads (ADR-036). The
+// list and the files are checked here; the worker that loads and runs the
+// model is Phase 6b step 4b, so until then names on always refuses start-up,
+// after those checks. Names off never calls this, and the name modules are
+// imported only inside it.
+const names = await nameFinder(env, async () => {
+  const { GAZETTEER } = await import('./detection/names/gazetteer.js');
+  const { checkNameList } = await import('./gateway/names.js');
+  const { loadNameModel, MODEL_ROOT, NAME_MODEL } = await import('./gateway/name-model.js');
+  checkNameList(GAZETTEER);
+  return loadNameModel(join(MODEL_ROOT, NAME_MODEL.dir));
+});
 
 const app = buildServer(
   { ...serverConfig(env), ...(names === undefined ? {} : { names }) },

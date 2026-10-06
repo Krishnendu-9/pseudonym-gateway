@@ -68,16 +68,24 @@ export class NameDetectionUnavailable extends GatewayError {
 
 /**
  * With names on, the gateway does not start unless the name list matches
- * its pinned hash and the model loads (ADR-036). `code` says which; the
+ * its pinned hash, every model file is present and matches its pinned hash,
+ * and the model loads (ADR-036). `code` says which, and `file` which model
+ * file (its path in the pinned list, never anything read from it); the
  * underlying error is not kept, since its message is not ours.
  */
 export class NameStartupError extends Error {
-  readonly code: 'NAME_LIST_MISMATCH' | 'NAME_MODEL_LOAD_FAILED';
+  readonly code:
+    | 'NAME_LIST_MISMATCH'
+    | 'NAME_MODEL_FILE_MISSING'
+    | 'NAME_MODEL_FILE_MISMATCH'
+    | 'NAME_MODEL_LOAD_FAILED';
+  readonly file: string | undefined;
 
-  constructor(code: NameStartupError['code']) {
+  constructor(code: NameStartupError['code'], file?: string) {
     super('name detection could not start');
     this.name = 'NameStartupError';
     this.code = code;
+    this.file = file;
   }
 }
 
@@ -192,6 +200,7 @@ export function safeErrorDetails(error: unknown): Record<string, unknown> {
   if (typeof code === 'string' && /^[A-Z0-9_]{1,64}$/.test(code)) details.code = code;
   if (error instanceof GatewayError) details.code = error.code;
   if (error instanceof NameDetectionUnavailable) details.reason = error.reason;
+  if (error instanceof NameStartupError && error.file !== undefined) details.file = error.file;
   if (error instanceof ProviderError) {
     details.failure = error.failure;
     if (error.status !== undefined) details.status = error.status;

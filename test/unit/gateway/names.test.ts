@@ -12,6 +12,7 @@ import {
   toGatewayError,
 } from '../../../src/gateway/errors.js';
 import {
+  checkNameList,
   listSha256,
   NAME_LIST_SHA256,
   NameDetector,
@@ -323,6 +324,42 @@ describe('startNameDetection: refuses to start unless the list and the model are
       await expect(refused).rejects.toMatchObject({ code: 'NAME_LIST_MISMATCH' });
     }
     expect(loads).toBe(0);
+  });
+
+  it('checkNameList, called directly: the gazetteer passes, any other list refuses', () => {
+    expect(() => checkNameList(GAZETTEER)).not.toThrow();
+    const lists = [
+      new Set([...GAZETTEER, 'extra']),
+      new Set([...GAZETTEER].slice(1)),
+      new Set([...GAZETTEER].map((name, i) => (i === 0 ? `${name}x` : name))),
+      new Set<string>(),
+    ];
+    for (const list of lists) {
+      expect(() => checkNameList(list)).toThrow(NameStartupError);
+      try {
+        checkNameList(list);
+      } catch (error) {
+        expect(safeErrorDetails(error)).toEqual({
+          name: 'NameStartupError',
+          code: 'NAME_LIST_MISMATCH',
+        });
+      }
+    }
+  });
+
+  it('a model file refusal keeps its code and file: the operator learns which file', async () => {
+    for (const code of ['NAME_MODEL_FILE_MISSING', 'NAME_MODEL_FILE_MISMATCH'] as const) {
+      const refused = startNameDetection(
+        () => Promise.reject(new NameStartupError(code, 'onnx/model_quantized.onnx')),
+        OPTIONS,
+      );
+      const error = await refused.catch((e: unknown) => e);
+      expect(safeErrorDetails(error)).toEqual({
+        name: 'NameStartupError',
+        code,
+        file: 'onnx/model_quantized.onnx',
+      });
+    }
   });
 
   it('a model that fails to load refuses start-up, keeping nothing of its error', async () => {

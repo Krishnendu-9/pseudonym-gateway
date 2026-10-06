@@ -2883,3 +2883,85 @@ back to 3, `npm run eval` passed.
 | R1  | known-failing parts not marked in the table       | 1 of 22 in `report.test`   |
 
 7 of 7 caught, each by a test aimed at it.
+
+## Phase 6b step 4a — the runtime, the model files and the start-up checks (2026-10-07, ADR-036)
+
+Tests (none needs the real model, which is not in the repo and not
+downloaded in CI):
+
+- `test/unit/gateway/name-model.test.ts` (16): the pins themselves
+  (repository, full commit, the four files' sizes and SHA-256, so editing
+  one fails the test); `fileSha256` on the FIPS 180-2 `"abc"` vector and on
+  a file longer than one read; `verifyFile` ok / missing (nothing, a
+  directory) / mismatch (same size other bytes, other size, empty, only the
+  hash wrong); `checkModelFiles` on small files with their own pins: passes
+  when all are right, refuses with the code and the file for a missing
+  file, an empty or absent directory, other bytes, a truncated file, the
+  first wrong file in list order, and the real list by default;
+  `loadNameModel` checks the files first, and with them right still
+  refuses (`NAME_MODEL_LOAD_FAILED`, the worker is 4b).
+- `test/unit/gateway/names.test.ts` (+2): `checkNameList` called directly
+  with the gazetteer and four wrong lists; a file refusal from the loader
+  keeps its code and file through `startNameDetection`.
+- `test/unit/scripts/fetch-model.test.ts` (9): `downloadVerified` against a
+  local HTTP server: right bytes put in place with no temporary copy; a
+  right file already in place kept without a request; other bytes of the
+  same size, a short body, a body longer than the pinned size, HTTP 500
+  and 404 all refused with nothing left in the directory (the error names
+  both hashes for a mismatch); a stale wrong file replaced, or removed when
+  the download is refused. The last test runs the command itself
+  (`node --import tsx scripts/fetch-model.ts --dir <tmp> --from <local>`)
+  against wrong bytes: exit code 1, the first file and both hashes on
+  stderr, nothing left, one request (it stops at the first refusal).
+
+### Repeating the names-off proof (ADR-036 (a))
+
+Run it again whenever the way the runtime is loaded changes (step 4b
+first). In a scratch directory outside the repo:
+
+1. Copy the working tree without ignored files:
+   `git ls-files -co --exclude-standard -z | tar --null -T - -cf - | tar -xf - -C <dir>`
+   (Git Bash), so there is no `node_modules`, `models/` or `.env`.
+2. `npm ci --omit=optional`, then check that `node_modules/onnxruntime-node`
+   and `node_modules/@huggingface` do not exist; `npm run typecheck` and
+   `npm run build` must pass. (Vitest does not start in this install:
+   rolldown's binding is optional too; expected, ADR-036 step 4a.)
+3. Start `node --disable-sigusr1 dist/src/main.js` with `PSEUDONYM_MODEL`
+   set, `PSEUDONYM_NAMES` unset, and `PSEUDONYM_PROVIDER_BASE_URL` pointing
+   at a fake OpenAI-style provider; `GET /health` must answer 200 and a
+   chat request with a synthetic value must reach the provider as a
+   placeholder and come back restored.
+4. With `PSEUDONYM_NAMES=true` it must exit 1 with a `NameStartupError`.
+5. Again with `npm ci --omit=optional --omit=dev` (keeping `dist/`).
+
+Run on 2026-10-07: every step as expected (4 of 4 names-off runs in step 3,
+3 of 3 in step 5); one earlier run got no `/health` answer within 10 s,
+before the driver printed diagnostics, cause unknown, not repeated.
+
+### Mutation checks (run 2026-10-07, `scripts/mutate.ts`)
+
+| Id  | Mutation                                 | Caught by        |
+| --- | ---------------------------------------- | ---------------- |
+| M1  | a directory counts as a file             | 1 of 85          |
+| M2  | no size check before hashing             | survives (equiv) |
+| M3  | the hash not compared                    | 6 of 85          |
+| M4  | a missing file reported as a mismatch    | 4 of 85          |
+| M5  | only the first file checked              | 3 of 85          |
+| M6  | the default list empty                   | 1 of 85          |
+| M7  | the loader skips the file check          | 1 of 85          |
+| M8  | the list check never refuses             | 2 of 85          |
+| M9  | a loader's start-up error loses its code | 1 of 85          |
+| M10 | the file not logged                      | 7 of 85          |
+| M11 | the script always downloads              | 1 of 85          |
+| M12 | a stale wrong file kept                  | 1 of 85          |
+| M13 | the temporary copy kept on a refusal     | 5 of 85          |
+| M14 | the download not verified                | 4 of 85          |
+| M15 | no size cap while downloading            | 1 of 85          |
+| M16 | the HTTP status ignored                  | 1 of 85          |
+| M17 | the command exits 0 on a refusal         | 1 of 85          |
+
+16 of 17 caught, each by a test aimed at it. M2 is equivalent: a file of
+another size also has another SHA-256, so the size check only refuses
+sooner. `src/main.ts` (excluded from coverage) is covered by the proof
+above, not by a test: names off starts and serves, names on refuses after
+the list and file checks.

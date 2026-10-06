@@ -4363,10 +4363,13 @@ the name list as a second distributed artifact); (a) after option 5, a
 WebAssembly runtime, was priced. Accepted with it: "What the held-out
 measurement froze", the exact runtime pin and its bump procedure, and
 the install-skip assumption with its fallback (below). The three rules
-under "Already decided" and the constraint on step 3 are settled. Not
-built yet: no dependency added, nothing installed, no download script
-(step 4). **Amended 2026-10-06:** the CI runner's OS label is pinned
-beside the other pins, with what that does and does not fix.
+under "Already decided" and the constraint on step 3 are settled.
+**Amended 2026-10-06:** the CI runner's OS label is pinned beside the
+other pins, with what that does and does not fix. **Built 2026-10-07
+(step 4a):** the two packages as exact optional dependencies, the download
+script, the load-time check; every figure measured then is in "Step 4a:
+installed and measured", at the end of this ADR, and replaces the
+registry figures below where they differ.
 
 **Context.** ADR-035 ships B+F (B =
 `Xenova/bert-base-multilingual-cased-ner-hrl@263e82c06569`, int8, at high
@@ -4398,7 +4401,9 @@ both still the newest on the registry, read 2026-10-03) and four files:
   `ONNXRUNTIME_NODE_INSTALL=skip`; the CPU runtime is in the package
   either way. GitHub's `ubuntu-latest` runner, and a typical Docker image,
   are linux/x64. **The real on-disk and download figures are measured in
-  step 4, on a clean install, not guessed here.**
+  step 4, on a clean install, not guessed here.** (Measured on Windows in
+  step 4a, below; "x64 and arm64" is wrong for darwin, which has arm64
+  only. Linux is still unmeasured.)
 - The model file is 178,495,423 bytes (B in `D:\pseudonym-6a`, recorded in
   ADR-035 as 178.5 MB); `tokenizer.json` is 2,919,362 bytes.
 - GitHub's documentation (read 2026-10-03): files over 100 MiB are
@@ -4995,6 +5000,141 @@ The name list's hash is pinned in a test and checked at start-up. The
 README says names need `npm run fetch:model` and the runtime, that
 `npm ci --omit=optional` gives a names-off install without them, and the
 model's licence with its open points.
+
+### Step 4a: installed and measured (2026-10-07)
+
+Not built in 4a: the worker, any inference session, any run of the model.
+With names on, the gateway still refuses to start (after the checks below).
+
+**Installed.** `npm install --save-optional --save-exact onnxruntime-node@1.30.0 @huggingface/tokenizers@0.2.0`
+(Node 22.23.3, npm 11.11.0, Windows 11 x64). `package.json` gained
+`optionalDependencies` `"@huggingface/tokenizers": "0.2.0"` and
+`"onnxruntime-node": "1.30.0"`, no caret or tilde. Their lockfile
+integrity values equal the registry's and the 6a runtime's lockfile
+(`onnxruntime-node` `sha512-twhs1C2C…GOfIqw==`, `@huggingface/tokenizers`
+`sha512-LidMHe1F…rr99pg==`), and every other added package has the version
+the 6a runtime had. 16 packages added, all marked `optional` in the
+lockfile: the two, `onnxruntime-common` 1.30.0, `adm-zip` 0.6.1,
+`global-agent` 4.1.3 and its 11 dependencies (`define-data-property`,
+`define-properties`, `es-define-property`, `es-errors`, `globalthis`,
+`gopd`, `has-property-descriptors`, `matcher`, `object-keys`,
+`serialize-error`, `type-fest`). Licences: MIT, except
+`@huggingface/tokenizers` Apache-2.0, `global-agent` BSD-3-Clause,
+`type-fest` MIT or CC0-1.0. Only `onnxruntime-node` has an install script.
+Two other lockfile lines changed: its root `engines` was stale (`>=22`)
+and now matches `package.json` (`>=22.20.0`), and `escape-string-regexp`
+went from `dev` to `devOptional` (`matcher` shares it).
+
+**On disk, Windows x64 (file sizes summed):** the 16 packages are
+**302,509,647 bytes in 537 files** (296,454 KiB allocated); `node_modules`
+went from 137,573,943 to 440,091,084 bytes. `onnxruntime-node` alone is
+301,068,136 bytes in 43 files, exactly its registry size: **its
+postinstall fetched nothing on win32/x64** (its metadata requires nothing
+there; npm printed only the script's header). Its native binaries:
+win32/x64 67,075,688 bytes, win32/arm64 72,737,344, linux/x64 46,218,000,
+linux/arm64 25,530,144, darwin/arm64 89,446,696. **There is no darwin/x64
+build**: on an Intel Mac the runtime cannot load, so names on would refuse
+start-up there (not checked further). **Linux is unmeasured** (the install
+size, and the NuGet download with and without
+`ONNXRUNTIME_NODE_INSTALL=skip`) until 6c.
+
+**`npm audit`** reported one high-severity advisory after the install:
+`source-map-js` 1.2.1 (GHSA-68fv-2mgg-jv7q), reached through `vitest` →
+`vite` → `postcss` and `@vitest/coverage-v8` → `magicast`: dev only, and
+already in the lockfile before this step (the lockfile diff does not touch
+it), so a newly published advisory, not something these packages
+brought. Not changed in this step.
+
+**The model files, measured.** `npm run fetch:model`
+(`scripts/fetch-model.ts`, `scripts/model-download.ts`) downloaded the
+four files from Hugging Face at the pinned commit into an empty `models/`
+in 14 s; each matched its pinned size and SHA-256. Hashed again with a
+separate tool (`sha256sum`), with the same result. They equal the values
+the 6a download recorded, so the gateway checks for the bytes ADR-035
+measured:
+
+| File                        | Bytes       | SHA-256                                                            |
+| --------------------------- | ----------- | ------------------------------------------------------------------ |
+| `config.json`               | 1,207       | `7aa891abae067f95a40f5e2005b3de44824a083f256802934a993d301ec25076` |
+| `tokenizer.json`            | 2,919,362   | `bf1b59b7b11c95f194f51708d918eea378e09d05f84c0e1656dc5180e8117088` |
+| `tokenizer_config.json`     | 367         | `e6f3b96db926a37d4039995fbf5ad17de158dfb8f6343d607e4dbaad18d75f5a` |
+| `onnx/model_quantized.onnx` | 178,495,423 | `5b65139844be260b624a2a13782b01d122e613d64ce16ed0ba4d82e0b816f1a9` |
+
+The pins live once, in `NAME_MODEL` (`src/gateway/name-model.ts`), read by
+both the script and the gateway, and are repeated in a test so that an
+edit to them fails it. The script writes each file to
+`<file>.download`, stops a response longer than the pinned size, hashes it
+with the same function the gateway uses, and renames it into place only on
+a match; otherwise it deletes the temporary file, prints the file name and
+both hashes, and exits 1 at the first refused file. A file already in
+place and right is kept; one in place and wrong is deleted first. A second
+run reported all four "already present". `--from <base URL>` reads the
+same paths from a mirror (the hashes do not change); `--dir` sets the
+root. `models/` is in `.gitignore` and `.dockerignore`.
+
+**The load-time check, as built.** With names on, start-up checks the list
+(`checkNameList`, `NAME_LIST_MISMATCH`), then each model file in list
+order (`checkModelFiles` in `loadNameModel`): nothing there or not a
+regular file is `NAME_MODEL_FILE_MISSING`, a wrong size or hash
+`NAME_MODEL_FILE_MISMATCH`; both carry the file's path from the pinned
+list, which `safeErrorDetails` logs (`file`). `startNameDetection` passes
+a `NameStartupError` from the loader on with its code; any other loader
+error is still `NAME_MODEL_LOAD_FAILED` with nothing kept. Each check is
+called directly with wrong input in its tests (missing, a directory,
+other bytes of the same size, truncated, only the hash wrong, a changed
+list). **Cost:** `checkModelFiles` over the real files took 242, 195, 186,
+181 and 183 ms in five runs, files just written and probably in the
+operating system's cache; a cold read was not measured. Mutation checks:
+17, 16 caught; M2 (no size check before hashing) survives and is
+equivalent: a file of another size also has another hash, so the size
+check only refuses sooner.
+
+**The names-off proof, which (a)'s option 1 rests on.** A clean copy of
+the working tree (tracked and new files; no `node_modules`, `models/` or
+`.env`), then `npm ci --omit=optional`: none of the 16 packages installed.
+`npm run typecheck` and `npm run build` passed. The built gateway (`node
+--disable-sigusr1 dist/src/main.js`, names unset) started; `GET /health`
+answered 200 `{"status":"ok"}`; one request with a synthetic email and a
+published test card through a fake provider answered 200, the provider
+received `[EMAIL_1]` and `[CARD_1]` and neither value, and the reply came
+back with both restored. 4 runs of 4; a first run, before the driver
+printed diagnostics, got no `/health` answer within 10 s, cause unknown,
+not repeated. With names on in that install: exit 1,
+`NAME_MODEL_FILE_MISSING` (`config.json`). With names on in the full
+install, model present: the list and file checks passed and it exited 1
+with `NAME_MODEL_LOAD_FAILED` (the worker is 4b). **What this does not yet
+show:** nothing in `src/` imports the two packages today, so the result
+covers the install, the typecheck, the build and serving; that the worker's
+dynamic import stays behind the switch is for 4b to show by running this
+proof again, and the refusal when names are on and the runtime is absent is
+not reached yet (the file check refuses first in a names-off install).
+
+**Found: `--omit=optional` omits every optional package in the tree, not
+only ours.** Every non-dev optional package in the lockfile is one of the
+16, so the gateway loses nothing. But three dev-only platform binaries go
+too: `@esbuild/win32-x64`, `@rolldown/binding-win32-x64-msvc` and
+`lightningcss-win32-x64-msvc`. esbuild's postinstall then ran its own
+`npm install` of its binary, a download outside the lockfile, after which
+`tsx` worked; **Vitest does not start** ("Cannot find native binding",
+rolldown); the typecheck and the build are unaffected. So the opt-out
+gives a names-off install for **running** the gateway (with `--omit=dev`
+too in production), not a development checkout that runs the tests; a
+development install keeps the default `npm ci`, where the packages are
+present and, with names off, never loaded. This narrows how the opt-out is
+described; it does not change the claim option 1 was chosen for, that a
+names-off gateway installs, starts and serves without the runtime.
+**The production form, run too:** in the same copy, with `dist/` already
+built, `npm ci --omit=optional --omit=dev` added 57 packages, 0
+vulnerabilities, no `onnxruntime-node`, `vitest` or `typescript`; the
+gateway served the same request 3 runs of 3 with names off, and with names
+on exited 1 with `NAME_MODEL_FILE_MISSING`. The `--omit=optional` install
+before it added 200 packages; the full install has 219 (203 before this
+step, plus the 16), and the 16 plus the three dev binaries are the
+difference.
+
+**CI.** The `npm ci` step now sets `ONNXRUNTIME_NODE_INSTALL: skip`
+(decided above), since the runtime is in the lockfile from this step on.
+Still verified only in 6c.
 
 <a id="adr-037"></a>
 

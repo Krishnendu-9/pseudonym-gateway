@@ -1228,3 +1228,53 @@ around the placeholder (`password: [LITERAL_1][SECRET_1]`); and part of a
 value that shared one written character with a neighbouring value after
 normalisation (an email right after a `½` that a card number took) is no
 longer dropped.
+
+## Phase 6b step 4a — the name runtime and the model files (2026-10-07)
+
+Names still cannot be used: the part that runs the model is not built yet
+(step 4b), so `PSEUDONYM_NAMES=true` still refuses to start. What exists now
+is how the runtime and the model get onto a machine, and the checks that
+make sure they are the ones that were measured (ADR-036).
+
+**The runtime** (`onnxruntime-node` 1.30.0, `@huggingface/tokenizers`
+0.2.0) is an optional dependency, pinned exactly. `npm install` and
+`npm ci` install it (about 302 MB on Windows); with names off it is never
+loaded. To run the built gateway without it, install with
+`npm ci --omit=optional --omit=dev` after `npm run build`. Do not use
+`--omit=optional` for a development checkout: it also removes the platform
+binaries of the build and test tools, and the tests then do not start.
+
+**The model files** come from `npm run fetch:model`:
+
+```bash
+npm run fetch:model                                  # into models/
+npx tsx scripts/fetch-model.ts --dir D:/somewhere     # another root
+npx tsx scripts/fetch-model.ts --from <base URL>      # a mirror of the same files
+```
+
+It downloads four files (178.5 MB in all) from a pinned commit of
+`Xenova/bert-base-multilingual-cased-ner-hrl` into
+`models/Xenova__bert-base-multilingual-cased-ner-hrl@263e82c06569/`, and
+keeps each one only if its size and SHA-256 match the pinned values. On a
+mismatch it deletes the download, prints the file's name and both hashes,
+and exits with code 1. Files already in place and correct are kept. It
+prints the model's licence first: the repository states none; it is a
+conversion of Davlan's model (AFL-3.0), a fine-tune of Google's
+multilingual BERT (Apache-2.0); ADR-036 lists the open points.
+
+**At start-up with names on**, the gateway checks, in this order, and
+refuses to start (exit code 1, one line on stderr) at the first that fails:
+
+| Check                                        | Refusal (`code`)           | Also logged |
+| -------------------------------------------- | -------------------------- | ----------- |
+| The name list is the measured one            | `NAME_LIST_MISMATCH`       |             |
+| Each model file is present (a regular file)  | `NAME_MODEL_FILE_MISSING`  | `file`      |
+| Each model file has the pinned size and hash | `NAME_MODEL_FILE_MISMATCH` | `file`      |
+| The model loads (step 4b)                    | `NAME_MODEL_LOAD_FAILED`   |             |
+
+For example:
+`{"fatal":{"name":"NameStartupError","code":"NAME_MODEL_FILE_MISSING","file":"config.json"}}`.
+The fix for the two file refusals is `npm run fetch:model`. The gateway
+looks for the model under `models/` in the directory it is started from.
+Hashing the files takes about 0.2 s at start-up. With names off, none of
+this runs.

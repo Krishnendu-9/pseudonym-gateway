@@ -719,9 +719,19 @@ the model ([ADR-037](docs/decisions.md#adr-037)): with names on, every
 request's names are found before anything is sent, and a request whose
 names cannot be found (the model failed, timed out, is busy or has
 crashed) gets a 503 and is never sent without them. Until the model is
-built in, `PSEUDONYM_NAMES=true` refuses to start. How the model runtime, the model file and the name list will
+built in, `PSEUDONYM_NAMES=true` refuses to start. How the model runtime, the model file and the name list
 reach a machine, and what the held-out figure depends on, is
-[ADR-036](docs/decisions.md#adr-036).
+[ADR-036](docs/decisions.md#adr-036). The runtime (`onnxruntime-node`
+1.30.0 and `@huggingface/tokenizers` 0.2.0) is an exact optional
+dependency, about 302 MB on disk on Windows (Linux not measured yet); with
+names off it is never loaded. The model files come from
+`npm run fetch:model`, which downloads them from a pinned commit of
+[`Xenova/bert-base-multilingual-cased-ner-hrl`](https://huggingface.co/Xenova/bert-base-multilingual-cased-ner-hrl)
+and keeps each only if its SHA-256 matches; with names on, the gateway
+checks them again at start-up and refuses to start if one is missing or
+different. Licence: that repository states none; it is a conversion of
+Davlan's model, AFL-3.0, a fine-tune of Google's multilingual BERT,
+Apache-2.0 (open points in ADR-036).
 
 **Observed after the measurement, not before:** B alone meets both
 accuracy requirements (62.5% of names, 0.96 false positives per 1,000
@@ -823,6 +833,14 @@ npm run typecheck      # type-check
 cp .env.example .env    # PSEUDONYM_MODEL is the demo model; change it to use another
 npm run dev             # gateway on http://127.0.0.1:3000/v1
 ```
+
+`npm install` also installs the person-name runtime, an optional
+dependency of about 302 MB that is never loaded with names off. To run the
+built gateway without it, install with `npm ci --omit=optional --omit=dev`
+(after `npm run build`). Keep the plain install for development:
+`--omit=optional` also removes the platform binaries of the development
+tools, and the tests then do not start
+([ADR-036](docs/decisions.md#adr-036), step 4a).
 
 The timing tests check that detection and restoration take linear time:
 each times the same work on an input and on one four times as long, and

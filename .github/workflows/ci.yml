@@ -29,7 +29,13 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
+      # onnxruntime-node (an optional dependency, for names; ADR-036) would
+      # otherwise download its CUDA 12 libraries from NuGet on linux/x64. The
+      # CPU runtime is in the package. Not --ignore-scripts, which would stop
+      # every package's install script. Verified on Linux in Phase 6c.
       - run: npm ci
+        env:
+          ONNXRUNTIME_NODE_INSTALL: skip
 
       - name: Typecheck
         run: npm run typecheck

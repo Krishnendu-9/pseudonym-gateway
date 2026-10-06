@@ -23,6 +23,7 @@
     "test:timing": "vitest run --project timing",
     "eval": "tsx eval/run.ts",
     "eval:lint": "tsx eval/check-held-out.ts",
+    "fetch:model": "tsx scripts/fetch-model.ts",
     "gen:names": "tsx scripts/fetch-wikidata-names.ts && prettier --write src/synthetic/wikidata-names.ts",
     "gen:digits": "tsx scripts/generate-decimal-digit-zeros.ts && prettier --write src/detection/decimal-digit-zeros.ts"
   },
@@ -43,5 +44,9 @@
     "typescript": "~6.0.3",
     "typescript-eslint": "8.70.1",
     "vitest": "5.0.2"
+  },
+  "optionalDependencies": {
+    "@huggingface/tokenizers": "0.2.0",
+    "onnxruntime-node": "1.30.0"
   }
 }
