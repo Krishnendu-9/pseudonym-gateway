@@ -95,6 +95,8 @@ describe('the code main.ts loads with names off', () => {
       (file) =>
         file.startsWith('src/detection/names/') ||
         file === 'src/gateway/names.ts' ||
+        file === 'src/gateway/name-model.ts' ||
+        file.startsWith('src/gateway/name-worker') ||
         file === 'src/synthetic/wikidata-names.ts' ||
         /onnxruntime|@huggingface/u.test(file),
     );
@@ -112,12 +114,21 @@ describe('the code main.ts loads with names off', () => {
         'src/synthetic/wikidata-names.ts',
       ]),
     );
+    // And from the model loader to the worker and the code it runs.
+    const fromModel = [...staticClosure('src/gateway/name-model.ts')].map((file) =>
+      relative('.', file).replaceAll('\\', '/'),
+    );
+    expect(fromModel).toContain('src/gateway/name-worker.ts');
+    const fromThread = [...staticClosure('src/gateway/name-worker-entry.ts')].map((file) =>
+      relative('.', file).replaceAll('\\', '/'),
+    );
+    expect(fromThread).toContain('src/detection/names/bert.ts');
   });
 
   it('reaches the name modules only through main.ts, where nameFinder decides', () => {
-    // The import that would load them is not in the closure at all today
-    // (names on refuses start-up until step 4); this pins that main.ts
-    // still goes through nameFinder.
+    // The imports that load them are dynamic, inside the function
+    // nameFinder calls only with names on; this pins that main.ts still
+    // goes through nameFinder.
     const main = readFileSync(join('src', 'main.ts'), 'utf8');
     expect(main).toContain('await nameFinder(env,');
   });

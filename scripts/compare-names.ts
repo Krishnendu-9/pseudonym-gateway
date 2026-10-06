@@ -32,7 +32,7 @@
 
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { cpus } from 'node:os';
 import { isAbsolute, join, relative, resolve } from 'node:path';
@@ -50,7 +50,13 @@ import {
   type GlinerSetup,
   type GlinerSpan,
 } from '../eval/names/gliner.js';
-import { LATENCY_SIZES_KIB, median, perKiB, tokensByScript } from '../eval/names/latency.js';
+import {
+  LATENCY_SIZES_KIB,
+  median,
+  perKiB,
+  speedText,
+  tokensByScript,
+} from '../eval/names/latency.js';
 import { isContextRefusal, locate, namesMessages, parseNames } from '../eval/names/llm.js';
 import { compareCard, parseCard } from '../eval/names/gliner-card.js';
 import { fpPer1000, measure, share, type Metrics } from '../eval/names/measure.js';
@@ -60,12 +66,13 @@ import { fedTokens } from '../eval/names/token-classification.js';
 import { glinerWords } from '../eval/names/words.js';
 import { detectionsAt, merge, type Point, type ScoredSpan } from '../src/detection/names/spans.js';
 import {
-  labelWords,
-  personSpans,
-  type BertSetup,
-  type EncodedWord,
-} from '../src/detection/names/token-classification.js';
-import { bertWords, type Word } from '../src/detection/names/words.js';
+  encodeWords,
+  int64,
+  loadBert,
+  readJson,
+  type Ort,
+  type Runtime,
+} from '../src/detection/names/bert.js';
 import type { LabelledCase } from '../eval/types.js';
 import { leftoverMutation } from './mutation-marker.js';
 
@@ -131,32 +138,13 @@ mkdirSync(out, { recursive: true });
 // ---------------------------------------------------------------------------
 // The runtime, loaded from outside the repo, typed by what is used of it.
 
-interface OrtTensor {
-  readonly data: Float32Array;
-}
-interface OrtSession {
-  readonly inputNames: readonly string[];
-  run(feeds: Record<string, unknown>): Promise<Record<string, OrtTensor>>;
-}
-interface Ort {
-  InferenceSession: { create(path: string): Promise<OrtSession> };
-  Tensor: new (type: string, data: unknown, dims: readonly number[]) => unknown;
-}
-interface Tokenizer {
-  encode(text: string, options: { add_special_tokens: boolean }): { ids: number[] };
-}
-
-function runtime(): { ort: Ort; Tokenizer: new (json: unknown, config: unknown) => Tokenizer } {
+function runtime(): Runtime {
   const require = createRequire(join(resolve(args.runtime), 'package.json'));
   return {
     ort: require('onnxruntime-node') as Ort,
     Tokenizer: (require('@huggingface/tokenizers') as { Tokenizer: never }).Tokenizer,
   };
 }
-
-const readJson = (path: string): unknown => JSON.parse(readFileSync(path, 'utf8'));
-const int64 = (values: readonly number[]): BigInt64Array =>
-  BigInt64Array.from(values, (v) => BigInt(v));
 
 /** A candidate's names in `text`; `timeoutMs` bounds E's call (the models cannot be stopped). */
 type Find = (text: string, timeoutMs?: number) => Promise<ScoredSpan[]>;
@@ -172,53 +160,18 @@ class ContextRefusal extends Error {
   override readonly name = 'ContextRefusal';
 }
 
-/** Encodes each word on its own, without special tokens; words that encode to nothing are dropped. */
-function encodeWords(tokenizer: Tokenizer, words: readonly Word[]): EncodedWord[] {
-  return words
-    .map((w) => ({ ...w, ids: tokenizer.encode(w.text, { add_special_tokens: false }).ids }))
-    .filter((w) => w.ids.length > 0);
-}
-
+// B's loading and running moved to src/detection/names/bert.ts in Phase 6b
+// step 4b (ADR-036's move standard), so the gateway runs this same code.
 async function bertCandidate(id: 'A' | 'B'): Promise<Loaded> {
-  const { ort, Tokenizer } = runtime();
-  const dir = join(resolve(args.runtime), MODEL_DIRS[id]);
-  const tokenizer = new Tokenizer(
-    readJson(join(dir, 'tokenizer.json')),
-    readJson(join(dir, 'tokenizer_config.json')),
-  );
-  const config = readJson(join(dir, 'config.json')) as { id2label: Record<string, string> };
-  const labels = Object.keys(config.id2label)
-    .sort((a, b) => Number(a) - Number(b))
-    .map((k) => config.id2label[k]!);
-  const session = await ort.InferenceSession.create(join(dir, 'onnx', 'model_quantized.onnx'));
-  const special = (text: string): number =>
-    tokenizer.encode(text, { add_special_tokens: false }).ids[0]!;
-  const setup: BertSetup = {
-    clsId: special('[CLS]'),
-    sepId: special('[SEP]'),
-    labels,
-    maxTokens: 512,
-    context: 64,
-  };
-  const run = async (ids: readonly number[]): Promise<Float32Array> => {
-    const dims = [1, ids.length];
-    const feeds: Record<string, unknown> = {
-      input_ids: new ort.Tensor('int64', int64(ids), dims),
-      attention_mask: new ort.Tensor('int64', int64(ids.map(() => 1)), dims),
-    };
-    if (session.inputNames.includes('token_type_ids')) {
-      feeds.token_type_ids = new ort.Tensor('int64', int64(ids.map(() => 0)), dims);
-    }
-    return (await session.run(feeds)).logits!.data;
-  };
+  const bert = await loadBert(runtime(), join(resolve(args.runtime), MODEL_DIRS[id]));
   return {
-    find: async (text) => {
-      const words = encodeWords(tokenizer, bertWords(text));
-      return personSpans(words, await labelWords(words, setup, run));
-    },
+    find: bert.find,
     count: (text) => {
-      const words = encodeWords(tokenizer, bertWords(text));
-      return { text: words.reduce((n, w) => n + w.ids.length, 0), fed: fedTokens(words, setup) };
+      const words = bert.encode(text);
+      return {
+        text: words.reduce((n, w) => n + w.ids.length, 0),
+        fed: fedTokens(words, bert.setup),
+      };
     },
   };
 }
@@ -351,24 +304,6 @@ interface ChildResult {
 
 const messagesOf = (cases: readonly LabelledCase[]): string[] =>
   cases.flatMap((c) => c.messages.map((m) => m.text));
-
-/**
- * Generated messages joined by blank lines, from message `from` (the first
- * by default) and round again if need be (the whole set is about 248 KiB),
- * until the next would pass `bytes` of UTF-8.
- */
-function speedText(texts: readonly string[], bytes: number, from = 0): string {
-  const parts: string[] = [];
-  let size = 0;
-  for (let i = from; ; i++) {
-    const text = texts[i % texts.length]!;
-    const add = Buffer.byteLength(text) + (parts.length > 0 ? 2 : 0);
-    if (size + add > bytes) break;
-    parts.push(text);
-    size += add;
-  }
-  return parts.join('\n\n');
-}
 
 /** Progress on stderr: the candidate, a phase and counts, never text. */
 function progress(id: CandidateId): (line: string, force?: boolean) => void {

@@ -198,11 +198,34 @@ describe('loadNameModel', () => {
     expect(await refusal(loadNameModel(dir))).toMatchObject({ file: 'config.json' });
   });
 
-  it('with the files right, still refuses: the worker is step 4b', async () => {
+  it('with the files right, starts the model on that directory (its worker, step 4b)', async () => {
     writeAll();
-    expect(await refusal(loadNameModel(dir, FILES))).toEqual({
-      name: 'NameStartupError',
-      code: 'NAME_MODEL_LOAD_FAILED',
+    const model = { run: () => Promise.resolve([]), onCrash: () => {} };
+    const asked: string[] = [];
+    const loaded = await loadNameModel(dir, FILES, (at) => {
+      asked.push(at);
+      return Promise.resolve(model);
     });
+    expect(loaded).toBe(model);
+    expect(asked).toEqual([dir]);
+  });
+
+  it('a file wrong: the model is never started', async () => {
+    let started = false;
+    const start = () => {
+      started = true;
+      return Promise.resolve({ run: () => Promise.resolve([]), onCrash: () => {} });
+    };
+    expect(await refusal(loadNameModel(dir, FILES, start))).toMatchObject({
+      code: 'NAME_MODEL_FILE_MISSING',
+    });
+    expect(started).toBe(false);
+  });
+
+  it('a worker that does not start: its rejection is passed on (startNameDetection makes it NAME_MODEL_LOAD_FAILED)', async () => {
+    writeAll();
+    await expect(
+      loadNameModel(dir, FILES, () => Promise.reject(new Error('no worker'))),
+    ).rejects.toThrow('no worker');
   });
 });

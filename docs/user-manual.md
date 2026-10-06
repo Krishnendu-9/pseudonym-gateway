@@ -1186,6 +1186,8 @@ reasoning lands in the answer itself.
 
 ## Phase 6b step 3 — person names in the request path (2026-10-03)
 
+(As written at step 3. Names became usable in step 4b, below.)
+
 Names are wired into the gateway, but **the name model is not built in
 yet**, so names cannot be used: with `PSEUDONYM_NAMES=true` the gateway
 refuses to start (`NameStartupError`, `NAME_MODEL_LOAD_FAILED`). With it
@@ -1231,6 +1233,8 @@ longer dropped.
 
 ## Phase 6b step 4a — the name runtime and the model files (2026-10-07)
 
+(As written at step 4a. Names became usable in step 4b, below.)
+
 Names still cannot be used: the part that runs the model is not built yet
 (step 4b), so `PSEUDONYM_NAMES=true` still refuses to start. What exists now
 is how the runtime and the model get onto a machine, and the checks that
@@ -1241,8 +1245,15 @@ make sure they are the ones that were measured (ADR-036).
 `npm ci` install it (about 302 MB on Windows); with names off it is never
 loaded. To run the built gateway without it, install with
 `npm ci --omit=optional --omit=dev` after `npm run build`. Do not use
-`--omit=optional` for a development checkout: it also removes the platform
-binaries of the build and test tools, and the tests then do not start.
+`--omit=optional` for a development checkout. It omits every optional
+package, including the platform binaries of the build and test tools, and
+esbuild's install script then fetches its own binary with a separate
+`npm install` of its own: a download that is not in `package-lock.json`,
+so no integrity hash checks it, and the checkout ends up running code
+nothing verified. That is the reason not to use it. The visible symptom
+is only that Vitest then does not start (rolldown's binary is gone too,
+and nothing fetches it back). The production form above is not affected:
+with `--omit=dev` too, esbuild is not installed at all.
 
 **The model files** come from `npm run fetch:model`:
 
@@ -1278,3 +1289,50 @@ The fix for the two file refusals is `npm run fetch:model`. The gateway
 looks for the model under `models/` in the directory it is started from.
 Hashing the files takes about 0.2 s at start-up. With names off, none of
 this runs.
+
+## Phase 6b step 4b — person names, usable (2026-10-07)
+
+Names can now be switched on. They are **off by default**: they are slow
+and wrongly redact some ordinary words (about one in every 170 on the
+generated set; ADR-035). To use them:
+
+1. Install the default way (`npm install` or `npm ci`), which includes the
+   runtime.
+2. `npm run fetch:model` (178.5 MB, checked by SHA-256).
+3. Set `PSEUDONYM_NAMES=true` and start the gateway.
+
+At start-up the gateway checks the name list, then the model files, then
+starts the model in a worker thread of its own; it refuses to start (one
+line on stderr, exit code 1) if any of these fails, with the codes in the
+step 4a table above (`NAME_MODEL_LOAD_FAILED` also when the runtime is not
+installed). Starting takes about 1.1–1.7 s more than with names off on a
+laptop CPU (the first start after an install can take over 10 s, names on
+or off: bug-log 66).
+
+**What it costs, measured through the gateway** on a laptop (Intel
+i5-12450H; ADR-036, "Step 4b"): about 0.31–0.33 s per KiB of request text,
+so about 0.14 s for a 1 KiB request, 1.1 s for 4 KiB, 5 s for 16 KiB and
+21 s for 64 KiB, added before the request is sent; about 290 MiB more
+memory while idle and up to about 370 MiB while working.
+
+**Two settings**, read only with names on:
+
+| Variable                     | Default | What it does                                                                                                    |
+| ---------------------------- | ------- | --------------------------------------------------------------------------------------------------------------- |
+| `PSEUDONYM_NAMES_TIMEOUT_MS` | 120000  | How long a request may wait for its names, queued and running together. Past it: 503, never sent without names. |
+| `PSEUDONYM_NAMES_MAX_QUEUE`  | 8       | How many requests may wait while the model works on another. More: 503 at once. 0 means none wait.              |
+
+The model works on one request at a time. A request that runs past the
+timeout gets its 503, but the model finishes it (it cannot be interrupted:
+bug-log 68); meanwhile `GET /health` answers 503 `{"status":"unhealthy"}`
+and other requests wait or are refused, and health is ok again when it
+ends. At the measured speed the largest request the body limit allows
+(256 KiB) takes about 80–85 s, so it fits the default timeout on this
+machine; on a slower one, raise the timeout or expect large requests to
+be refused.
+
+**Checking it yourself:** `npm run test:names` runs the gateway's name
+tests against the real model, and `npm run eval:names` sends the 1,998
+generated messages the published figures were measured on through the
+gateway and checks that it finds exactly the same names (testing guide,
+step 4b). Neither runs in CI yet.

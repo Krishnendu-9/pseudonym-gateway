@@ -2965,3 +2965,94 @@ another size also has another SHA-256, so the size check only refuses
 sooner. `src/main.ts` (excluded from coverage) is covered by the proof
 above, not by a test: names off starts and serves, names on refuses after
 the list and file checks.
+
+## Phase 6b step 4b — the name model in its worker thread (2026-10-07, ADR-036, ADR-037)
+
+Three groups, because two need the model:
+
+| Command               | Needs the model | In CI | What it runs                                                                                               |
+| --------------------- | --------------- | ----- | ---------------------------------------------------------------------------------------------------------- |
+| `npm test` / coverage | no              | yes   | the worker channel on real threads with a stand-in, `loadBert` with a fake runtime, the `eval:names` logic |
+| `npm run test:names`  | yes             | no    | step 3's contract against B itself (`*.names.test.ts`, its own Vitest project)                             |
+| `npm run eval:names`  | yes             | no    | B+F through the gateway on the 1,998 6a messages, against `eval/names-baseline.json`                       |
+
+`npm test` is now `vitest run --project main --project timing`: a plain
+`vitest run` would also start the names project, which fails (it does not
+skip) without the model. Before `test:names` or `eval:names`:
+`npm run fetch:model`, the default `npm ci` (the runtime is an optional
+dependency), and about 1 GB of free memory beyond the usual 3.5 GB.
+
+**Main suite (no model):**
+
+- `test/unit/gateway/name-worker.test.ts` (20): `serveNames` on a
+  `MessageChannel` (ready first, every text in order, one request at a
+  time even when the first is slow, "failed" with nothing of the error);
+  `workerEntry` (built: `.js`, no options; source: `.ts` with tsx's
+  loader); `WorkerNameModel` on real threads running
+  `test/support/fake-name-worker.ts`, one mode per behaviour (answers by
+  id, garbage passed on and refused by the detector, failed answers,
+  stray replies, exit = crash, hang = timeout with health held,
+  `terminate()` a crash, `close()` not, and four start-up refusals), and the real entry refusing on a directory with no model in it.
+- `test/unit/detection/names/bert.test.ts` (8): `loadBert` with a fake
+  runtime in a temporary directory: the files it reads, labels in id
+  order (ids that sort differently as text), the quantised model file,
+  int64 feeds between `[CLS]` and `[SEP]`, token types only when the model
+  takes them, spans and their mean score, words with no tokens dropped.
+- `test/unit/eval/names/gateway.test.ts`: the dataset slice, the three hash
+  formats against hand-built strings (6a's and D0's exactly), and the
+  comparison (key order ignored, every differing field named).
+- `latency.test.ts` (+2, `speedText`), `name-model.test.ts` (the loader
+  now starts the model after the files pass; never before),
+  `wiring.test.ts` (+2), `names-wiring.test.ts` (the worker modules are
+  outside `main.ts`'s static imports, and reachable from the loader).
+
+**Names project (B itself):** `test/integration/names-worker.names.test.ts`
+(6), in ADR-037's step 4b amendment. Garbage comes from B's real answers
+corrupted by `test/support/garbage-name-worker.ts`; the production entry
+has no test hook. The thread is stopped only between calls: stopping it
+during an inference ends the test process (bug-log 68).
+
+**`npm run eval:names`** prints counts, hashes, timings and memory, and
+exits 1 if any compared field differs (`npx tsx eval/names-run.ts
+--no-speed` skips the timing runs). Run on 2026-10-07, four times: all
+identical to the baseline (ADR-036, "Step 4b").
+
+### Repeating the names-off proof (step 4b)
+
+The procedure above, with `scratchpad/proof/serve-proof.mjs`'s
+improvements (bug-log 66): ask the operating system for the gateway's
+port, wait up to 60 s, and always print the time to the first `/health`
+answer, the exit code or "alive", and stderr. Add the model files to the
+`--omit=optional` copy before step 4, so that the file check passes and the
+refusal is the runtime's (`NAME_MODEL_LOAD_FAILED`), and run a full
+`npm ci` copy with names on to show the built `.js` thread serving.
+Results in ADR-036, "Step 4b".
+
+### Mutation checks (run 2026-10-07, `scripts/mutate.ts`)
+
+| Id    | Mutation                                                                                                         | Caught by             |
+| ----- | ---------------------------------------------------------------------------------------------------------------- | --------------------- |
+| W1    | `removeAllListeners()` back (bug-log 67)                                                                         | 4 of 19               |
+| W2    | requests no longer one at a time in the thread                                                                   | 1 of 19               |
+| W3    | a failed answer carries the error's text                                                                         | 1 of 19               |
+| W4    | the thread never says it is ready                                                                                | 9 of 19               |
+| W5    | a reply for no call resolves the oldest call                                                                     | 1 of 19               |
+| W6    | a second "ready" not ignored                                                                                     | survives (equivalent) |
+| W7    | a thread's exit not a crash                                                                                      | 3 of 19               |
+| W8    | `close()` counts as a crash                                                                                      | 1 of 19               |
+| W9    | calls in flight not failed when the thread exits                                                                 | 3 of 19               |
+| W10   | calls after the exit sent anyway                                                                                 | 1 of 19               |
+| W11   | any first message counts as ready                                                                                | 1 of 19               |
+| W12   | no start-up time limit                                                                                           | 1 of 19               |
+| W13   | an exit before ready not refused                                                                                 | 2 of 19               |
+| W14   | from source, no tsx loader for the thread                                                                        | 10 of 19              |
+| W15   | the built thread inherits Node's options                                                                         | 1 of 19               |
+| W16   | a failed answer resolves with no names                                                                           | 1 of 19               |
+| B1–B5 | labels sorted as text; token types always fed; words with no tokens kept; another model file; no context         | 1–2 of 8 each         |
+| G1–G5 | the names hash keeps every field; B's hash as objects; metrics not compared; a case may be cut; key order counts | 1–2 of 9 each         |
+| C1–C4 | timeout and queue swapped; names-off configuration gains defaults; a queue of 0 refused; another default timeout | 1–2 of 34 each        |
+| L1    | the model started before its files are checked                                                                   | 1 of 48               |
+
+30 of 31 caught, each by a test aimed at it. W6 is equivalent: a stray
+"ready" has no id, so without the guard it looks up no call and is
+ignored anyway; the guard stays because the type check needs it. **Not mutation-checked:** the names project and `eval:names` themselves (they need the model and minutes per run). What is known about them: the names tests fail, not skip, without the model files (`beforeAll` runs the file check), and `eval:names`'s comparison logic is covered by G1–G5 above.

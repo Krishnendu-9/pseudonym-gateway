@@ -3,6 +3,7 @@
 // setting (the two size caps, the two on/off switches) would otherwise go
 // unnoticed, since main.ts only runs as a process.
 
+import type { NameDetectorOptions } from '../gateway/names.js';
 import type { NameFinder, ServerConfig } from '../gateway/server.js';
 import type { OllamaConfig } from '../providers/ollama.js';
 import type { Env } from './env.js';
@@ -25,6 +26,18 @@ export function serverConfig(env: Env): ServerConfig {
     restoreInUnsafeRegions: env.PSEUDONYM_RESTORE_IN_UNSAFE_REGIONS,
     placeholderInstruction: env.PSEUDONYM_PLACEHOLDER_INSTRUCTION,
     logLevel: env.LOG_LEVEL,
+  };
+}
+
+/** Defaults for the name detector (ADR-037; set from Phase 6b step 4b's measurements). */
+export const NAMES_TIMEOUT_MS_DEFAULT = 120_000;
+export const NAMES_MAX_QUEUE_DEFAULT = 8;
+
+/** The name detector's timeout and queue (read only when names are on). */
+export function nameOptions(env: Env): NameDetectorOptions {
+  return {
+    timeoutMs: env.PSEUDONYM_NAMES_TIMEOUT_MS ?? NAMES_TIMEOUT_MS_DEFAULT,
+    maxQueue: env.PSEUDONYM_NAMES_MAX_QUEUE ?? NAMES_MAX_QUEUE_DEFAULT,
   };
 }
 

@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { loadEnv } from '../../../src/config/env.js';
-import { ollamaConfig, serverConfig } from '../../../src/config/wiring.js';
+import { nameOptions, ollamaConfig, serverConfig } from '../../../src/config/wiring.js';
 
 const env = loadEnv({
   LOG_LEVEL: 'warn',
@@ -17,6 +17,8 @@ const env = loadEnv({
   PSEUDONYM_MAX_STREAM_BYTES: '1004',
   PSEUDONYM_RESTORE_IN_UNSAFE_REGIONS: 'true',
   PSEUDONYM_PLACEHOLDER_INSTRUCTION: 'false',
+  PSEUDONYM_NAMES_TIMEOUT_MS: '1005',
+  PSEUDONYM_NAMES_MAX_QUEUE: '1006',
 });
 
 describe('ollamaConfig', () => {
@@ -56,5 +58,29 @@ describe('serverConfig', () => {
       }),
     );
     expect([config.restoreInUnsafeRegions, config.placeholderInstruction]).toEqual([false, true]);
+  });
+});
+
+describe('nameOptions', () => {
+  it('takes the timeout and the queue from their own variables', () => {
+    expect(nameOptions(env)).toEqual({ timeoutMs: 1005, maxQueue: 1006 });
+  });
+
+  it('defaults to 120 s and 8 waiting (ADR-037, step 4b), applied here, not in the parsed configuration', () => {
+    const plain = loadEnv({ PSEUDONYM_MODEL: 'qwen3:8b' });
+    expect('PSEUDONYM_NAMES_TIMEOUT_MS' in plain).toBe(false);
+    expect('PSEUDONYM_NAMES_MAX_QUEUE' in plain).toBe(false);
+    expect(nameOptions(plain)).toEqual({ timeoutMs: 120_000, maxQueue: 8 });
+  });
+
+  it('accepts a queue of 0 (no request waits), not a timeout of 0', () => {
+    const base = { PSEUDONYM_MODEL: 'qwen3:8b' };
+    expect(nameOptions(loadEnv({ ...base, PSEUDONYM_NAMES_MAX_QUEUE: '0' })).maxQueue).toBe(0);
+    expect(() => loadEnv({ ...base, PSEUDONYM_NAMES_TIMEOUT_MS: '0' })).toThrow(
+      'Invalid environment variables: PSEUDONYM_NAMES_TIMEOUT_MS',
+    );
+    expect(() => loadEnv({ ...base, PSEUDONYM_NAMES_MAX_QUEUE: '-1' })).toThrow(
+      'Invalid environment variables: PSEUDONYM_NAMES_MAX_QUEUE',
+    );
   });
 });

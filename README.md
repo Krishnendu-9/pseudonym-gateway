@@ -5,9 +5,9 @@ reaches an LLM, and restores it in the reply.**
 
 > **Status: work in progress (Phase 5 of 8 done: detection, the gateway,
 > streaming and the evaluation are built, and a CI workflow runs the checks,
-> tests and evaluation; person names are under way: their test set is
-> built, and the request path is wired and tested against a stand-in
-> model, but the model itself is not built in yet).** Not ready for production
+> tests and evaluation; person names can be switched on, off by default:
+> the model runs inside the gateway and reproduces its published
+> measurement exactly; CI does not run it yet).** Not ready for production
 > use.
 > Pseudonym runs as a gateway: `POST /v1/chat/completions` (OpenAI format,
 > streaming and non-streaming) redacts emails, phone numbers, Aadhaar, PAN,
@@ -18,8 +18,8 @@ reaches an LLM, and restores it in the reply.**
 > request to a local [Ollama](https://ollama.com) model, and restores the
 > values in the answer, including when it arrives as a stream. No-leak tests
 > send planted values through both paths and check none reaches the
-> provider. **Person names are not detected yet** (they
-> are sent as written), and neither is a password or token with no keyword
+> provider. **Person names are detected only when switched on**
+> (`PSEUDONYM_NAMES=true`; off by default, they are sent as written), and not detected is a password or token with no keyword
 > before it and no known format, nor a UPI ID at an app or bank handle
 > Pseudonym does not know with no word such as "UPI" near it, nor an IFSC
 > code whose bank code is not on Pseudonym's list with no word such as
@@ -148,7 +148,7 @@ What Pseudonym is being built to do:
 The types marked "redacted" below are replaced before a request leaves
 Pseudonym, in every message and in `stop`. Everything else in a message is
 sent as written: a person's name typed into a message **goes to the
-provider today**. The measurements below come from
+provider unless names are switched on** (off by default, below). The measurements below come from
 synthetic datasets, one of them small, so do not rely on Pseudonym to
 protect real data.
 
@@ -168,7 +168,7 @@ protect real data.
 | Passport number                     | none possible: a letter and 7 digits, only near "passport" or पासपोर्ट                                                                                                                        | redacted |
 | Voter ID (EPIC)                     | none possible: 3 letters and 7 digits, only near "voter", "EPIC", मतदाता or वोटर                                                                                                              | redacted |
 | Date of birth                       | a real calendar date in a common form, only near "DOB", "birth", "born", "birthday", जन्म or "janm"/"janam"                                                                                   | redacted |
-| Person names                        | local NER model                                                                                                                                                                               | planned  |
+| Person names                        | local NER model and a name list, no validation; **off by default** (`PSEUDONYM_NAMES`)                                                                                                        | optional |
 
 Why each type is checked the way it is: phone numbers
 [ADR-004](docs/decisions.md#adr-004); checks and keywords
@@ -689,8 +689,12 @@ match, because the test names come from the other half of the same
 Wikidata lists by design, while real names in the held-out set can be on
 that list. Precision is not comparable between the two: the generated
 set plants name lookalikes on purpose. These are measurements of the
-configuration Phase 6 will build. The gateway does not detect names yet,
-so the evaluation tables above still show PERSON at 0.
+configuration the gateway now runs with names on. `npm run eval` measures
+the default build, names off, so the evaluation tables above still show
+PERSON at 0; `npm run eval:names` sends the 1,998 generated messages
+through the gateway with names on and reproduces the generated row above
+exactly, down to the SHA-256 of every span
+([ADR-036](docs/decisions.md#adr-036), step 4b).
 
 | Candidate                                 | Names found (612)                 | False positives per 1,000 words | ms per KiB | Memory      | Fails           |
 | ----------------------------------------- | --------------------------------- | ------------------------------- | ---------- | ----------- | --------------- |
@@ -713,13 +717,15 @@ limits, so the one with the highest recall, B and F together (81.8%), is
 what Phase 6 builds, **off by default** behind `PSEUDONYM_NAMES`. It
 fails the false-positive limit by 5.85 times (about one wrongly redacted
 word in every 170) and the speed limit. Names in all lower case are
-almost never found (3 of 59). Until Phase 6 is built, names are not
-detected. The request path is wired and tested against a stand-in for
-the model ([ADR-037](docs/decisions.md#adr-037)): with names on, every
-request's names are found before anything is sent, and a request whose
-names cannot be found (the model failed, timed out, is busy or has
-crashed) gets a 503 and is never sent without them. Until the model is
-built in, `PSEUDONYM_NAMES=true` refuses to start. How the model runtime, the model file and the name list
+almost never found (3 of 59). With names on
+([ADR-037](docs/decisions.md#adr-037)), every request's names are found
+before anything is sent, by the model in a worker thread of its own, and
+a request whose names cannot be found (the model failed, timed out, is
+busy or has crashed) gets a 503 and is never sent without them. Measured
+through the gateway (2026-10-07, same machine, three runs): **308–332 ms
+per KiB** (about 0.14 s added to a 1 KiB request, 1.1 s to 4 KiB) and
+**about 367 MiB** at its peak (286 MiB while idle), so the 6a table's
+286 ms and 325 MiB describe the comparison script, not the gateway. How the model runtime, the model file and the name list
 reach a machine, and what the held-out figure depends on, is
 [ADR-036](docs/decisions.md#adr-036). The runtime (`onnxruntime-node`
 1.30.0 and `@huggingface/tokenizers` 0.2.0) is an exact optional
@@ -784,7 +790,7 @@ events, 2,332 of them tokens, about 221 bytes per token
 provider-side logging or training on them.
 
 **Does not protect against:** values the detectors miss (today that includes
-every person's name, an IFSC code with an unknown bank code and no keyword nearby, any secret with neither a known format
+every person's name with names off, the default, and with names on the names the model and the list miss: 111 of 612 on the generated set, 4 of 45 on the held-out one, an IFSC code with an unknown bank code and no keyword nearby, any secret with neither a known format
 nor a keyword directly before it, a UPI ID at an unknown handle with no
 keyword nearby, a passport number, voter ID or date of birth with no
 keyword nearby, an IP address inside a host name, the part of an email
@@ -827,6 +833,8 @@ npm install
 npm test               # run the test suite (the timing tests last)
 npm run test:coverage  # coverage, without the timing tests
 npm run test:timing    # only the timing tests
+npm run test:names     # person-name tests on the real model (needs npm run fetch:model)
+npm run eval:names     # names through the gateway, against the published figures (needs the model)
 npm run lint           # lint
 npm run typecheck      # type-check
 
@@ -839,8 +847,9 @@ dependency of about 302 MB that is never loaded with names off. To run the
 built gateway without it, install with `npm ci --omit=optional --omit=dev`
 (after `npm run build`). Keep the plain install for development:
 `--omit=optional` also removes the platform binaries of the development
-tools, and the tests then do not start
-([ADR-036](docs/decisions.md#adr-036), step 4a).
+tools, and esbuild's install script then downloads its binary outside the
+lockfile, where no integrity hash checks it (the tests not starting is
+only the symptom; [ADR-036](docs/decisions.md#adr-036), step 4a).
 
 The timing tests check that detection and restoration take linear time:
 each times the same work on an input and on one four times as long, and

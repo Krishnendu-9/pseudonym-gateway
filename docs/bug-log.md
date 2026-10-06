@@ -2733,3 +2733,119 @@ amendment), so the table columns and kinds 1, 3 and 4 no longer arise:
 the ADR-039 check against 9ec51b7 shows no difference. Kind 2 belonged to
 bug 61's option-1 fix, not to the masking, and went with it (bug-log 61,
 final). The fuzz keeps its tables.
+
+## 66. The built gateway once gave no `/health` answer within 10 seconds of starting (2026-10-07, seen once in Phase 6b step 4a; not reproduced, no cause claimed)
+
+**Symptom:** in step 4a's names-off proof (ADR-036, "Step 4a: installed
+and measured"), the first run of the proof driver started the built
+gateway (`node --disable-sigusr1 dist/src/main.js`, names unset, a clean
+`npm ci --omit=optional` copy of the working tree) and got no answer to
+`GET /health` within its waiting time. The next 4 runs of the same proof
+answered, and so did 3 of 3 of the production form
+(`--omit=optional --omit=dev`).
+
+**What the evidence is, and is not.** The driver (a scratch script) asked
+for `/health` every 100 ms, at most 100 times (about 10 s plus the time of
+each attempt), and stopped waiting early if the gateway process exited.
+"No answer" therefore covers three different things it could not tell
+apart: the process still starting after about 10 s, the process exiting
+before it listened, or the process listening on a port the driver was not
+asking. That first version of the driver printed nothing else: not the
+exit code, not the gateway's stderr or stdout, not whether the process was
+still alive. The diagnostics were added after this run, and no later run
+needed them. The gateway's port was drawn at random from 3900–3989 for
+each run, so a port already in use (which makes Fastify's `listen` fail
+and the process exit) is one possibility; a slow start on a busy machine
+(the conditions of bug 57) is another. Neither is shown.
+
+**Root cause:** not known. Recorded on the same basis as bug 57: the
+evidence as it stands, no cause claimed.
+
+**Why it matters now:** Phase 6b step 4b adds a worker thread to start-up
+with names on (the model's files hashed, then the runtime and a 178.5 MB
+model loaded in the worker before the gateway listens). A start-up that
+sometimes takes longer than a caller waits would look the same from
+outside. Any start-up check written from here on prints the exit code,
+whether the process is alive, and its output, so that a repeat can be told
+apart.
+
+**Fix:** none. **Guarded by:** nothing automatic.
+
+**More evidence (2026-10-07, step 4b's run of the same proof, with the new
+driver):** the driver now asks the operating system for a free port
+instead of drawing one, waits up to 60 s, and always prints the time to
+the first `/health` answer, the exit code or "alive", and stderr. In three
+fresh installs, **the first start after the install was slow and every
+later start was not**:
+
+| Install                                 | First start | Later starts    |
+| --------------------------------------- | ----------- | --------------- |
+| `npm ci --omit=optional`, names off     | 13,197 ms   | 817, 917 ms     |
+| `--omit=optional --omit=dev`, names off | 7,878 ms    | 698, 805 ms     |
+| full `npm ci`, names on (model loaded)  | 11,461 ms   | 1,698, 1,570 ms |
+
+Each slow start answered, exited cleanly when stopped, and printed
+nothing on stderr. So a first start after an install can take longer than
+the 10 s 4a's driver waited, with names off as well as on, which fits the
+4a symptom; it does not show why the first start is slow (the files are
+new to the machine; what reads them that long was not looked into). Still
+no cause claimed.
+
+## 67. The name worker said it was ready and then never answered (2026-10-07, found and fixed in Phase 6b step 4b, before any test existed)
+
+**Symptom:** the first smoke run of the real worker (a scratch script:
+start the thread on B, send one synthetic sentence) printed "ready in
+3028 ms" and then nothing for over 120 s, until it was stopped. No error,
+no exit.
+
+**Root cause:** `WorkerNameModel.start()` cleaned up its start-up
+listeners with `worker.removeAllListeners()`. That also removes the
+listeners Node's `Worker` puts on itself: it watches `newListener` and
+`removeListener` to start and stop reading its message port when
+`'message'` listeners come and go. With those gone, the `'message'`
+listener added afterwards never caused the port to be read, so the
+thread's answer was never delivered. The first message ("ready") had been
+delivered because it arrived while the original listeners were still in
+place.
+
+**Fix:** remove only the listeners `start()` added (`worker.off(...)` for
+each), and attach the thread's error swallower once, before waiting. The
+smoke run then answered (ready in 883 ms, one span found).
+
+**Guarded by:** `test/unit/gateway/name-worker.test.ts`, every test that
+calls `run()` on a started thread ("answers each call with its own
+spans…" and the rest): with `removeAllListeners()` back, each would wait
+for an answer that never comes and time out.
+
+## 68. Stopping the name worker during an inference ends the whole process (2026-10-07, found in Phase 6b step 4b; not fixed, behaviour documented, for the user's decision)
+
+**Symptom:** the first run of the names test project (`npm run test:names`)
+ended with Vitest's "Worker exited unexpectedly with exit code 3221226505"
+after 5 of 6 tests: the test process itself had died. The sixth test called
+`WorkerNameModel.terminate()` 200 ms after sending B a 16 KiB request.
+
+**Reproduced outside Vitest** (scratch script, the real worker on B, one
+long synthetic text): `terminate()` 300 ms into the call ended the process
+before `terminate()` returned, 5 times of 5, exit code 0xC0000409 each
+time it was read (twice in PowerShell; Git Bash shows 127 for it). The same
+call on an idle thread (after the answer came) stopped the thread in 35 ms
+and the process carried on.
+
+**Root cause (as far as the evidence goes):** 0xC0000409 is Windows'
+`STATUS_STACK_BUFFER_OVERRUN`, the code of a native fail-fast (an abort
+from native code, not a JavaScript error). Node stops a worker by tearing
+down its JavaScript environment while `onnxruntime-node`'s inference is
+still running on native threads; the runtime then aborts the process.
+Which line aborts was not investigated. The runtime offers no way to
+cancel a run from Node: its `RunOptions.terminate` is documented as
+"available only in WebAssembly backend". Linux not tried.
+
+**Consequence:** a call cannot be cut short in the thread without taking
+the gateway down with it. `terminate()` and `close()` now say they are for
+an idle thread only, and nothing in the gateway calls them. Whether a call
+that runs too long should be stopped, and how, is the step's item 3
+decision, which this finding changes.
+
+**Fix:** none in this step. **Guarded by:** the names test that stops the
+thread now does so between calls; the hazard is in the method's
+documentation and here.

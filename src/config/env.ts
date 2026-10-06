@@ -48,6 +48,13 @@ const envSchema = z.object({
   // the configuration from before names existed (ADR-037). nameFinder() in
   // wiring.ts reads it.
   PSEUDONYM_NAMES: z.enum(['true', 'false']).optional(),
+  // With names on: how long a request may wait for its names, queued and
+  // running together, and how many requests may wait while the model works
+  // on another (ADR-037). No default here, for the same reason as
+  // PSEUDONYM_NAMES: their defaults are applied by nameOptions() in
+  // wiring.ts, which only names on reaches.
+  PSEUDONYM_NAMES_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
+  PSEUDONYM_NAMES_MAX_QUEUE: z.coerce.number().int().nonnegative().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

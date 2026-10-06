@@ -4351,6 +4351,16 @@ prominence as the generated one, and calls it the one to quote.
 
 ---
 
+**Note (2026-10-07, Phase 6b step 4b): re-running this comparison today
+does not reproduce the table above.** The generated set has grown by 204
+messages since this run (two shapes added later, with no PERSON values),
+and `scripts/compare-names.ts` scores the whole set, so the rule then
+picks B at 0.95 / 0.1 (B+F 495/612, 5.53 per 1,000 words; the decision is
+the same). The spans on the 1,998 messages measured here are unchanged
+(ADR-036, "Step 4b"). The published figures describe those 1,998
+messages; `npm run eval:names` pins them by hash and reproduces every
+figure of the B+F row through the gateway.
+
 <a id="adr-036"></a>
 
 ## ADR-036: Person names, Phase 6b — how the runtime, the model and the name list reach a machine (2026-10-03; accepted)
@@ -4369,7 +4379,11 @@ other pins, with what that does and does not fix. **Built 2026-10-07
 (step 4a):** the two packages as exact optional dependencies, the download
 script, the load-time check; every figure measured then is in "Step 4a:
 installed and measured", at the end of this ADR, and replaces the
-registry figures below where they differ.
+registry figures below where they differ. **Built 2026-10-07 (step 4b):**
+the worker thread, B's code moved from the comparison script, and the
+proof that the gateway reproduces 6a's span SHA-256s exactly; "Step 4b",
+at the end of this ADR, with the gateway's measured speed and memory
+(which replace the 325 MiB note for the gateway).
 
 **Context.** ADR-035 ships B+F (B =
 `Xenova/bert-base-multilingual-cased-ner-hrl@263e82c06569`, int8, at high
@@ -5043,7 +5057,16 @@ size, and the NuGet download with and without
 `vite` → `postcss` and `@vitest/coverage-v8` → `magicast`: dev only, and
 already in the lockfile before this step (the lockfile diff does not touch
 it), so a newly published advisory, not something these packages
-brought. Not changed in this step.
+brought. Not changed in this step. **The fix (noted 2026-10-07, step
+4b):** Dependabot's pull request #1 bumps `source-map-js` from 1.2.1 to
+1.2.2, and the advisory's affected range is `>=1.0.0 <1.2.2` (the audit
+report of step 4a), so 1.2.2 is the fixed version. It needs **no bump
+procedure**: the procedures above exist for the four inputs the held-out
+names figure froze (runtime, tokenizer, model bytes, name list) and for
+`libphonenumber-js`'s metadata, and `source-map-js` is none of them. It
+is a development dependency of the test tools (source maps for coverage
+and Vite), never loaded by the gateway, and touches no measured number.
+The pull request is the user's to merge.
 
 **The model files, measured.** `npm run fetch:model`
 (`scripts/fetch-model.ts`, `scripts/model-download.ts`) downloaded the
@@ -5136,6 +5159,151 @@ difference.
 (decided above), since the runtime is in the lockfile from this step on.
 Still verified only in 6c.
 
+### Step 4b: the worker, and the proof that the gateway's spans are 6a's (2026-10-07)
+
+**The B code moved, to the move standard.** B's loading and running lived
+only in `scripts/compare-names.ts` (`encodeWords` and the body of
+`bertCandidate`: the tokenizer, the labels from `config.json` in id order,
+the inference session with default options, the int64 feeds, `[CLS]` and
+`[SEP]`, the 512-token windows with 64 tokens of context). It moved,
+imports and paths only, to `loadBert` in `src/detection/names/bert.ts`,
+with the runtime passed in (the script loads its copy from
+`D:\pseudonym-6a`, the gateway the optional dependency). The script now
+calls it, and `speedText` moved to `eval/names/latency.ts` so that both
+time the same text. Proof: the script run again for A, B and F
+(`D:\pseudonym-6a\runs\2026-10-07-move-bert`): on the first 1,998
+messages, the span SHA-256s of A (`1828fdc0…`), B (`96a5c328…`) and F
+(`c6079836…`) are identical to all five earlier runs.
+
+**The worker.** `src/gateway/name-worker.ts`: `WorkerNameModel` starts a
+`worker_threads` thread (`name-worker-entry.ts`, which loads the two
+optional packages with `require` and B with `loadBert`, then calls
+`serveNames`), waits for its "ready" (two minutes at most, then start-up
+is refused), sends each call's texts with an id, and matches the answer to
+the call. The thread answers one request at a time, each text in order,
+and sends back spans only; a request it cannot answer is "failed", with
+nothing of the error. The thread's own errors are never read (one from the
+model may quote its input). A thread that exits is a crash: every call in
+flight fails, the detector is told (`onCrash`), later calls fail at once.
+`NameDetector` (queue, timeout, health, every fail-closed rule) is
+unchanged and sits in front of it; the model's answer is still checked by
+`modelSpans` in the gateway, since it crosses from the thread. The entry is
+chosen beside the module: the built `.js` with no Node options, or, from
+TypeScript source, the `.ts` with tsx's loader. With names on, `main.ts`
+calls `startNameDetection(() => loadNameModel(dir), nameOptions(env))`:
+the list is checked, then the files, then the thread starts; any failure
+refuses start-up (`NAME_MODEL_LOAD_FAILED` for the thread).
+
+**The proof: B+F through the gateway reproduces 6a exactly.**
+`npm run eval:names` (`eval/names-run.ts`, `eval/names/gateway.ts`) starts
+the model as `main.ts` does and sends each of the 1,998 messages 6a
+measured (the first 1,998 of today's generated set: F's spans recomputed
+on them hash to the 6a F hash, so they are the same texts) as its own
+`POST /v1/chat/completions` to the real server, recording B's raw answer
+and the names the server was given. `eval/names-baseline.json` holds the
+6a values, written from the 6a records, never from a gateway run: the
+dataset hash, **B's span SHA-256 `96a5c3289a275cf91c4743ade7b5ec2f46c92a1974b9b1c5e5f8e82e453ed472`
+(the 6a run's `spanHash`)**, **the names' SHA-256
+`ba1a6b82da7c951da9dda75862bdb7656db17f968294f80255b708be0570c7b3` (D0's,
+in D0's format: `{start, end}` per span, recovered by recomputing it from
+the saved 6a spans)**, 933 detections and every metric of ADR-035's B+F
+row. Result, on every run (4 of 4, below): **identical**, field by field: B's
+spans, the names, R 501/612 (81.8%), main PERSON 145/153, precision
+661/933, 5.85 per 1,000 words, every row and lookalike count. So the
+published 81.8% describes the spans the gateway produces on this machine,
+with the runtime from the project's own `node_modules`. The held-out
+41 of 45 was not re-run (the set is spent for names); it rests, as
+before, on the four frozen inputs and the two joins (D0), and the B code
+it ran is now the moved code proven identical here.
+
+**Seen while proving the move, not changed: re-running the comparison
+today does not reproduce ADR-035's table.** The generated set has 204
+more messages than in 6a (the `glued-literal` and `keyword-in-literal`
+shapes, added after it). `scripts/compare-names.ts` scores "the generated
+set", so a run today scores 2,202 messages, and the rule then chooses B at
+0.95 / 0.1, not 0.9 / 0.6 (B+F R 495/612, 5.53 per 1,000 words; same
+decision, too costly). The spans on the 6a messages are identical; only
+the scored set grew. The gateway ships 0.9 / 0.6 (`MODEL_POINT`), as
+decided. `npm run eval:names` pins the 1,998 messages and their hash, so
+it measures what was published; the comparison script does not, and
+re-running it no longer reproduces ADR-035 without being limited to them.
+
+**Speed and memory, measured through the worker** (replaces the 325 MiB
+note above for the gateway; the 6a figures stay as what 6a measured):
+three runs of `npm run eval:names` back to back on an idle machine (no other
+`node` process, Ollama with nothing loaded, 5.5 GB free), then the
+comparison script's B once, in the same conditions. Windows 11 x64, i5-12450H,
+12 logical CPUs, Node 22.23.3. The first run of the day (above) is left out:
+it overlapped the test runs of this step.
+
+| Measure                                             | Gateway, run 1 | Run 2     | Run 3     | Script's B, same session | 6a (ADR-035)           |
+| --------------------------------------------------- | -------------- | --------- | --------- | ------------------------ | ---------------------- |
+| ms per KiB, 256 KiB of text                         | 308.2          | 331.9     | 321.1     | 275.0 (B alone)          | 285.0 (B), 286.0 (B+F) |
+| Added latency, 1 KiB (median of 5)                  | 141 ms         | 144 ms    | 148 ms    |                          | 138 ms (B)             |
+| 4 KiB                                               | 1,076 ms       | 1,064 ms  | 1,158 ms  |                          | about 1.1 s            |
+| 16 KiB                                              | 4,909 ms       | 4,917 ms  | 5,461 ms  |                          |                        |
+| 64 KiB                                              | 20,441 ms      | 22,552 ms | 22,474 ms |                          |                        |
+| Model start (files hashed, then the thread loads B) | 1,085 ms       | 1,319 ms  | 1,686 ms  | 943 ms (load only)       | 934 ms                 |
+| Resident memory added once started                  | 286 MiB        | 285 MiB   | 287 MiB   |                          |                        |
+| Peak added over the run (6a's measure)              | 367 MiB        | 366 MiB   | 369 MiB   | 331 MiB                  | 325 MiB                |
+| Whole process at its peak                           | 467 MiB        | 478 MiB   | 467 MiB   |                          |                        |
+| Longest event-loop delay while the messages ran     | 94 ms          | 129 ms    | 101 ms    | 126 ms                   | 161 ms                 |
+
+- **Speed: about 310–330 ms per KiB through the gateway**, against the
+  script's 275 in the same session. The 6a figure stays what ADR-035
+  measured; the gateway's is the one to publish for the gateway. The
+  difference is not attributed: it includes the thread's messages, F, the
+  join and the answer's check, but one script run against three gateway
+  runs cannot separate those from run-to-run spread (6a's own five runs of
+  B ranged 285–524 ms per KiB). It changes nothing in ADR-035: B+F
+  already failed the 60 ms limit.
+- **Memory: about 367 MiB** at its peak by 6a's measure, against the 325 MiB
+  ADR-035 recorded for B (and 331 MiB for the script today), and about
+  286 MiB held while idle once started. **This replaces the 325 MiB note for
+  the gateway.** It is the whole process's resident memory (the thread is
+  in the process), so it includes the server and the second JavaScript
+  heap a thread has. Well under ADR-035's 1.5 GiB limit.
+- **The event loop is not measurably freer.** The longest delay with the
+  model in a thread (94–129 ms) is in the range the in-process script
+  showed (126 ms today, 161 ms in 6a): inference already ran on the
+  runtime's own threads, so what remains on the loop is the gateway's own
+  work per message (detection, redaction). What the thread does give: the
+  tokenizer and the window loop for a large request no longer run on the
+  loop, a thread that dies is seen as a crash rather than taking the
+  server's JavaScript with it, and the runtime is loaded only there.
+
+**Found: a run cannot be cut short** (bug-log 68). Stopping the thread
+(`worker.terminate()`) while the runtime is inside an inference ends the
+whole process (0xC0000409 on Windows, 5 of 5); on an idle thread it takes
+about 35 ms. The runtime has no cancel for a native run in Node
+(`RunOptions.terminate` is WebAssembly only). `terminate()` and `close()`
+are documented as idle-only, and nothing in the gateway calls them.
+Whether a call that runs too long should be stopped is open (ADR-037,
+"Open after step 4b").
+
+**The names-off proof, run again on the shipped code** (the procedure in
+the testing guide; a clean copy of the working tree in the session
+scratchpad):
+
+| Install                                    | Names off      | Names on                                                                      |
+| ------------------------------------------ | -------------- | ----------------------------------------------------------------------------- |
+| `npm ci --omit=optional` (200 packages)    | serves, 3 of 3 | model files present, runtime absent: exit 1, `NAME_MODEL_LOAD_FAILED`, 2 of 2 |
+| `--omit=optional --omit=dev` (57, 0 vuln.) | serves, 3 of 3 | the same, 2 of 2                                                              |
+| full `npm ci` (219 packages)               | serves, 1 of 1 | starts from the built `.js` thread and serves, 3 of 3                         |
+
+"Serves": `/health` 200, one request with a synthetic email and the Visa
+test card reaches the fake provider as `[EMAIL_1] [CARD_1]` and neither
+value, and the reply comes back restored; with names on also a name, sent
+as `[PERSON_1]` and restored. Typecheck and build pass in the
+`--omit=optional` install. This reaches what 4a could not: with names on
+and the runtime absent, the file check passes and the thread fails to
+load the runtime, so the refusal is the runtime's. The first start after
+each fresh install took 7.9–13.2 s to answer `/health`, every later one
+0.7–1.7 s (bug-log 66). esbuild's install script again fetched its own
+binary outside the lockfile in the `--omit=optional` install
+(`node_modules/esbuild/lib/downloaded-@esbuild-win32-x64-esbuild.exe`,
+11.7 MB), this time printing nothing.
+
 <a id="adr-037"></a>
 
 ## ADR-037: Person names in the request path, against a fake model (Phase 6b step 3, 2026-10-03; amends ADR-003, ADR-013)
@@ -5143,7 +5311,10 @@ Still verified only in 6c.
 **Status.** Built and tested in step 3. Decisions marked "the user" were
 settled before or during the step; those marked "this ADR" were made while
 building and are reported for review. No real model, no worker and no
-runtime yet (step 4); nothing installed.
+runtime yet (step 4); nothing installed. **Step 4b (2026-10-07):** the
+real model, in a worker thread, behind the same contract; amendment at the
+end of this ADR, with the timeout and queue defaults (provisional) and the
+open question of stopping a long call.
 
 **Context.** ADR-035 chose B+F behind `PSEUDONYM_NAMES`, off by default;
 ADR-036 settled how the runtime, model and list reach a machine and the
@@ -5430,6 +5601,98 @@ digit as joined to the value; the text sent keeps the literal there) and
 9 filler lookalikes. **Open, for the user:** the scores measure what
 `detect()` finds, not what is sent; scoring the text `redactMessage`
 sends would make the leak counts themselves see this class of bug.
+
+### Amendment, Phase 6b step 4b (2026-10-07): the real model behind the same contract
+
+**The fake's contract holds against the real worker.** `NameDetector` is
+unchanged; the worker (`WorkerNameModel`, ADR-036 "Step 4b") implements
+the same `NameModel` the fake did. Held by tests, with the provider
+asserted never called on every refusal:
+
+- the main suite, on real worker threads with a scripted stand-in for B
+  (`test/unit/gateway/name-worker.test.ts`): answers matched by id with
+  calls in flight at once, a thread's answer passed on unchecked and then
+  refused by the detector (`malformed`), "failed" answers with a fixed
+  message, stray replies ignored, a thread that exits is a crash (503s,
+  unhealthy, no restart), a thread that never answers times out with
+  health held, and start-up refused for a thread that fails to load,
+  exits, sends something else first or never says it is ready;
+- the names project, with B itself (`npm run test:names`,
+  `test/integration/names-worker.names.test.ts`): no name the model found
+  is sent; concurrent requests each get their own names; a call past the
+  timeout is a 503, health is unhealthy while B is still on it, and the
+  thread serves again when it ends; a full queue is refused at once while
+  the request ahead completes; seven kinds of garbage made from B's real
+  answers (offset past the end, negative, start after end, a score that is
+  not a number, above 1, one list too many, not a list) are each refused,
+  and the same answer uncorrupted goes through; a thread that exits makes
+  every request a 503 and health unhealthy.
+
+**The timeout and the queue (this step sets them from its measurements,
+as this ADR left them; for the user's review).**
+`PSEUDONYM_NAMES_TIMEOUT_MS` and `PSEUDONYM_NAMES_MAX_QUEUE`, optional and
+absent from the parsed configuration unless set, like `PSEUDONYM_NAMES`;
+`nameOptions()` (wiring.ts) applies the defaults, so a names-off
+configuration is still exactly the one from before names existed (the env
+test caught a first draft that defaulted them in the schema).
+Defaults, **provisional, for the user to confirm or change**:
+
+- **Timeout 120,000 ms**, the provider timeout's default. The largest
+  request the body limit allows (256 KiB) took about 79–85 s of name
+  detection at the three measured gateway speeds (308–332 ms per KiB), so
+  it fits with about 1.4 times to spare on this machine. It would not fit
+  at 6a's slowest measured speed for B (524 ms per KiB, 134 s): a slower
+  machine or a busy one refuses the largest requests with a 503 (never
+  sends them without names); `PSEUDONYM_NAMES_TIMEOUT_MS` raises it. The
+  timeout counts waiting in the queue too, so a request behind a large one
+  can be refused for the time the large one takes.
+- **Queue 8.** Each waiting request is a parsed body the gateway already
+  holds (at most 256 KiB of text each, so about 2 MiB for eight); at the
+  measured 1 KiB and 4 KiB latencies (141–148 ms, 1.06–1.16 s) eight
+  typical chat requests wait at most about 9 s together, well inside the
+  timeout. More than that is load the model cannot serve in time anyway,
+  and is refused at once rather than after waiting out the timeout.
+
+**Open after step 4b: should a call that runs past its timeout be
+stopped?** Step 3 left it to this step: a worker thread can be stopped,
+which an in-process fake could not. This step found that it cannot be
+stopped safely (bug-log 68): stopping the thread during an inference ends
+the whole process, and the runtime has no cancel for a native run.
+Options, with the user:
+
+1. **Never stop it (as built).** The request is refused at its timeout;
+   the model finishes the call; the next request starts after it. Queue:
+   requests behind it wait, each refused at its own timeout, or at once if
+   the queue is full. Health: unhealthy while the call runs past the
+   timeout, ok when it ends; if it never ends, unhealthy until the process
+   is restarted from outside. A request already waiting runs if the call
+   ends before its own deadline, else gets a 503.
+2. **Declare it a crash after a limit, without stopping it.** Past a hard
+   limit (longer than the timeout), the detector marks itself crashed, as
+   for a thread that exited; the thread is left to finish and its answer
+   ignored. Queue: every waiting request refused at once. Health:
+   unhealthy for good, until a restart. A request already waiting: a 503
+   at the limit at the latest. Costs one rule and one number; a slow but
+   legitimate call past the limit disables names until a restart.
+3. **Stop the thread after a limit.** On this machine that ends the
+   gateway process at once (0xC0000409). Queue: gone. Health: no answer.
+   A request already waiting, and every other request in flight
+   (names-off traffic, streams already flowing), loses its connection
+   instead of getting a 503. Recovery only through an outside restart.
+4. **Run the model in a child process instead of a thread, and kill it
+   after a limit.** Killing a process is safe; counted as a crash
+   (permanent, ADR-036). Queue: refused at once; health unhealthy for
+   good; a waiting request gets a 503 at the kill. Costs: this step's
+   channel rebuilt for a process, a second Node process's memory, and the
+   span proof, the names tests and the names-off proof run again.
+
+**Recommendation: 1.** No option stops a run inside the thread safely,
+and a run's length is bounded by the 256 KiB body limit, so a call past
+the timeout is almost always a large request that will finish, after
+which 1 recovers on its own; health already reports the hold, so an
+orchestrator can restart on a sustained "unhealthy". If a definite
+cut-off is wanted, 2 gives it without risking the process. 4 only if
+stopping the work itself matters. Not implemented until the user decides.
 
 <a id="adr-038"></a>
 

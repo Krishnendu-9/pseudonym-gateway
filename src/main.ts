@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadEnv } from './config/env.js';
-import { nameFinder, ollamaConfig, serverConfig } from './config/wiring.js';
+import { nameFinder, nameOptions, ollamaConfig, serverConfig } from './config/wiring.js';
 import { safeErrorDetails } from './gateway/errors.js';
 import { buildServer } from './gateway/server.js';
 import { checkProductionHardening } from './hardening.js';
@@ -54,17 +54,17 @@ if (env.NODE_ENV === 'production') {
 }
 
 // Names on: the gateway starts only with a name list that matches its pinned
-// hash, model files that match theirs, and a model that loads (ADR-036). The
-// list and the files are checked here; the worker that loads and runs the
-// model is Phase 6b step 4b, so until then names on always refuses start-up,
-// after those checks. Names off never calls this, and the name modules are
-// imported only inside it.
+// hash, model files that match theirs, and a model that loads in its worker
+// thread (ADR-036); any of them wrong refuses start-up. Names off never
+// calls this, and the name modules, the worker and the runtime are imported
+// only inside it.
 const names = await nameFinder(env, async () => {
-  const { GAZETTEER } = await import('./detection/names/gazetteer.js');
-  const { checkNameList } = await import('./gateway/names.js');
+  const { startNameDetection } = await import('./gateway/names.js');
   const { loadNameModel, MODEL_ROOT, NAME_MODEL } = await import('./gateway/name-model.js');
-  checkNameList(GAZETTEER);
-  return loadNameModel(join(MODEL_ROOT, NAME_MODEL.dir));
+  return startNameDetection(
+    () => loadNameModel(join(MODEL_ROOT, NAME_MODEL.dir)),
+    nameOptions(env),
+  );
 });
 
 const app = buildServer(

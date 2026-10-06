@@ -11,6 +11,10 @@ import { configDefaults, defineConfig } from 'vitest/config';
 // three at a time was measured on 12 cores and GitHub's ubuntu-24.04 runner
 // has 4. The --maxWorkers flag cannot do this: a project's own maxWorkers wins.
 const TIMING_TESTS = 'test/**/*.timing.test.ts';
+// Tests that run the real name model (Phase 6b step 4b) need the runtime and
+// the model files (npm run fetch:model), which CI does not download yet
+// (Phase 6c). Their own project, run by npm run test:names only.
+const NAMES_TESTS = 'test/**/*.names.test.ts';
 const TIMING_WORKERS = timingWorkers(process.env.PSEUDONYM_TIMING_WORKERS);
 
 function timingWorkers(setting: string | undefined): number {
@@ -42,7 +46,7 @@ export default defineConfig({
         test: {
           name: 'main',
           include: ['test/**/*.test.ts'],
-          exclude: [...configDefaults.exclude, TIMING_TESTS],
+          exclude: [...configDefaults.exclude, TIMING_TESTS, NAMES_TESTS],
           sequence: { groupOrder: 0 },
         },
       },
@@ -53,6 +57,16 @@ export default defineConfig({
           include: [TIMING_TESTS],
           maxWorkers: TIMING_WORKERS,
           sequence: { groupOrder: 1 },
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'names',
+          include: [NAMES_TESTS],
+          // One file at a time: each loads the 178.5 MB model, more than once.
+          maxWorkers: 1,
+          sequence: { groupOrder: 2 },
         },
       },
     ],
@@ -67,7 +81,15 @@ export default defineConfig({
       include: ['src/**/*.ts', 'eval/**/*.ts'],
       // Wiring only (read env or files, print, exit); every decision they
       // make is in a tested module. Testing them would mean spawning a process.
-      exclude: ['src/main.ts', 'eval/run.ts', 'eval/check-held-out.ts'],
+      // The worker thread's entry runs only inside a thread, which the
+      // coverage run cannot see; its logic is serveNames (name-worker.ts).
+      exclude: [
+        'src/main.ts',
+        'src/gateway/name-worker-entry.ts',
+        'eval/run.ts',
+        'eval/names-run.ts',
+        'eval/check-held-out.ts',
+      ],
       reporter: ['text', 'html'],
       // Every line, branch, function and statement, or the run fails (CI too).
       thresholds: { 100: true },

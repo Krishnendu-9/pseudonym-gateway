@@ -3,6 +3,7 @@ import {
   LATENCY_SIZES_KIB,
   median,
   perKiB,
+  speedText,
   tokensByScript,
 } from '../../../../eval/names/latency.js';
 
@@ -28,5 +29,17 @@ describe('tokensByScript', () => {
 
   it('measures at 1, 4, 16 and 64 KiB', () => {
     expect([...LATENCY_SIZES_KIB]).toEqual([1, 4, 16, 64]);
+  });
+});
+
+describe('speedText (moved from the comparison script in step 4b)', () => {
+  it('joins messages by blank lines until the next would pass the byte budget', () => {
+    expect(speedText(['aa', 'bb', 'cc'], 6)).toBe('aa\n\nbb');
+    expect(speedText(['aa', 'bb', 'cc'], 5)).toBe('aa');
+  });
+
+  it('counts UTF-8 bytes, starts at `from` and goes round the messages again', () => {
+    expect(speedText(['é', 'b'], 2)).toBe('é');
+    expect(speedText(['a', 'b'], 9, 1)).toBe('b\n\na\n\nb');
   });
 });

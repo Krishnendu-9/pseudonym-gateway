@@ -46,3 +46,23 @@ export function tokensByScript(
 
 /** Tokens per KiB; 0 for no text. */
 export const perKiB = (c: TokenCount): number => (c.kib === 0 ? 0 : c.tokens / c.kib);
+
+/**
+ * Generated messages joined by blank lines, from message `from` (the first
+ * by default) and round again if need be (the whole set is about 248 KiB),
+ * until the next would pass `bytes` of UTF-8. Moved from
+ * scripts/compare-names.ts in Phase 6b step 4b, so that `npm run eval:names`
+ * times the gateway on the text 6a timed the script on.
+ */
+export function speedText(texts: readonly string[], bytes: number, from = 0): string {
+  const parts: string[] = [];
+  let size = 0;
+  for (let i = from; ; i++) {
+    const text = texts[i % texts.length]!;
+    const add = Buffer.byteLength(text) + (parts.length > 0 ? 2 : 0);
+    if (size + add > bytes) break;
+    parts.push(text);
+    size += add;
+  }
+  return parts.join('\n\n');
+}

@@ -13,6 +13,8 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { NameStartupError } from './errors.js';
+import { startNameWorker } from './name-worker.js';
+import type { NameModel } from './names.js';
 
 export interface ModelFile {
   /** Path inside the model directory and the repository, `/`-separated. */
@@ -99,14 +101,16 @@ export async function checkModelFiles(
 
 /**
  * Loads the name model from `dir`: checks its files first, so nothing is
- * loaded from a file that is not the measured one. The worker that runs the
- * model is Phase 6b step 4b; until then a model whose files pass the check
- * still refuses start-up.
+ * loaded from a file that is not the measured one, then starts it in its
+ * worker thread (`start`; name-worker.ts). A worker that does not start
+ * rejects, and startNameDetection() refuses start-up with
+ * NAME_MODEL_LOAD_FAILED.
  */
 export async function loadNameModel(
   dir: string,
   files: readonly ModelFile[] = NAME_MODEL.files,
-): Promise<never> {
+  start: (dir: string) => Promise<NameModel> = startNameWorker,
+): Promise<NameModel> {
   await checkModelFiles(dir, files);
-  throw new NameStartupError('NAME_MODEL_LOAD_FAILED');
+  return start(dir);
 }
