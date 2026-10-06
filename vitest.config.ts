@@ -8,7 +8,7 @@ import { configDefaults, defineConfig } from 'vitest/config';
 // to 42.8 s; on their own, three at a time, 267 calls never reached 6.3 and
 // none took over 10 s. Other heavy work on the machine still breaks them.
 // PSEUDONYM_TIMING_WORKERS overrides the count: CI sets it to 1, because the
-// three at a time was measured on 12 cores and GitHub's ubuntu-latest runner
+// three at a time was measured on 12 cores and GitHub's ubuntu-24.04 runner
 // has 4. The --maxWorkers flag cannot do this: a project's own maxWorkers wins.
 const TIMING_TESTS = 'test/**/*.timing.test.ts';
 const TIMING_WORKERS = timingWorkers(process.env.PSEUDONYM_TIMING_WORKERS);

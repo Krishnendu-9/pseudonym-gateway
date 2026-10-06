@@ -2480,3 +2480,256 @@ Document it.
 
 **Tests:** none pinned yet; the generated set counts the 3 values as
 missed SECRETs, so a fix shows as a better count.
+
+**Follow-up (same day): option 2 built, measured, and stopped before
+anything else.** `redactMessage` now detects on the text with each
+literal replaced, unit for unit, by U+2591 (ADR-038). The guard passed:
+no generated count outside `glued-literal` moved (that shape's echo went
+222 to 225: these 3 values are now redacted), and the whole suite,
+restoration included, passed. Two findings:
+
+- **It does not replace bug 58's cut-around.** With literals masked,
+  detections still reach into a literal's positions: in the generated set
+  SECRET 18 and EMAIL 6 (of 108 texts with a literal); in 100,000 fuzzed
+  texts SECRET 9,611, EMAIL 96, NUMBER 142, and without combining marks
+  only SECRET (10,357). A keyword secret's value runs to the next blank,
+  and the filler is not blank; a combining mark after a literal shares
+  the filler's cluster.
+- **It hides keywords the user did write**, which is what stopped it. A
+  value that is only found with a keyword nearby, whose only keyword is
+  inside a placeholder-shaped text (`replace [AADHAAR_1] with <value>`),
+  was redacted before and is now sent: 1,200 of 1,200 probed (200 each
+  for AADHAAR failing its check, PASSPORT, VOTER, IFSC at an unknown
+  bank, UPI at an unknown handle, DOB); with the keyword also written
+  outside the placeholder, 0. The generated set has no such case outside
+  the new shape, so no count showed it. Waiting for the user.
+
+**Fixed (2026-10-03, the user's option 1: mask the values, keep the
+keywords; ADR-038 "Part 1 as built").** Values are matched in the masked
+copy and the keyword check reads the original at the same offsets. The
+1,200 probe values: 0 sent. Bug 61's case goes out as `password:
+[LITERAL_1][SECRET_1]`. The cut-around of bug 58 stays. **Tests:**
+`test/unit/detection/mask.test.ts`; the generated set's
+`keyword-in-literal` shape (96 cases) counts the values whose only keyword
+is inside a placeholder.
+
+**Reversed (2026-10-07, the user's option C):** the masking is undone and
+bug 61 is fixed in the secret detector alone (option 1: a placeholder
+opened by the brackets before a keyword's value is skipped, and the value
+is read after it). The ADR-039 check against 9ec51b7 does not show that
+change alone. Names off (seed 39): 19 texts where a value is now found
+after a spaced placeholder (`password: [ifsc 3]/<value>`): the intended
+change. But also 6 texts where a value is now sent: after a placeholder
+with no space (`password: [Phone_8]<value>`) the value used to be read
+from inside the placeholder, reached the secret rule's 6 characters with
+its tail, and was covered by the cut-around; read after it, it is too
+short. And names on (seed 40): 2 real regressions,
+`API_KEY =  [IFSC 3]=was=…)API_KEY =)<PAN>`: the first value, read after
+the placeholder, runs to the next blank and swallows the second keyword,
+so the PAN is sent (the masking's "kind 2" was this skip all along).
+Stopped for the user.
+
+**Final (2026-10-07, the user's O2): not fixed; a known limitation.**
+`secret.ts` is back to 9ec51b7 as well, so detection is exactly 9ec51b7's
+and the ADR-039 check shows no difference (0 of 100,000 texts, names off
+and on). What is sent, stated in the README and the user manual: a secret
+after a credential word and a placeholder-shaped text with a space in it;
+**3 of 108 values** in the generated `glued-literal` shape. With no space
+in the placeholder the value is found (bug 58's cut-around). The record
+of both fixes, and of O1 priced and not taken, is ADR-038's final
+amendment. **Test:** `test/unit/redaction/keyword-near-placeholder.test.ts`
+pins both spellings (sent with a space, redacted without).
+
+## 62. CI could not check out the branch: a git worktree was committed as a submodule with no URL (2026-10-06, CI run 8; fixed the same day)
+
+**Symptom:** CI run 8, on `wip/bug-61-masking`, failed in 9 seconds, in
+`actions/checkout`, before any check ran: `No url found for submodule
+path '.head-worktree' in .gitmodules`, then git exited with code 128.
+
+**Root cause:** the before-copy for ADR-039's fuzz check was a git
+worktree inside the repository, `.head-worktree/`, and it was not
+gitignored. A worktree directory holds a `.git` file, so `git add -A`
+recorded it as a gitlink (mode 160000, a submodule pointer to the worktree's
+commit) with no `.gitmodules` entry, and a checkout that initialises
+submodules cannot resolve it. The same `git add -A` also committed
+`test-output.txt`, a UTF-16 log of a test run with two absolute paths in
+it (no personal values; checked with every digit masked).
+
+**Fix:** `.head-worktree/` is in `.gitignore` and `.dockerignore`; the
+gitlink and the log were taken out of the index; the before-copy step in
+the testing guide ("The before-copy for the ADR-039 fuzz check") says the
+ignore entry comes first, before the worktree exists; and the project
+brief now forbids `git add -A`, naming both files: commits stage explicit
+paths. The branch is to be squashed into `main`, so neither file reaches
+`main`'s history.
+
+**Test:** none. The failure is in what was staged, not in code; the
+guards are the ignore entry and the explicit-paths rule.
+
+## 63. Masking literals sends values that a detection reading the literal used to cover (2026-10-06, found by the ADR-039 fuzz check of ADR-038; closed 2026-10-07: the masking was reversed, ADR-038)
+
+**Symptom:** the first ADR-039 fuzz check of the ADR-038 masking
+(before = 9ec51b7, after = the masking; 100,000 texts per run, pieces as
+ADR-039 lists them): with names off (seed 39), 161 texts send a character
+of a planted value that the code before redacted, and 131 texts the other
+way; with names on and a fake name model (seed 40), 136 and 94. Neither
+version refused a text. The generated set showed none of it (ADR-038's
+guard held).
+
+**Root cause:** in every one of these texts the value was covered before
+only by a detection that read characters of a placeholder-shaped text
+next to it, and was then cut around the literal (bug 58). Masking stops
+detectors reading those characters, as ADR-038 intended, but option 1
+gave back only the keywords that `hasContext` reads. Three ways. Names
+off, counted per value by the detection that covered it before (a text
+can count twice): SECRET 96, NUMBER 72, PHONE 3; every one with a literal
+next to that detection. Of the 96 SECRET, 78 are in texts with no
+credential word outside a literal at all; of the 12 other texts, whose
+traces were read one by one, 8 still took their word from a literal and
+4 are way 2.
+
+1. **SECRET, credential word inside the literal:** `[secret 3]`,
+   `[Secret 6]:`, `[SECRET 5])` followed by the value. The keyword secret's
+   credential word is part of the secret detector's own pattern, which
+   reads the masked copy, so it no longer sees the word. ADR-038 calls a
+   type word inside a placeholder acting as a keyword "intended
+   behaviour"; this one is not covered by option 1.
+2. **SECRET, keyword outside, value starting with a literal**
+   (`password:[PAſſPORT_1].<name>`, `token::[LITERAL_1])<name>`,
+   `otp  [ip_4](gpay(<name>`): before, the literal's digit and
+   brackets made the value meet the "6+ characters with a digit or
+   symbol" rule; masked, it does not. Before, coverage was already
+   partial here (the first word of the name).
+3. **NUMBER and PHONE through the literal's index digits:**
+   `[IFſC_8]-<date>`, `[Voter 11] <date>`: the literal's digit took the
+   stretch to the safety net's 9 digits, or completed a phone window. The
+   values are dates and short IDs no detector claims without a keyword,
+   so they were covered by accident; ADR-038 names this joining as one of
+   the holes masking closes.
+
+**Fix:** none yet; for the user. **Test:** none yet. The fuzz script was
+in the session scratchpad.
+
+**Follow-up (2026-10-06): the user's decision, option B.** Way 1 is a
+bug: keyword and context matching reads the original, value matching the
+masked text, for every detector (built: `secret.ts` matches its
+credential word, link and opening quote in the original, judges the value
+in the masked text, and starts a value that would begin in a hidden span
+after it; `ip.ts` reads its version word in the original). Ways 2 and 3
+are accepted as ADR-038's intended effect. The fuzz is now
+`scripts/fuzz-detection-change.ts`, with a classifier (ADR-039
+amendment; this first version had one witness, filled): on the code
+before this fix it reports 84 of 100,000
+texts (names off, seed 39) with a real regression, so way 1 fails it.
+After the fix it still reports 15 (names off) and 9 (names on, seed 40),
+and they are not all ways 2 and 3: see bug 64 and the classifier's own
+limit there. Stopped for the user.
+
+**Closed (2026-10-07):** the masking was reversed (ADR-038, final
+amendment); detection is 9ec51b7's again, so none of the three ways
+arises.
+
+## 64. A secret's value runs across a masked placeholder, past the blank inside it (2026-10-06, found by the ADR-039 classifier; pre-existing since ADR-038's masking; closed 2026-10-07: the masking was reversed, ADR-038)
+
+**Symptom:** with the way-1 fix in place, 2 of 100,000 fuzzed texts
+(names off) and 1 (names on) send a value the code before masking
+redacted, through no placeholder character of the before-code's
+detection: `API_KEY =/[UPI 2]_<Aadhaar>-<digits><PAN>` sends the PAN;
+`…:passport=[Ifsc 7]/…(pin <voter ID>` and `API_KEY =@[PERSON 4])…token:
+[PAſſPORT_4]/<IFSC>/<voter ID>` send the voter ID.
+
+**Root cause:** masking replaces every code unit of a placeholder,
+including the space in `[UPI 2]`, with the filler, which is not blank. A
+keyword secret's value runs to the next blank (ADR-022), so in the masked
+text it now runs across the placeholder, where in the original it ended
+at the space. The longer value claims digits the safety net used to join
+into a NUMBER over the PAN, or swallows a later keyword (`pin`, `token:`),
+which is then never matched ("one value, one candidate"). ADR-038 noted
+that a value "runs to the next blank, filler included" but this cost was
+not measured.
+
+**The classifier's limit, found with it:** the other 13 (names off) and
+8 (names on) texts are way 2 by their traces (a secret value that reached
+6 characters only with the placeholder's tail in it), but the classifier
+calls them real: its counterfactual fills the placeholder characters
+inside the before-code's detection with the filler, and the before-code
+counts the filler towards a value's length. A scratch variant that
+deletes those characters instead fails 15 other texts, mostly way 3,
+because deleting puts new neighbours side by side. Neither surgery on the
+before-code expresses "placeholder characters do not count".
+
+**Fix (2026-10-07, the user's H1; ADR-038 amendment rule 2):** placeholder
+characters contribute nothing to any rule; a value ends wherever the
+original has a blank, inside a placeholder too. Built in `secret.ts`. The
+classifier now takes either witness (K1, ADR-039 amendment). Its negative
+control fails as it must (78 texts, names off, on the code before the
+way-1 fix).
+
+**Result: not closed.** The check still fails: 4 texts (names off) and 2
+(names on), all one cause in the way-1 implementation, not in this rule
+and not ways 2 or 3: a value that would start inside a placeholder
+starts after it and after any punctuation following it, so real `@`,
+`=`, `)`, `.`, `/` there count towards nothing (`[secret 1]@is=<date>`
+reaches 6 characters only with the `@`). Stopped for the user.
+
+**Follow-up (2026-10-07):** fixed as the user directed: a value whose span
+starts inside a placeholder is judged from the first character after it,
+punctuation included; the span still starts inside the placeholder, so
+redactMessage's existing cut-around leaves that punctuation as text (no
+new rule). None of the six's kind is left in the next runs (bug 65).
+
+**Test:** none yet; the fuzz check is the evidence so far.
+
+**Closed (2026-10-07):** the masking, and with it rule 2 and the way-1
+code, was reversed (ADR-038, final amendment).
+
+## 65. Tables in the fuzz: masking moved the spaced-mobile columns, and four more kinds of change (2026-10-07, found by the ADR-039 check once the fuzz built tables; closed 2026-10-07: the masking was reversed, ADR-038)
+
+**Symptom:** with tables added to the fuzz, the ADR-039 check fails: 357
+of 100,000 texts (names off, seed 39) and 309 (names on, seed 40) send a
+value the code before masking redacted, almost all spaced mobiles in
+tables (names off: 487 of 491 real values are PHONE, all in tables); in
+the other direction 1,777 and 1,806 texts redact a value that was sent
+(names off: 2,093 PHONE).
+
+**Root cause, tables:** the spaced-mobile check (ADR-027) compares a
+mobile's two columns with the same two columns of every other line,
+counting every digit group from the line's start. Before masking, a
+placeholder's index digits (`[Passport 11]`) were a group; masked, they
+are not. A row with a placeholder in it shifts its columns against the
+rows without one (or with placeholder-shaped text that is not a
+placeholder, like `[LITERAL_0]`), so a mobile is compared with different
+cells: it loses its validation (needs a keyword, sent) or gains it.
+Neither the earlier fuzz nor the generated set had such a table.
+
+**Outside tables, four kinds (5 texts: 3 names off, 2 names on):**
+
+1. **A keyword inside a placeholder skipped after a rejected keyword**
+   (bug in the way-1 code): in `SECRET_5_[SECRET 10]…` the first keyword
+   is rejected (no link), but its value would have started inside the
+   placeholder, and the code had already moved the search past the
+   placeholder, so `SECRET` inside it is never tried.
+2. **A value judged after a placeholder runs over a later keyword** (2
+   texts, names on): `API_KEY =  [IFSC 3]=was=…)API_KEY =)<PAN>`. Before
+   masking the first value ended at the blank inside `[IFSC 3]`; judged
+   from after the placeholder (the fix above), it runs to the next blank
+   of the original, takes in the second `API_KEY =`, which is then never
+   matched ("one value, one candidate"), and the PAN is sent. H1 ("a
+   blank inside a placeholder ends a value") and "judge from after the
+   placeholder" pull in opposite directions here.
+3. **Way 2 that neither witness explains:** `[SECRET 10]=<card>` reached
+   6 characters only with `10]`; deleting those puts `SECRET =` side by
+   side, an assignment that was not in the text, so the deleted witness
+   still sees it covered.
+4. **A knock-on of way 3:** with the placeholder's digit no longer
+   joined into a number, a PHONE wins over digits nearby and claims them,
+   so the safety net no longer takes the whole glued token next to them
+   (part of a long secret glued by `_` to a card number).
+
+**Fix:** none yet; for the user. **Test:** none yet.
+
+**Closed (2026-10-07):** the masking was reversed (ADR-038, final
+amendment), so the table columns and kinds 1, 3 and 4 no longer arise:
+the ADR-039 check against 9ec51b7 shows no difference. Kind 2 belonged to
+bug 61's option-1 fix, not to the masking, and went with it (bug-log 61,
+final). The fuzz keeps its tables.

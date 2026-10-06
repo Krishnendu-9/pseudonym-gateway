@@ -36,6 +36,7 @@ import {
   type Measurement,
 } from './baseline.js';
 import { echo, echoByShape, type EchoScore } from './echo.js';
+import { knownFailingMismatches, sent, sentByShape, type SentScore } from './sent.js';
 import { GENERATED_SEED, generateCases } from './generate.js';
 import { checkHeldOut, loadHeldOut } from './held-out.js';
 import {
@@ -44,6 +45,7 @@ import {
   overRedactionTable,
   readmeBlock,
   scoreTable,
+  sentTable,
   shapeTable,
   withReadmeBlock,
 } from './report.js';
@@ -98,6 +100,7 @@ const held = checkHeldOut();
 const measured = scoresHeldOut(previous, args.includes('--with-held-out'));
 let heldOut: Measurement['heldOut'];
 let heldOutEcho: EchoScore | undefined;
+let heldOutSent: SentScore | undefined;
 if (!measured) {
   write(
     `## Held-out dataset: ${held.cases.length} cases, ${held.problems.length} lint problem(s); not measured yet`,
@@ -115,6 +118,7 @@ if (!measured) {
   const cases = loadHeldOut();
   heldOut = cases.length > 0 ? score(cases) : undefined;
   heldOutEcho = cases.length > 0 ? echo(cases) : undefined;
+  heldOutSent = cases.length > 0 ? sent(cases) : undefined;
   // Tags and lookalike labels are text from the file: shown only on request.
   const authorView = args.includes('--by-tag');
   write(`## Held-out dataset (${cases.length} cases)`);
@@ -144,18 +148,35 @@ write();
 write(echoTable(echoColumns(generatedEcho, heldOutEcho)));
 write();
 
+// What the redaction sends (ADR-040): counts only; the held-out set as one total.
+const generatedSent = sentByShape(generatedCases);
+write('## Sent as written: labelled personal values still in the redacted text');
+write();
+write(sentTable(generatedSent, heldOutSent, previous?.knownFailing));
+write();
+
 const now: Measurement = {
   // The UTC date, and the README says so: a run before 05:30 in India
   // records the day before.
   date: new Date().toISOString().slice(0, 10),
-  generated: { score: generated, seed: GENERATED_SEED, echo: generatedEcho },
+  generated: { score: generated, seed: GENERATED_SEED, echo: generatedEcho, sent: generatedSent },
   heldOut,
   ...(heldOutEcho ? { heldOutEcho } : {}),
+  ...(heldOutSent ? { heldOutSent } : {}),
 };
 const comparison = compareAll(previous, now);
 for (const line of comparison.worse) write(`WORSE    ${line}`);
 for (const line of comparison.changed) write(`CHANGED  ${line}`);
 for (const line of comparison.better) write(`BETTER   ${line}`);
+
+// A known-failing entry that no longer matches fails every run, --update
+// included: the entry is edited by hand, on purpose (ADR-040).
+const mismatches = knownFailingMismatches(previous?.knownFailing ?? [], generatedSent);
+if (mismatches.length > 0) {
+  for (const line of mismatches) write(`KNOWN    ${line}`);
+  write('FAIL: a known-failing entry in eval/baseline.json no longer matches; edit it by hand.');
+  process.exit(1);
+}
 
 const readme = readFileSync(README_PATH, 'utf8');
 

@@ -701,6 +701,7 @@ export const SHAPES = [
   'in-markup',
   'names',
   'glued-literal',
+  'keyword-in-literal',
 ] as const;
 export type Shape = (typeof SHAPES)[number];
 
@@ -719,6 +720,8 @@ export const SHAPE_VALUES: Readonly<Record<Shape, number>> = {
   names: 4 * VALUES_PER_TYPE,
   // Six rounds of the 18 templates in GLUED_LITERAL.
   'glued-literal': 108,
+  // 12 for each of the 8 types in KEYWORD_IN_LITERAL.
+  'keyword-in-literal': 96,
 };
 
 const SHAPE_SALT = 0x5c5c5c5c;
@@ -1033,6 +1036,37 @@ const GLUED_FRAMES: ByTongue = {
   hi: [(s) => `पुराने टिकट से: ${s}`, (s) => `एक्सपोर्ट में ${s} देखें।`],
 };
 
+// A value whose only keyword is the type word inside a placeholder-shaped
+// text (ADR-038): `replace [AADHAAR_1] with <value>`. Each value is one a
+// detector finds only with a keyword nearby (it fails its check, or its
+// type has no format of its own); the sentence around it holds no keyword
+// and no filler sentence is added, so the placeholder's word is the only
+// one. No ":" right after the placeholder: restoration safety would hold
+// the next token there (ADR-018), which is not what this shape measures.
+const KEYWORD_IN_LITERAL: readonly (readonly [tag: string, slot: string])[] = [
+  ['AADHAAR', '{{AADHAAR!:#### #### ####}}'],
+  ['CARD', '{{CARD!:#### #### #### ####}}'],
+  ['PAN', '{{PAN!}}'],
+  ['IFSC', '{{IFSC.unknown}}'],
+  ['UPI', '{{UPI.unknown}}'],
+  ['PASSPORT', '{{PASSPORT}}'],
+  ['VOTER', '{{VOTER}}'],
+  ['DOB', '{{DOB}}'],
+];
+const PLACEHOLDER_SPELLINGS: readonly ((tag: string) => string)[] = [
+  (t) => `[${t}_1]`,
+  (t) => `[${t.toLowerCase()} 2]`,
+  (t) => `[${t[0]}${t.slice(1).toLowerCase()}_3]`,
+];
+const KEYWORD_LAYOUTS: readonly ((placeholder: string, value: string) => string)[] = [
+  (p, v) => `Please replace ${p} with ${v}.`,
+  (p, v) => `${p} is now ${v}.`,
+  (p, v) => `Not ${p} but ${v}, sorry.`,
+  (p, v) => `${p} -> ${v}`,
+  (p, v) => `${v} (was ${p})`,
+  (p, v) => `Update ${p} = ${v} in the sheet.`,
+];
+
 const MARKUP_FRAMES: ByTongue = {
   en: [(m) => `Details: ${m}`, (m) => `Please check ${m} and reply.`],
   hinglish: [(m) => `Details yahan hain: ${m}`, (m) => `${m} dekh lijiye.`],
@@ -1165,6 +1199,15 @@ function shapeCases(seed: number, firstNumber: number): RawCase[] {
     const literal = LITERAL_SPELLINGS[i % LITERAL_SPELLINGS.length]!;
     const sentence = rng.pick(GLUED_FRAMES[tongue])(template(literal, rng));
     add('ticket', tongue, 'glued-literal', [message(ticket(tongue, sentence))]);
+  }
+  // A keyword only inside a placeholder, last of all (ADR-038). Twelve per
+  // type: every layout twice, each time with another spelling.
+  for (let i = 0; i < SHAPE_VALUES['keyword-in-literal']; i++) {
+    const [tag, slot] = KEYWORD_IN_LITERAL[i % KEYWORD_IN_LITERAL.length]!;
+    const k = Math.floor(i / KEYWORD_IN_LITERAL.length);
+    const layout = KEYWORD_LAYOUTS[k % KEYWORD_LAYOUTS.length]!;
+    const spelling = PLACEHOLDER_SPELLINGS[(k + Math.floor(k / 6)) % PLACEHOLDER_SPELLINGS.length]!;
+    add('ticket', 'en', 'keyword-in-literal', [message(layout(spelling(tag), slot))]);
   }
   return out;
 }

@@ -140,6 +140,90 @@ and path, and inspect `details.counterexample` under a breakpoint. If you need
 to log something, log structure only (length, position, which digit pair),
 never the value. Bug-log entry 2 was diagnosed exactly this way.
 
+## The before-copy for the ADR-039 fuzz check (every change to the detection path)
+
+[ADR-039](decisions.md#adr-039) requires every change to the detection
+path (a detector, `detect()`, normalisation, `redactMessage`, literal
+handling, the name path) to be checked by fuzz for one thing: **nothing
+the code redacted before the change is sent after it.** The check runs
+the code before and the code after on the same fuzzed texts, so it needs
+a copy of the repository at the commit before the change: the
+**before-copy**, a git worktree at `.head-worktree/`.
+
+**Step 0, before anything else: the ignore entry must already be there.**
+`.gitignore` lists `.head-worktree/` (and `.dockerignore` and ESLint's
+ignores do too). Check it before creating the copy, every time:
+
+```powershell
+git check-ignore -v .head-worktree/
+```
+
+It must print the `.gitignore` line. The reason is CI run 8 (bug-log 62): a
+worktree directory holds a `.git` file, so an unignored one is staged by a
+broad `git add` as a **gitlink** (a submodule pointer) with no
+`.gitmodules` entry, and `actions/checkout` then fails before any check
+runs. Stage explicit paths only (the project brief forbids `git add -A`).
+
+**Step 1: make the copy at the commit before the change.** That is the
+parent of the change's first commit, which is not always `origin/main`
+(on 2026-10-06 the right one was local `main`, one commit ahead). With
+the change not yet committed, it is `HEAD`:
+
+```powershell
+git worktree add --detach .head-worktree <commit-before-the-change>
+git -C .head-worktree status --short
+git -C .head-worktree rev-parse --short HEAD
+```
+
+The status must be empty and the commit the intended one. Do not edit
+anything in the copy. Its scripts find `node_modules` in the repository
+above it; nothing needs installing.
+
+**Step 2: run the check, both ways.** From the repository root:
+
+```powershell
+npx tsx scripts/fuzz-detection-change.ts --seed 39 --names off
+npx tsx scripts/fuzz-detection-change.ts --seed 40 --names on
+```
+
+100,000 texts each by default (several minutes each), built from
+values, keywords, placeholder-shaped text, separators, joiners, combining
+marks, invisible characters, characters normalisation changes, and
+tables. The output is counts, seeds, text indices, value types and
+offsets, never text. Read, in order: texts whose replaced spans differ at
+all; texts where a value was redacted before and is sent now, split into
+placeholder-derived and **real** (one real regression fails the run, exit
+code 1); how many values each witness explained (a `WARNING` line if one
+explained none: the rule has collapsed into the other); texts redacted
+now and sent before. `--list` prints every value whose coverage differs;
+`--show 194,1744` prints how those texts were built and the spans each
+version replaced. What the classifier accepts, and its known limits, is
+ADR-039's amendment.
+
+**Step 3: the negative control.** Run the same check with `--after <dir>`
+pointing at a copy of code known to differ (on 2026-10-07, the masking
+code of bf68f12: `git archive <commit> src` extracted into the session
+scratchpad, with its three `libphonenumber-js/max` imports pointed at the
+repository's `node_modules` by a `file:///` URL, since the scratchpad has
+none). It must fail. A check that passes against code known to be
+different has stopped checking.
+
+**Step 4: report**, with the change: the counts both ways and the
+control's result, in its ADR. A new class the fuzz finds gets a generated
+shape as well, so the evaluation guards it from then on. The check is
+only as strong as the shapes the fuzz builds (ADR-039 amendment): tables
+were added after a change moved a rule no shape exercised.
+
+**Step 5: remove the copy** when the change is done:
+
+```powershell
+git worktree remove .head-worktree
+git worktree list
+```
+
+`git worktree remove` refuses if the copy has changes; that is a reason to
+look, not to force it. The list must show only the main checkout.
+
 ## Phase 1a — normalisation, checksums, generators
 
 Test files:
@@ -2239,7 +2323,8 @@ default back on), F7 (a handle removed from the list): **7 of 7 caught**.
 ## Phase 5d part 7 — the CI workflow (2026-10-02, ADR-032 amendment)
 
 `.github/workflows/ci.yml`: on every push and pull request, one job on
-`ubuntu-latest`, `permissions: contents: read`, `timeout-minutes: 30`.
+`ubuntu-latest` (pinned to `ubuntu-24.04` on 2026-10-06, ADR-036),
+`permissions: contents: read`, `timeout-minutes: 30`.
 Steps, one after another: checkout (`actions/checkout` v7.0.1, pinned to
 `3d3c42e5aac5ba805825da76410c181273ba90b1`, `persist-credentials: false`),
 `actions/setup-node` v7.0.0 (`820762786026740c76f36085b0efc47a31fe5020`)
@@ -2769,3 +2854,32 @@ redacted: fixture 2; words split on single spaces only: fixture 8).
 These check `measure`, through which every published names number passed;
 the script's own glue (`findFor`, `combine`) is pinned by the span hashes
 and by D0's comparison of the two joins (ADR-036), not by these fixtures.
+
+## ADR-040 — the count of values sent as written (2026-10-07)
+
+`eval/sent.ts` counts, per part, the labelled personal values whose text
+is still in `redactMessage`'s output; `eval/baseline.ts` holds the count
+(may only go down) and keeps the hand-written `knownFailing` list;
+`eval/run.ts` fails any run, `--update` included, whose known-failing entry
+no longer matches its part. Tests: `test/unit/eval/sent.test.ts` (8),
+`compareSent` in `baseline.test.ts` (5), the sent table in
+`report.test.ts` (2).
+
+The known-failing check was also shown to bite on the real data: with the
+`glued-literal` entry set to 4, `npx tsx eval/run.ts --update` failed with
+`known-failing glued-literal: the entry says 4 sent, measured 3`; set
+back to 3, `npm run eval` passed.
+
+### Mutation checks (run 2026-10-07, `scripts/mutate.ts`)
+
+| Id  | Mutation                                          | Caught by                  |
+| --- | ------------------------------------------------- | -------------------------- |
+| T1  | lookalikes counted as personal values             | 4 of 8 in `sent.test.ts`   |
+| T2  | a value is never counted as sent                  | 4 of 8 in `sent.test.ts`   |
+| T3  | the original text read instead of what is sent    | 3 of 8 in `sent.test.ts`   |
+| T4  | a known-failing entry matches when fewer are sent | 1 of 8 in `sent.test.ts`   |
+| B1  | more values sent counted as better                | 1 of 58 in `baseline.test` |
+| B2  | known-failing entries dropped on update           | 1 of 58 in `baseline.test` |
+| R1  | known-failing parts not marked in the table       | 1 of 22 in `report.test`   |
+
+7 of 7 caught, each by a test aimed at it.

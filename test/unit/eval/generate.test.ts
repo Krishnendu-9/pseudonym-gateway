@@ -189,13 +189,14 @@ describe('the generated dataset', () => {
     const text = (set: readonly LabelledCase[]): string =>
       set.map((c) => c.messages.map((m) => m.text).join('\n')).join('\n');
     expect([text(again) === text(all), text(other) === text(all)]).toEqual([true, false]);
-    // Another seed is another dataset of the same shape.
-    const otherBlock = other.filter((c) => shapeOf(c) !== undefined);
+    // Another seed is another dataset of the same shape. Short IDs are counted
+    // in `short-id` only: keyword-in-literal plants 12 of each as well (ADR-038).
+    const otherShortIds = other.filter((c) => shapeOf(c) === 'short-id');
     expect([mainOf(other).length, valuesByType(mainOf(other)).AADHAAR]).toEqual([
       500,
       VALUES_PER_TYPE,
     ]);
-    expect(valuesByType(otherBlock).PASSPORT).toBe(VALUES_PER_TYPE);
+    expect(valuesByType(otherShortIds).PASSPORT).toBe(VALUES_PER_TYPE);
   });
 });
 

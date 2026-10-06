@@ -3,6 +3,7 @@ import {
   compare,
   compareAll,
   compareEcho,
+  compareSent,
   merge,
   nextBaseline,
   scoresHeldOut,
@@ -484,5 +485,66 @@ describe('compareEcho (ADR-033)', () => {
     const next = nextBaseline(undefined, measurement(BASE, BASE), undefined);
     expect(Object.keys(next.generated)).not.toContain('echo');
     expect(Object.keys(next.heldOut!)).not.toContain('echo');
+  });
+});
+
+describe('compareSent (ADR-040)', () => {
+  const BEFORE = { main: { values: 10, sent: 2 }, 'glued-literal': { values: 108, sent: 3 } };
+
+  it('the same counts are the same', () => {
+    expect(compareSent('generated', BEFORE, { ...BEFORE })).toEqual({
+      worse: [],
+      better: [],
+      changed: [],
+    });
+    expect(compareSent('held-out', undefined, undefined).changed).toEqual([]);
+  });
+
+  it('more values sent is worse, fewer is better', () => {
+    const now = { ...BEFORE, main: { values: 10, sent: 4 } };
+    expect(compareSent('generated', BEFORE, now)).toEqual({
+      worse: ['generated sent main: sent as written 2 -> 4'],
+      better: [],
+      changed: [],
+    });
+    expect(compareSent('generated', now, BEFORE).better).toEqual([
+      'generated sent main: sent as written 4 -> 2',
+    ]);
+  });
+
+  it('a part with another number of values, or one that appears or goes, is a changed dataset', () => {
+    const now = { main: { values: 11, sent: 2 }, names: { values: 612, sent: 612 } };
+    expect(compareSent('generated', BEFORE, now).changed).toEqual([
+      'generated sent main: 10 values -> 11',
+      'generated sent glued-literal: 108 values -> 0',
+      'generated sent names: 0 values -> 612',
+    ]);
+  });
+
+  it('the first count is a changed dataset; the baseline stores it and keeps known-failing entries', () => {
+    const known = [{ part: 'glued-literal', sent: 3, why: 'bug-log 61' }];
+    const before: Baseline = { ...BASELINE, heldOut: stored(BASE), knownFailing: known };
+    const now: Measurement = {
+      ...measurement(BASE, BASE),
+      generated: { score: BASE, seed: 1, sent: BEFORE },
+      heldOutSent: { values: 5, sent: 1 },
+    };
+    expect(compareAll(before, now).changed).toEqual([
+      'generated sent main: 0 values -> 10',
+      'generated sent glued-literal: 0 values -> 108',
+      'held-out sent all: 0 values -> 5',
+    ]);
+    expect(() => nextBaseline(before, now, undefined)).toThrow();
+    const next = nextBaseline(before, now, 'ADR-040: the first count');
+    expect(next.generated.sent).toEqual(BEFORE);
+    expect(next.heldOut!.sent).toEqual({ all: { values: 5, sent: 1 } });
+    expect(next.knownFailing).toEqual(known);
+    expect(verdict(compareAll(next, now))).toBe('same');
+  });
+
+  it('stores no sent key or known-failing list a run did not have', () => {
+    const next = nextBaseline(undefined, measurement(BASE, BASE), undefined);
+    expect(Object.keys(next.generated)).not.toContain('sent');
+    expect(Object.keys(next)).not.toContain('knownFailing');
   });
 });

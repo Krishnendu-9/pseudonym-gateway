@@ -13,7 +13,10 @@ permissions:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    # The OS label is pinned, not `ubuntu-latest`, which moves to a new Ubuntu
+    # release on GitHub's schedule. GitHub rebuilds the image under this label
+    # weekly; only the label can be pinned. Bump procedure: ADR-036.
+    runs-on: ubuntu-24.04
     # Guards against a hang (bug-log 24: a quadratic mutant ran for hours).
     timeout-minutes: 30
     steps:
@@ -44,7 +47,7 @@ jobs:
       # Growth-ratio tests need the machine mostly to themselves (ADR-032), so
       # they get their own step and nothing runs beside them. One file at a
       # time: ADR-032's "three at a time" was measured on 12 cores, and
-      # ubuntu-latest has 4.
+      # ubuntu-24.04 has 4.
       - name: Timing tests
         run: npm run test:timing
         env:

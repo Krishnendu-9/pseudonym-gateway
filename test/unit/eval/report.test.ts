@@ -9,6 +9,7 @@ import {
   README_START,
   readmeBlock,
   scoreTable,
+  sentTable,
   shapeTable,
   sumEcho,
   withReadmeBlock,
@@ -294,5 +295,55 @@ describe('the echo table (ADR-033)', () => {
     expect(block).toContain(`${echoTable(echoColumns(generated, echo(5)))}\n\n${README_END}`);
     const markdown = `# Title\n\n${block}\n\nAfter.\n`;
     expect(await format(markdown, { parser: 'markdown' })).toBe(markdown);
+  });
+});
+
+describe('the sent table (ADR-040)', () => {
+  const generated = {
+    main: { values: 1683, sent: 12 },
+    'glued-literal': { values: 108, sent: 3 },
+    names: { values: 0, sent: 0 },
+  };
+  const known = [{ part: 'glued-literal', sent: 3, why: 'bug-log 61, ADR-038.' }];
+
+  it('one row per part, then the held-out total; known-failing parts show the number accepted', () => {
+    // The names row says it is measured with names off, the default build;
+    // the held-out row that it is for reporting only.
+    expect(sentTable(generated, { values: 118, sent: 5 }, known)).toBe(
+      [
+        '| Part                                             | Values | Sent as written | Known and accepted |',
+        '| ------------------------------------------------ | ------ | --------------- | ------------------ |',
+        '| Generated, main                                  | 1683   | 12/1683 (0.7%)  | -                  |',
+        '| Generated, glued-literal                         | 108    | 3/108 (2.7%)    | known-failing: 3   |',
+        '| Generated, names (names off, the default build)  | 0      | -               | -                  |',
+        '| Held-out (reporting only, never used for tuning) | 118    | 5/118 (4.2%)    | -                  |',
+      ].join('\n'),
+    );
+    expect(sentTable(generated, undefined)).not.toContain('Held-out');
+    expect(sentTable(generated, undefined)).not.toContain('known-failing');
+  });
+
+  it('the README block shows it last, says what it measures, and lists the known-failing entries', async () => {
+    const input = { measuredOn: '2026-10-07', generated: { ...SCORE, seed: 42 }, heldOut: null };
+    expect(readmeBlock(input)).not.toContain('**Sent as written**');
+    const block = readmeBlock({
+      ...input,
+      generated: { ...input.generated, sent: generated },
+      knownFailing: known,
+    });
+    expect(block).toContain('**Sent as written** (ADR-040)');
+    expect(block).toContain('not what is sent; bugs 58 and 61 showed that the two can differ');
+    expect(block).toContain('this count is the one that measures the promise');
+    expect(block).toContain(
+      'measured with names off, the default build, so no person name is detected and every one is sent',
+    );
+    expect(block).toContain(
+      `${sentTable(generated, undefined, known)}\n\n- Known-failing, \`glued-literal\`: bug-log 61, ADR-038.\n\n${README_END}`,
+    );
+    const without = readmeBlock({ ...input, generated: { ...input.generated, sent: generated } });
+    expect(without).toContain(`${sentTable(generated, undefined)}\n\n${README_END}`);
+    for (const markdown of [block, without].map((b) => `# Title\n\n${b}\n\nAfter.\n`)) {
+      expect(await format(markdown, { parser: 'markdown' })).toBe(markdown);
+    }
   });
 });

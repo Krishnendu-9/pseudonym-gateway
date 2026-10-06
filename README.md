@@ -362,7 +362,16 @@ number with a space after its letter, voter IDs in the older state formats,
 a date of birth without its year, with spaces around the separators of a
 numeric date (`07 / 03 / 1991`), with a time glued to it
 (`1991-03-07T10:00`), or with its month named in a language other than
-English. An
+English. **A secret after a credential word and a placeholder with a space
+in it** (`password: [pan 1]<password>`, where `[pan 1]` is text the user
+typed in the shape of a placeholder) is sent as written: the keyword's
+value is read from inside the placeholder and ends at its space, so the
+real value after it is never read. In the generated set's `glued-literal`
+shape that is **3 of 108 values** (measured on 2026-10-07). With no space
+in the placeholder (`[PAN_1]<password>`) the value is found. Two fixes
+were built and measured, and both sent values that are redacted today, so
+this one is left as it is ([ADR-038](docs/decisions.md#adr-038),
+bug-log 61). An
 IFSC written with the letter O for its zero (`SBINO001234`) or with a space
 or hyphen after the bank code is not caught. A lone digit and a space
 before a long number (`1 23456789(12345`) leave the lone digit visible: the
@@ -464,7 +473,7 @@ character other than zero, three letters instead of four) was touched.
 
 <!-- eval:start -->
 
-_Measured on 2026-10-03 (UTC date) by `npm run eval`. This block is generated, and the run fails if it is out of date._
+_Measured on 2026-10-06 (UTC date) by `npm run eval`. This block is generated, and the run fails if it is out of date._
 
 **Generated dataset, main cases** (seed 20260930; 600 messages in 500 cases, 1683 labelled personal values). Its generator and the detectors share an author, so it mostly shows regressions.
 
@@ -482,22 +491,23 @@ _Measured on 2026-10-03 (UTC date) by `npm run eval`. This block is generated, a
 | SECRET  | 153    | 147/153 (96.0%)     | 0               | 147/153 (96.0%)     | 147/147 (100.0%)       | 98.0%  | 0               |
 | PERSON  | 153    | 0/153 (0.0%)        | 0               | 0/153 (0.0%)        | -                      | -      | 0               |
 
-**Generated dataset, shape block** (1921 labelled personal values, in cases apart from the main ones). Each row is a way of writing values that is hard on purpose: a line break inside a value, a value split across two messages, two values side by side, digits beside a mobile, a checked value inside an address or key, digits joined by a bracket, passport and voter ID numbers and dates of birth, contact sheets of mobiles in columns (aligned, and with one row out of line), values inside markup (a URL, a markdown link or image, an HTML tag), and person names written the ways people write them, beside words that are not names (Phase 6). These rows measure hard layouts one at a time; they are not part of the numbers above.
+**Generated dataset, shape block** (2017 labelled personal values, in cases apart from the main ones). Each row is a way of writing values that is hard on purpose: a line break inside a value, a value split across two messages, two values side by side, digits beside a mobile, a checked value inside an address or key, digits joined by a bracket, passport and voter ID numbers and dates of birth, contact sheets of mobiles in columns (aligned, and with one row out of line), values inside markup (a URL, a markdown link or image, an HTML tag), and person names written the ways people write them, beside words that are not names (Phase 6). These rows measure hard layouts one at a time; they are not part of the numbers above.
 
-| Written as       | Values | Redacted (any type) | Partly redacted | Recall (right type) | Over-redactions |
-| ---------------- | ------ | ------------------- | --------------- | ------------------- | --------------- |
-| line-break       | 120    | 113/120 (94.1%)     | 0               | 112/120 (93.3%)     | 12              |
-| message-split    | 60     | 0/60 (0.0%)         | 2               | 0/60 (0.0%)         | 0               |
-| side-by-side     | 80     | 80/80 (100.0%)      | 0               | 66/80 (82.5%)       | 5               |
-| digit-beside     | 40     | 40/40 (100.0%)      | 0               | 40/40 (100.0%)      | 4               |
-| contained        | 70     | 70/70 (100.0%)      | 0               | 70/70 (100.0%)      | 9               |
-| joined-digits    | 30     | 21/30 (70.0%)       | 9               | 6/30 (20.0%)        | 4               |
-| short-id         | 459    | 305/459 (66.4%)     | 0               | 304/459 (66.2%)     | 25              |
-| contact-sheet    | 120    | 120/120 (100.0%)    | 0               | 120/120 (100.0%)    | 0               |
-| misaligned-sheet | 132    | 132/132 (100.0%)    | 0               | 132/132 (100.0%)    | 0               |
-| in-markup        | 90     | 90/90 (100.0%)      | 0               | 90/90 (100.0%)      | 8               |
-| names            | 612    | 0/612 (0.0%)        | 0               | 0/612 (0.0%)        | 79              |
-| glued-literal    | 108    | 105/108 (97.2%)     | 0               | 92/108 (85.1%)      | 41              |
+| Written as         | Values | Redacted (any type) | Partly redacted | Recall (right type) | Over-redactions |
+| ------------------ | ------ | ------------------- | --------------- | ------------------- | --------------- |
+| line-break         | 120    | 113/120 (94.1%)     | 0               | 112/120 (93.3%)     | 12              |
+| message-split      | 60     | 0/60 (0.0%)         | 2               | 0/60 (0.0%)         | 0               |
+| side-by-side       | 80     | 80/80 (100.0%)      | 0               | 66/80 (82.5%)       | 5               |
+| digit-beside       | 40     | 40/40 (100.0%)      | 0               | 40/40 (100.0%)      | 4               |
+| contained          | 70     | 70/70 (100.0%)      | 0               | 70/70 (100.0%)      | 9               |
+| joined-digits      | 30     | 21/30 (70.0%)       | 9               | 6/30 (20.0%)        | 4               |
+| short-id           | 459    | 305/459 (66.4%)     | 0               | 304/459 (66.2%)     | 25              |
+| contact-sheet      | 120    | 120/120 (100.0%)    | 0               | 120/120 (100.0%)    | 0               |
+| misaligned-sheet   | 132    | 132/132 (100.0%)    | 0               | 132/132 (100.0%)    | 0               |
+| in-markup          | 90     | 90/90 (100.0%)      | 0               | 90/90 (100.0%)      | 8               |
+| names              | 612    | 0/612 (0.0%)        | 0               | 0/612 (0.0%)        | 79              |
+| glued-literal      | 108    | 105/108 (97.2%)     | 0               | 92/108 (85.1%)      | 41              |
+| keyword-in-literal | 96     | 96/96 (100.0%)      | 0               | 96/96 (100.0%)      | 0               |
 
 **Held-out adversarial dataset** (drafted with AI assistance in a separate session that did not write the detectors, then reviewed by the author; never run against the detectors before it was committed, and never used for tuning; 80 messages in 76 cases, 118 labelled personal values).
 
@@ -522,9 +532,9 @@ _Measured on 2026-10-03 (UTC date) by `npm run eval`. This block is generated, a
 
 | Echoed unchanged                                    | Generated, main   | Shape block: in-markup | Shape block: other shapes | Held-out      |
 | --------------------------------------------------- | ----------------- | ---------------------- | ------------------------- | ------------- |
-| Messages                                            | 600               | 90                     | 1416                      | 80            |
-| Placeholders                                        | 1667              | 98                     | 1242                      | 74            |
-| Restored                                            | 1660/1667 (99.5%) | 26/98 (26.5%)          | 1233/1242 (99.2%)         | 70/74 (94.5%) |
+| Messages                                            | 600               | 90                     | 1512                      | 80            |
+| Placeholders                                        | 1667              | 98                     | 1434                      | 74            |
+| Restored                                            | 1660/1667 (99.5%) | 26/98 (26.5%)          | 1425/1434 (99.3%)         | 70/74 (94.5%) |
 | Left: in a markdown link or image target            | 0                 | 18                     | 9                         | 0             |
 | Left: after "[label]:"                              | 0                 | 9                      | 0                         | 0             |
 | Left: in a quoted HTML attribute value              | 0                 | 18                     | 0                         | 2             |
@@ -533,9 +543,31 @@ _Measured on 2026-10-03 (UTC date) by `npm run eval`. This block is generated, a
 | Left: rest of the text after an unclosed `="`       | 0                 | 0                      | 0                         | 0             |
 | Left: host rule (`[TYPE_N].x`)                      | 0                 | 0                      | 0                         | 0             |
 | `Type N` text, never restored (ADR-013)             | 0                 | 0                      | 0                         | 0             |
-| Messages back exactly                               | 600               | 90                     | 1416                      | 80            |
+| Messages back exactly                               | 600               | 90                     | 1512                      | 80            |
 | Messages back with a later mention as first written | 0                 | 0                      | 0                         | 0             |
 | Messages not restored correctly                     | 0                 | 0                      | 0                         | 0             |
+
+**Sent as written** (ADR-040): labelled personal values whose text, exactly as written, is still in what the redaction sends (`redactMessage`'s output, each case's messages redacted in order with one mapping). The tables above measure what the detectors find (`detect()`), not what is sent; bugs 58 and 61 showed that the two can differ, and this count is the one that measures the promise. It counts whole values only: a value sent partly, with a placeholder over some of it, is not counted here. Every written piece counts, so a value split across two messages is two. It is measured with names off, the default build, so no person name is detected and every one is sent: the whole names shape and the person names among the main cases; that is the documented behaviour of a feature that ships disabled (ADR-035), not a detection failure. Known-failing parts are accepted, with an exact number the run checks.
+
+| Part                                             | Values | Sent as written  | Known and accepted |
+| ------------------------------------------------ | ------ | ---------------- | ------------------ |
+| Generated, main                                  | 1683   | 198/1683 (11.7%) | -                  |
+| Generated, line-break                            | 120    | 7/120 (5.8%)     | -                  |
+| Generated, message-split                         | 120    | 118/120 (98.3%)  | -                  |
+| Generated, side-by-side                          | 80     | 0/80 (0.0%)      | -                  |
+| Generated, digit-beside                          | 40     | 0/40 (0.0%)      | -                  |
+| Generated, contained                             | 70     | 0/70 (0.0%)      | -                  |
+| Generated, joined-digits                         | 30     | 0/30 (0.0%)      | -                  |
+| Generated, short-id                              | 459    | 154/459 (33.5%)  | -                  |
+| Generated, contact-sheet                         | 120    | 0/120 (0.0%)     | -                  |
+| Generated, misaligned-sheet                      | 132    | 0/132 (0.0%)     | -                  |
+| Generated, in-markup                             | 90     | 0/90 (0.0%)      | -                  |
+| Generated, names (names off, the default build)  | 612    | 612/612 (100.0%) | -                  |
+| Generated, glued-literal                         | 108    | 3/108 (2.7%)     | known-failing: 3   |
+| Generated, keyword-in-literal                    | 96     | 0/96 (0.0%)      | -                  |
+| Held-out (reporting only, never used for tuning) | 120    | 55/120 (45.8%)   | -                  |
+
+- Known-failing, `glued-literal`: a secret after a credential word and a placeholder-shaped text with a space in it (`password: [pan 1]<password>`) is sent as written; bug-log 61, left unfixed after two fixes each sent values that are redacted today (ADR-038, final amendment).
 
 <!-- eval:end -->
 
@@ -746,8 +778,10 @@ every person's name, an IFSC code with an unknown bank code and no keyword nearb
 nor a keyword directly before it, a UPI ID at an unknown handle with no
 keyword nearby, a passport number, voter ID or date of birth with no
 keyword nearby, an IP address inside a host name, the part of an email
-address before a `/`, `=` or `?` in its local part, numbers written as
-words or with letters for digits, postal addresses and vehicle numbers);
+address before a `/`, `=` or `?` in its local part, a secret after a
+credential word and a placeholder-shaped text with a space in it, numbers
+written as words or with letters for digits, postal addresses and vehicle
+numbers);
 anything your application
 logs before
 calling Pseudonym; a compromised Pseudonym host; prompt injection that
@@ -819,8 +853,12 @@ is restarted
 ## Continuous integration
 
 [.github/workflows/ci.yml](.github/workflows/ci.yml) runs on every push and
-pull request, on GitHub's `ubuntu-latest` with the Node version in `.nvmrc`
-and read-only permissions. One job, one step after another: `npm ci`,
+pull request, on GitHub's `ubuntu-24.04` runner with the Node version in
+`.nvmrc` and read-only permissions. The runner's OS label is pinned, not
+`ubuntu-latest`, so a new Ubuntu release never arrives unannounced; GitHub
+still rebuilds the image under that label about weekly with tool updates, and
+that cannot be pinned
+([ADR-036](docs/decisions.md#adr-036)). One job, one step after another: `npm ci`,
 typecheck, lint, format check, the tests with coverage (the run fails below
 100% of lines, branches, functions and statements in `src` and `eval`), the
 timing tests as their own step, then `npm run eval`, which fails if any

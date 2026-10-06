@@ -4,6 +4,7 @@
 
 import { rowOf, type StoredDataset } from './baseline.js';
 import type { EchoScore } from './echo.js';
+import type { KnownFailing, SentScore } from './sent.js';
 import { HELD_BACK_RULES, type HeldBackRule } from '../src/redaction/restore.js';
 import { percent, prf, type DatasetScore, type ShapeScore, type TypeScore } from './score.js';
 import { PERSONAL_TYPES } from './types.js';
@@ -202,11 +203,50 @@ export function echoColumns(
   return columns;
 }
 
+/**
+ * Values sent as written (ADR-040), one row per part: the generated set's
+ * main cases, each shape, then the held-out set as one total. A part with a
+ * known-failing entry shows the number accepted there. Two rows carry
+ * their context in the label, so that a number read alone is not misread:
+ * the names shape is measured with names off, the default build, so every
+ * name in it is sent by design (ADR-035); and the held-out total is for
+ * reporting, never a number to tune against (ADR-021).
+ */
+export function sentTable(
+  generated: Readonly<Record<string, SentScore>>,
+  heldOut: SentScore | undefined,
+  known: readonly KnownFailing[] = [],
+): string {
+  const accepted = new Map(known.map((entry) => [entry.part, entry.sent]));
+  const label = (part: string): string =>
+    part === 'main'
+      ? 'Generated, main'
+      : part === 'names'
+        ? 'Generated, names (names off, the default build)'
+        : `Generated, ${part}`;
+  const rows = Object.entries(generated).map(([part, score]) => [
+    label(part),
+    String(score.values),
+    ratio(score.sent, score.values),
+    accepted.has(part) ? 'known-failing: ' + accepted.get(part) : '-',
+  ]);
+  if (heldOut) {
+    rows.push([
+      'Held-out (reporting only, never used for tuning)',
+      String(heldOut.values),
+      ratio(heldOut.sent, heldOut.values),
+      '-',
+    ]);
+  }
+  return table(['Part', 'Values', 'Sent as written', 'Known and accepted'], rows);
+}
+
 export interface ReportInput {
   readonly measuredOn: string;
   readonly generated: StoredDataset & { readonly seed: number };
   /** Null until the held-out set has cases. */
   readonly heldOut: StoredDataset | null;
+  readonly knownFailing?: readonly KnownFailing[];
 }
 
 export const README_START = '<!-- eval:start -->';
@@ -255,6 +295,17 @@ export function readmeBlock(input: ReportInput): string {
       `**Echo** (ADR-033): every message redacted, then restored as if the model had repeated it unchanged. A placeholder in a URL, a link or image target, or an HTML attribute value stays a placeholder (restoration safety); each one left is counted under the rule that held it. "Back exactly" restores with those rules off and compares with the original message.`,
       '',
       echoTable(echoColumns(input.generated.echo, heldOutEcho)),
+    );
+  }
+  if (input.generated.sent) {
+    const known = input.knownFailing ?? [];
+    lines.push(
+      '',
+      `**Sent as written** (ADR-040): labelled personal values whose text, exactly as written, is still in what the redaction sends (\`redactMessage\`'s output, each case's messages redacted in order with one mapping). The tables above measure what the detectors find (\`detect()\`), not what is sent; bugs 58 and 61 showed that the two can differ, and this count is the one that measures the promise. It counts whole values only: a value sent partly, with a placeholder over some of it, is not counted here. Every written piece counts, so a value split across two messages is two. It is measured with names off, the default build, so no person name is detected and every one is sent: the whole names shape and the person names among the main cases; that is the documented behaviour of a feature that ships disabled (ADR-035), not a detection failure. Known-failing parts are accepted, with an exact number the run checks.`,
+      '',
+      sentTable(input.generated.sent, input.heldOut?.sent?.all, known),
+      ...(known.length > 0 ? [''] : []),
+      ...known.map((entry) => `- Known-failing, \`${entry.part}\`: ${entry.why}`),
     );
   }
   lines.push('', README_END);

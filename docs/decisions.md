@@ -4365,7 +4365,8 @@ measurement froze", the exact runtime pin and its bump procedure, and
 the install-skip assumption with its fallback (below). The three rules
 under "Already decided" and the constraint on step 3 are settled. Not
 built yet: no dependency added, nothing installed, no download script
-(step 4).
+(step 4). **Amended 2026-10-06:** the CI runner's OS label is pinned
+beside the other pins, with what that does and does not fix.
 
 **Context.** ADR-035 ships B+F (B =
 `Xenova/bert-base-multilingual-cased-ner-hrl@263e82c06569`, int8, at high
@@ -4683,6 +4684,33 @@ whole suite and `npm run eval` must pass; if any evaluation count moves,
 accept it with a note here saying it came from the metadata, not from
 tuning. The cost, accepted: validation goes stale until someone bumps it,
 which ADR-004 had wanted to avoid.
+
+**The CI runner's OS label is pinned too (2026-10-06).** The workflow ran
+on `ubuntu-latest`, a label GitHub moves to each new Ubuntu release on its
+own schedule (to Ubuntu 26.04 from 19 October 2026, by the user's
+reading of GitHub's announcement; the runner-images README read on
+2026-10-06 said `ubuntu-latest` is `ubuntu-24.04` and gave no date). That
+made the operating system an input that changes under us, the hazard the
+pins above close. `.github/workflows/ci.yml` now says
+`runs-on: ubuntu-24.04`, the image `ubuntu-latest` pointed to. **What this
+does not pin:** GitHub rebuilds the image under a label about weekly, with
+updated tools and packages, and a workflow cannot ask for one build of it.
+The exact image version is not something we can pin, and pinning it would
+not have changed this decision; so CI is pinned in its operating system
+release, its Node version (`.nvmrc`), its actions (commit SHAs) and its
+packages (`package-lock.json`), not in everything else on the image.
+**To bump it:** change the label, nothing else in the same commit; the
+workflow must pass on the new label 3 to 5 times in a row (the stability
+check of Phase 5d part 7), and the timing tests' worker count is checked
+against the new runner's CPU count (ADR-032). GitHub retires an old label
+some time after a new one appears, so the bump has a deadline set by
+GitHub, not by us.
+
+**One commit has not run through CI yet (2026-10-06).** Local `main` is
+one commit ahead of `origin/main`: 9ec51b7 ("stop name widening at
+validated values") was never pushed, so CI has never checked it. It will
+be checked for the first time when the `wip/bug-61-masking` branch is
+squashed into `main` and pushed.
 
 ### (b) How the model file reaches a machine
 
@@ -5262,3 +5290,542 @@ digit as joined to the value; the text sent keeps the literal there) and
 9 filler lookalikes. **Open, for the user:** the scores measure what
 `detect()` finds, not what is sent; scoring the text `redactMessage`
 sends would make the leak counts themselves see this class of bug.
+
+<a id="adr-038"></a>
+
+## ADR-038: Detection never reads placeholder-shaped text, and the evaluation counts what is sent (2026-10-03; bug-logs 58 and 61)
+
+**Status.** **Reversed on 2026-10-07** (the final amendment at the end of
+this entry): the masking is undone, detection is the code of 9ec51b7
+again, and bug 61 is a known limitation. Part 2 (counting what is sent)
+was never started here; it is ADR-040. Everything below the reversal is
+kept as the record of why. Originally: decided by the user (bug-log 61,
+option 2; and the scoring question left open in ADR-037). This entry is
+written in two parts: the plan and its guard first, before any
+measurement; the results after.
+
+### Part 1: detection reads no literal (bug-log 61, option 2)
+
+**Decision.** `redactMessage` runs `detect()` on the text with every
+literal (placeholder-shaped text, ADR-002) replaced, code unit for code
+unit, by a filler character, so offsets do not move. The hole is not in
+one detector but in letting any detector read placeholder text: the
+keyword secret took `[pan` as its value (bug 61), the safety net joined
+the literal's digit to the value next to it, and a literal such as
+`[Aadhaar 2]` could supply the keyword another type needs. Patching the
+secret detector alone would leave the others to be found one at a time.
+
+**The filler: U+2591 `░`** (Symbol, Other). Not a letter, digit or mark,
+so it is never glue or part of a token; in no detector's alphabet (email
+local part, UPI name, IP, JWT and base64url, digit runs and the safety
+net's joiners); not blank, so it does not join spaced digits or end a
+line; not invisible (normalisation would remove it and glue its
+neighbours); unchanged by NFKC; it cannot form a value or a keyword.
+
+**Guard, fixed before measuring (the user's).** If any generated count
+outside the `glued-literal` shape moves, or any restoration behaviour
+changes (a restoration test, or an echo count outside that shape), stop
+and report instead of going on: the change alters the detection input of
+every request, so an unrelated count moving means it did more than
+intended.
+
+**Whether it replaces bug 58's cut-around rule:** to be measured. A
+keyword secret's value runs to the next blank, filler included, and a
+mark after a literal shares the filler's cluster, so some detections may
+still reach into a literal's positions; name spans come from outside
+`detect()`.
+
+**Result (2026-10-03): built, guard passed, stopped for a decision.** The
+guard's two conditions held (only the `glued-literal` echo moved, 222 to
+225; every test passed). But masking hides keywords the user wrote: a
+value found only with a keyword, whose only keyword is inside a
+placeholder-shaped text, is now sent (1,200 of 1,200 probed; bug-log 61
+follow-up). And it does not replace the cut-around: keyword secret values
+and combining marks still reach into a literal's positions. Part 2 not
+started.
+
+**Part 1 as built (2026-10-03, the user's option 1: mask the values, keep
+the keywords).** `detect(original, names, hidden)` takes the literal spans
+and builds the masked copy itself (`maskSpans`). **Values are matched in
+the masked copy; the keyword check (`hasContext`, the only keyword check
+outside a detector's own pattern) reads the original**, at the same
+offsets. The correspondence is structural, not hoped for: `maskSpans`
+changes one code unit for one and `checkMasked` verifies its output (the
+same length; every position that differs is inside a span and holds the
+filler), and `checkAligned` verifies that the two normalisations have the
+same offset map, which holds because a literal's characters normalise one
+to one (ASCII, and the long s `ſ` that case-insensitive matching lets
+stand for an `s` in IFSC, PASSPORT, SECRET and PERSON: NFKC makes it
+`s`). A failed check throws, refusing the request (a 500), never reading
+the wrong place. Each check is its own function, tested directly with bad
+input, since by construction no request can reach a throw.
+
+**Intended behaviour, not a side effect:** a type word inside a
+placeholder acts as a keyword for a value near it, so `[AADHAAR_1]
+12345678` may redact those digits, and `replace [AADHAAR_1] with <a
+number that fails the check>` redacts the number. That is over-redaction,
+the safe direction, and it is how detection behaved before masking.
+
+**Measured.** The 1,200 probe values (keyword only inside a placeholder):
+0 sent (masking alone sent all 1,200). Bug 61: fixed (`password: [pan
+1]<value>` goes out as `password: [LITERAL_1][SECRET_1]`). A secret whose
+keyword is only inside a placeholder (`[SECRET_1] = <value>`) is sent
+before and after alike: the keyword secret needs its value directly after
+the word, a documented limit, not this change. The guard held: the only
+generated count that moved was the `glued-literal` echo (222 to 225).
+
+**The cut-around stays.** With literals masked, detections still reach
+into a literal's positions (keyword secret values, which run to the next
+blank, filler included; a combining mark after a literal, which shares
+the filler's cluster), so masking does not replace the cut-around; the two do
+different things: masking keeps detectors from reading a literal, the
+cut-around keeps a detection from covering one.
+
+**New generated shape, `keyword-in-literal`: 96 cases, 12 per type**
+(AADHAAR and CARD that fail their checks, a PAN that fails its check, an
+IFSC at an unknown bank, a UPI ID at an unknown handle, PASSPORT, VOTER,
+DOB): a value whose only keyword is the type word inside a placeholder,
+in three spellings (`[TYPE_1]`, `[type 2]`, `[Type_3]`) and six layouts
+(before and after the value), twelve distinct pairs per type, with no
+filler sentence. Measured on scratch copies: today 0 of 96 sent; with the
+masking-only version 93 sent; with the placeholder replaced by a word
+that is no keyword, 93 sent (the other 3 are cards whose first 12 digits
+pass the Aadhaar check: found without any keyword). Accepted as a changed
+dataset.
+
+### Amendment (2026-10-06/07): keywords read the original, placeholder characters count for nothing (bug-logs 63 and 64)
+
+The first ADR-039 fuzz check of Part 1 (bug-log 63) found values the
+code before masking redacted and the masked code sends, in three ways.
+The user's decisions:
+
+**1. The rule, for every detector: value matching reads the masked text;
+keyword and context matching reads the original.** Part 1 applied this
+to `hasContext` only, and the secret detector's own credential-word match
+read the masked copy, so `[secret 3]_<value>` was sent (way 1): against
+the "intended behaviour" above, so a bug, not a question. Now every
+detector receives both texts, aligned (`detect()` passes the normalised
+original beside the masked text), and every keyword or context word a
+detector matches itself is read in the original: the secret detector's
+credential word, its link and the quotes or brackets before the value;
+the IP detector's version word. A detector added later that matches its
+own keyword must do the same; this sentence is here so that it does not
+reopen the hole.
+
+**2. Placeholder characters contribute nothing to any rule: not length,
+not evidence, not a boundary. A value ends wherever the original text has
+a blank, including a blank inside a placeholder** (bug-log 64, the user's
+H1). Masking had turned the space in `[UPI 2]` into the filler, so a
+keyword secret's value ran across the placeholder, swallowing a later
+keyword or digits the safety net needed. As built in `secret.ts`: the
+value's stretch ends at the original's first blank; its length and the
+digits-only code rule count only characters outside placeholders;
+closing punctuation and evidence are read in the masked text, where the
+filler is neither; placeholder characters after it do not stop it being
+the last thing on its line; a value that would start inside a placeholder
+starts after it.
+
+**Ways 2 and 3 are accepted as this ADR's intended effect.** A value that
+only passed a rule because placeholder characters were counted as part of
+it (a secret long enough only with a placeholder's tail, a date that
+reached the safety net's 9 digits only with a placeholder's index) was
+never a detection. ADR-039's amendment makes that checkable.
+
+**H2 not taken, and why.** Keeping blanks in the mask (a placeholder's
+space stays a space) is the better structural answer: the masked text
+would then end values where the original does, for every detector at
+once. But it changes the input every detector reads, and that input
+produced two rounds of surprises in one evening (bugs 63 and 64).
+Contained beats elegant on a surface that keeps biting. If H1 turns out
+to be the first of several boundary cases, H2 becomes the right answer,
+and it is done deliberately, with this ADR's guard re-run.
+
+**Other rules the mask could have moved (checked 2026-10-07).** No other
+detector ends a value at a blank the mask can change: the blank inside
+`[TYPE N]` sits between a letter and a digit, so it never joined digit
+groups; glue checks at a value's edges see `[`, `]` and the filler alike;
+email, UPI, IP and libphonenumber stop at both. One rule of a different
+kind moved: the spaced-mobile table check numbers digit groups by
+position on their line (ADR-027), and a placeholder's index digits were
+a group before masking and are not now. That already follows rule 2;
+whether it ever costs a value is not measured (neither the fuzz nor the
+generated set has multi-line tables with placeholders in them).
+
+**Result: stopped, 2026-10-07.** With 1 and 2 built, the ADR-039 check
+(amended below) leaves 4 of 100,000 texts (names off) and 2 (names on)
+classified real. All six are one cause, in the implementation of 1: a
+value that would start inside a placeholder starts after it _and_ after
+any punctuation that follows it (copied from how a cut around a literal
+is displayed), so real characters (`@`, `=`, `)`, `.`, `/`) after the
+placeholder count towards nothing: the reverse of rule 2. Not changed;
+waiting for the user.
+
+### Final amendment (2026-10-07): reversed; bug 61 left as a known limitation
+
+**The arc, in order.**
+
+1. **The original reasoning (2026-10-03).** Bug 61 (a credential word, a
+   placeholder with a space, then the value: the value sent) looked like
+   one case of a class: detectors reading placeholder-shaped text. The
+   keyword secret took `[pan` as its value; the safety net joined a
+   placeholder's digit to the number beside it; a placeholder's type word
+   supplied another type's keyword. So detection was given a copy with
+   every placeholder masked, rather than a patch to one detector.
+2. **Round 1 (the first ADR-039 fuzz check, bug-log 63):** masking also
+   hid keywords the user wrote inside placeholders. Option 1 gave them
+   back to `hasContext`, but not to the detectors that match their own
+   keywords, and 161 of 100,000 texts (names off) sent a value the code
+   before redacted, in three ways.
+3. **Round 2 (bug-log 64):** with keywords read in the original
+   everywhere, the masked filler turned out to change where a value ends
+   (a placeholder's space became non-blank), and the classifier's first
+   witness misjudged way 2. Rule 2 (placeholder characters count for
+   nothing, a blank inside one ends a value) and a two-witness classifier
+   (ADR-039 amendment) followed; 4 and 2 texts were left, from the way-1
+   code discarding real punctuation.
+4. **Round 3 (bug-log 65):** with that fixed and tables added to the
+   fuzz, 357 and 309 texts failed: masking had moved the spaced-mobile
+   column count (ADR-027), which neither the fuzz nor the generated set
+   could see until then. Adding one fuzz shape took the count from 4 to 357.
+
+**Five kinds of unintended change**, all from the masked input: keywords
+inside placeholders hidden (way 1); real characters after a placeholder
+counted for nothing (the punctuation trimming); a value running across a
+masked blank and swallowing a later keyword (bug 64; kind 2 of bug-log 65);
+the table columns moved (bug-log 65); the safety net's coverage changed
+by a different winner once a placeholder's digit no longer joined (kind
+4 of bug-log 65).
+
+**Its own rules came to contradict each other.** Rule 2 says a blank
+inside a placeholder ends a value; judging a value from after the
+placeholder, which bug 61's fix needs, makes the value run past that
+blank. In `API_KEY =  [IFSC 3]=was=…)API_KEY =)<PAN>` the first value then
+swallows the second keyword and a real PAN is sent.
+
+**The class it generalised over proved to be two detectors.** Of all the
+detectors, only `secret.ts` (its credential words) and `ip.ts` (its
+version word) match a keyword of their own; every other keyword is read
+by `hasContext`. Masking changed the input of every detector to fix two.
+
+**The reversal (the user's option C, 2026-10-07).** The masking was
+undone (`detect.ts`, `normalise.ts`, `redact.ts`, `ip.ts` back to
+9ec51b7), and bug 61 fixed in `secret.ts` alone, by its original option
+1: when the brackets before a keyword's value open a placeholder (the
+ADR-002 grammar), skip it and read the value after it.
+
+**Option 1 failed too.** The ADR-039 check against 9ec51b7: 19 texts
+(names off) where a value is now found, the intended change; but 6 where
+a value is now sent (after a placeholder with no space, `[Phone_8]`, the
+value used to reach the secret rule's 6 characters with the placeholder's
+tail and be covered by the cut-around; read after it, it is too short),
+and, names on, 2 real regressions: the `API_KEY` case above. That
+swallowing was never the masking's: **any fix that reads the value after
+the placeholder has it**, so it is the shape of the problem rather than a
+detail to route around.
+
+**Decision (the user's option O2): bug 61 is not fixed.** `secret.ts` is
+back to 9ec51b7 too, so detection is identical to 9ec51b7 and the ADR-039
+check shows no difference at all by construction: 0 of 100,000 texts with
+any replaced span different, names off (seed 39) and names on (seed 40);
+the negative control (the masking code) fails, 3,494 texts different, 442
+with a real regression. Bug 61 is a known limitation, stated with its
+count in the README and the user manual: **3 of 108 values in the
+generated `glued-literal` shape** are sent. Both shapes the masking added
+to the generated set stay: `glued-literal` (with those 3) and
+`keyword-in-literal` (96 of 96 redacted, since 9ec51b7 reads a keyword
+inside a placeholder anyway). The echo baseline moved by those 3 values'
+placeholders (`glued-literal` restored 225 to 222), accepted with a note.
+
+**O1, priced and not taken.** Read the keyword's value exactly as 9ec51b7
+does, and when a placeholder opens it, also try the value after the
+placeholder as a second candidate, resuming the keyword search after the
+first, so no keyword is swallowed. What it would cost and was not
+measured: a second SECRET candidate over text the first did not claim,
+whose overlap with other detections could change their coverage (the
+kind-4 mechanism); a rule in one detector that exists only for
+placeholder-shaped text. What it would buy: the 3 values. Anyone returning
+to this starts from the fuzz (`scripts/fuzz-detection-change.ts`, tables
+included) and this record: two fixes of different shape each did worse
+than the bug, and the stopping condition fired twice.
+
+<a id="adr-039"></a>
+
+## ADR-039: Standing requirement: a change to the detection path is checked by fuzz for "nothing redacted before is sent now" (2026-10-03)
+
+**Status.** A standing requirement, set by the user.
+
+**Requirement.** Any change to the detection path (a detector, the
+pipeline in `detect()`, normalisation, `redactMessage`, the literal
+handling, the name path) is checked, **against fuzz rather than the
+generated set**, for one invariant: **nothing the code redacted before the
+change is sent after it.** The check runs the code before and after the
+change (scratch copies of `src/`, never `git stash` or `git checkout`) on
+generated random texts built from pieces that combine values, keywords,
+placeholder-shaped text, separators, joiners, combining marks, invisible
+characters and characters that normalisation expands or merges, and
+counts texts where a value (or any character of it) went out after the
+change but not before. Any such text is a finding to explain before the
+change goes on; the generated counts passing is not enough.
+
+**Why: the generated set only sees shapes it already contains.** Its
+counts move only for texts like the ones written into it, and three times
+now a real change in what is sent was invisible to them:
+
+1. **Bug 58's class:** values glued to placeholder-shaped text were sent
+   whole, and the eval was green; the fix changed 9,089 of 100,000 fuzzed
+   texts and no generated count (bug-log 58).
+2. **The glued-literal shapes themselves:** they had to be added to the
+   generated set after the fact (ADR-037), and the first draft still
+   measured the wrong thing for two templates until a fuzz-style check
+   compared them with and without the literal.
+3. **The 1,200:** masking literals hid keywords written inside them, and
+   1,200 of 1,200 probed values that had been redacted were sent, with no
+   generated count moving (bug-log 61, ADR-038).
+
+**Consequence.** The fuzz is part of the evidence for a detection change,
+reported with it (texts, what changed, what was sent that was not
+before). New generated shapes are still added for every class it finds,
+so that the eval guards the class from then on.
+
+### Amendment (2026-10-07): one exception, placeholder-derived coverage, enforced by a classifier
+
+**Made after the measurement, and said so.** The first run of this check
+on ADR-038 found values that were redacted before and are sent now
+(bug-log 63). This amendment changes the rule after it gave an
+inconvenient answer, which is the shape of moving a goalpost. So the
+exception is checkable, not asserted, and it **narrows** what counts as
+acceptable rather than widening it: before, any "sent now" case was to be
+explained in prose; now each one must pass a mechanical test, and
+anything that does not pass it fails the check.
+
+**The exception.** A character of a planted value that the code before a
+change covered and the code after sends is acceptable only if it is
+**placeholder-derived**: every detection that covered it before
+contained characters of placeholder-shaped text (a literal, ADR-002),
+and the before-code no longer covers it when exactly those characters,
+and no others, are taken out of its reach (ADR-038: a value that only
+passed a rule because placeholder characters were counted as part of it
+was never a detection). Everything else is a **real regression**, and
+one fails the check.
+
+**The enforcement: `scripts/fuzz-detection-change.ts`.** It fuzzes texts
+as this ADR lists, redacts each with the code before and after, and
+classifies every value character that was covered and is sent now. "Taken
+out of its reach" is tested by two witnesses, run on the before-code:
+
+- **filled**: those characters become the ADR-038 filler. Shows way 3 (a
+  placeholder's digit joined into a number). Alone, it misses way 2,
+  because the before-code counts the filler towards a secret's length.
+- **deleted**: those characters are removed. Shows way 2 (a secret long
+  enough only with a placeholder's tail). Alone, it misses some of way 3,
+  because deleting puts their neighbours side by side.
+
+A case is placeholder-derived if either witness removes the coverage.
+**This rule was chosen after two single-witness versions failed**:
+filled-only called 13 (names off) and 8 (names on) way-2 texts real;
+deleted-only called 15 other texts real, mostly way 3. Neither witness
+changes a keyword outside the detection, the rest of a placeholder
+included, so a keyword inside a placeholder that the after-code fails to
+honour is never explained away.
+
+**Two conditions (the user's).** Every run prints how many values each
+witness explained, and how many only it explained; if one explains
+nothing while there are placeholder-derived cases, the run says the rule
+has collapsed into the other. And the negative control stays: run against
+the code before ADR-038's way-1 fix, the check must fail. It does: 78 of
+100,000 texts with a real regression (names off, seed 39; exit 1).
+
+**First runs (2026-10-07; after = ADR-038 amendment rules 1 and 2;
+before = the commit before ADR-038, 9ec51b7):**
+
+|                                             | names off (seed 39) | names on (seed 40) |
+| ------------------------------------------- | ------------------- | ------------------ |
+| texts, a value redacted before and sent now | 103                 | 81                 |
+| every character placeholder-derived         | 99                  | 79                 |
+| with a real regression                      | **4**               | **2**              |
+| values explained: filled / deleted / both   | 89 / 91 / 80        | 73 / 70 / 63       |
+| texts, a value sent before and redacted now | 99                  | 79                 |
+
+The check fails. The six real regressions have one cause, read from their
+traces: the way-1 implementation discards real punctuation after a
+placeholder before judging a value (ADR-038 amendment, "Result"). They
+are not ways 2 or 3 and were not explained away. Stopped for the user.
+
+**The classifier is only as strong as the shapes the fuzz generates
+(2026-10-07).** ADR-038's masking changed a rule nothing here could see:
+the spaced-mobile table check numbers digit groups by position on their
+line (ADR-027), and a placeholder's index digits were a group before
+masking and are not now. Neither the fuzz nor the generated set had a
+table with a placeholder in it, so the check passed that change
+silently. This is the fourth time the test data's coverage has been the
+limit: bug 58's class, the glued-literal shapes, the 1,200 keyword-only
+values (above), and now tables. The fuzz now builds tables (rows of
+spaced mobiles, 5-digit amounts, placeholders, short numbers and words,
+most rows in one column layout). A pass of this check says nothing about
+shapes the generator does not build.
+
+**Second runs (2026-10-07; the punctuation fix and tables added):**
+
+|                                             | names off (seed 39) | names on (seed 40) | negative control (names off) |
+| ------------------------------------------- | ------------------- | ------------------ | ---------------------------- |
+| texts, a value redacted before and sent now | 438                 | 370                | 520                          |
+| every character placeholder-derived         | 81                  | 61                 | 78                           |
+| with a real regression                      | **357**             | **309**            | 442                          |
+| values explained: filled / deleted / both   | 79 / 79 / 72        | 59 / 58 / 55       | 79 / 75 / 72                 |
+| texts, a value sent before and redacted now | 1,777               | 1,806              | 1,801                        |
+
+The check fails. Almost every real regression is a spaced mobile in a
+table whose columns moved (bug-log 65): before masking, a placeholder's
+index digits counted as a column, so masking shifts a row's columns
+against the rows beside it, and a mobile loses (or, about four times as
+often, gains) its validation. Outside tables, 3 texts (names off) and 2
+(names on) remain, of four kinds (bug-log 65). Stopped for the user.
+
+**A limitation of the deleted witness, found by using it (2026-10-07).**
+Deleting characters puts their neighbours side by side, and that can
+create text that was never in the input. In `[SECRET 10]=<card>` the
+before-code's value reached 6 characters only with the placeholder's
+`10]` (way 2); deleting those leaves `[SECRET =<card>`, in which
+`SECRET =` reads as a keyword with `=`, an assignment the user never
+wrote, so the before-code still covers the value and the witness says
+"not explained" (bug-log 65, kind 3). It errs towards calling a case real,
+never towards excusing one, but a case it misjudges this way fails the
+check for a reason that is not in the text. The filled witness has the
+opposite limit (the before-code counts the filler towards a length).
+Either result is evidence to read, not a verdict to trust blind.
+
+**Outcome for ADR-038 (2026-10-07).** ADR-038 was reversed (its final
+amendment): detection is the code of 9ec51b7 again, and this check
+against 9ec51b7 shows nothing at all: 0 of 100,000 texts whose replaced
+spans differ in any position or type, names off (seed 39) and names on
+(seed 40). The negative control, the masking code as "after", fails:
+3,494 texts different, 442 with a real regression. The script now also
+prints, on every run, how many texts differ in any replaced span, so that
+"no difference" means the whole output and not only the planted values;
+and `--list` prints every value whose coverage differs, either way.
+
+<a id="adr-040"></a>
+
+## ADR-040: The evaluation counts the personal values sent as written (2026-10-07; accepted, committed before it is measured)
+
+**Status.** Accepted by the user on 2026-10-07, with two additions (the
+measurement boundary and the blind spot, below). By the project's rule
+for measurements, this entry is committed before the count is built or
+run: nothing here has been measured at the commit that adds it. It is
+ADR-038's Part 2, which was named there and never started.
+
+**Context.** Every detection score in the evaluation (`eval/score.ts`)
+measures what `detect()` finds: a value counts as redacted when its
+characters lie inside a detection. That is not what is sent. What is
+sent is `redactMessage`'s output, which also cuts detections around
+placeholder-shaped text the user typed (ADR-002, bug-log 58) and keeps
+that text as literals. Twice the two came apart and the scores could not
+see it: **bug 58**, a value glued to a typed placeholder was detected,
+then dropped with the literal and sent whole, while `detect()`'s score
+counted it redacted; and **bug 61**, where the generated set's
+`glued-literal` shape needed the echo (ADR-033) to show the change at
+all. The promise is about what leaves the network ("every personal value
+Pseudonym detects is replaced before the request leaves"), so the
+evaluation must count that, beside the detection scores.
+
+**Decision.**
+
+1. **The count.** For every case of the generated set (main cases and
+   every shape) and of the held-out set: redact its messages in order
+   with one mapping, as the gateway redacts a request (`redactMessage`).
+   For every piece the slot format marks as personal (any type but
+   `NOT`), take the piece's text exactly as written in its message, and
+   check whether it appears, character for character, anywhere in that
+   message's redacted text. Count, per part: personal pieces, and pieces
+   **sent as written**.
+2. **Only labelled personal values.** Lookalikes (`NOT` slots) are meant
+   to pass through, and counting all text would let them poison the
+   count. A personal value whose text also occurs elsewhere in its
+   message counts as sent if that other occurrence is sent: the count
+   errs towards a leak.
+3. **Verbatim only, and said so.** A value partly replaced (a placeholder
+   over some of its characters) is not counted here; the detection
+   scores' "partly redacted" column counts those, on `detect()`. The
+   no-leak test (Phase 3) checks more forms (without separators,
+   lower-cased); this count is the published, per-shape number.
+4. **Parts and thresholds.** Generated: `main`, then each shape;
+   held-out: one total, counts only, as the echo is. In
+   `eval/baseline.json` beside the echo, held like every other count:
+   sent may only go down; a changed number of personal pieces is a
+   changed dataset. The first run is recorded as a changed dataset, with
+   an ADR-040 note.
+5. **Known-failing, marked explicitly.** `eval/baseline.json` gets a
+   hand-written list, `knownFailing`: each entry names a part, the number
+   of values sent there that are known and accepted, and why (the first:
+   `glued-literal`, 3, bug-log 61, ADR-038's final amendment). Every run
+   checks each entry against the measured count of its part and fails,
+   naming the entry, if they differ, in either direction, `--update`
+   included: a change that fixes bug 61 (or makes it worse) must edit
+   the entry on purpose, so someone notices. The list is kept across
+   updates; nothing writes it but a person.
+6. **Reported** in `npm run eval` and in the README's generated block,
+   a table of sent values by part, known-failing parts marked; and the
+   README states that the detection scores measure `detect()`, not what
+   is sent, that this was found through bugs 58 and 61, and that this
+   count is the one that measures the promise.
+
+**The measurement boundary.** The count reads `redactMessage`'s output.
+That is one step short of the bytes that reach the provider: the gateway
+still builds the request body from it (`src/gateway/redact-request.ts`,
+the placeholder instruction when it is on, the adapter's JSON). That last
+step is asserted on raw bytes by the gateway tests: the no-leak and
+canary tests (`test/integration/`) capture every byte sent to a mocked
+provider. Both are needed, and they measure different things: this count
+measures, per shape and on both datasets, how many labelled values the
+redaction lets through; the gateway tests prove that what the redaction
+produced is what is sent, and that no other path (errors, logs,
+streaming) puts a value back. A pass here says nothing about the request
+body; a pass there says nothing about values the detectors miss.
+
+**The blind spot, named before it is found.** Verbatim matching catches a
+whole value being sent. It does not catch a value sent **partly**: a
+placeholder over some of its characters and the rest left as text. That
+is exactly the class of the invisible-character bypass (ADR-036, ADR-037):
+a value split by invisible characters, or a name the finder covers only
+in part, goes out in pieces, no piece is the whole value, and this count
+reads it as not sent. The detection scores' "partly redacted" column
+sees that class on `detect()`'s output, not on what is sent; nothing in
+the evaluation counts it on what is sent. A count that did would check,
+for each value, whether any of its required characters (the `required`
+offsets of its slot) survive into the output.
+
+**Expected, not predicted.** Every value the detectors miss is sent as
+written, so the parts with known detection gaps (values split across
+messages, person names while names are off, short IDs with no keyword,
+values written with a line break the detectors do not join) will show
+values sent. The count is published as measured; only `glued-literal`'s 3
+are marked known-failing, because they are the one class that was
+detected-adjacent and deliberately left (ADR-038).
+
+**Options not taken.** Counting characters rather than values (the
+user's specification is values); matching normalised forms (the no-leak
+test does that; this count is meant to be the plain reading, "is the
+value in the text that left").
+
+**First measurement (2026-10-07, after this entry was committed in
+58229f2).** Built as written: `eval/sent.ts` (`sent`, `sentByShape`,
+`knownFailingMismatches`), the parts shared with the echo
+(`casesByPart`), `compareSent` and the kept `knownFailing` list in
+`eval/baseline.ts`, `sentTable` and the README text in `eval/report.ts`,
+wired in `eval/run.ts`. Accepted as a changed dataset with an ADR-040
+note. Values sent as written: generated main 198 of 1,683 (the 153 person
+names, which are not detected with names off, and 45 others, exactly the
+198 the main score table shows as neither redacted nor partly);
+line-break 7 of 120; message-split 118 of 120 pieces (60 values, each in
+two pieces; the other 2 are the 2 partly redacted, which a verbatim count
+cannot see); short-id 154 of 459; names 612 of 612; **glued-literal 3 of
+108, the known-failing entry**; every other shape 0; held-out 55 of 120
+pieces (reporting only, not investigated). Every generated part counted
+in whole values equals its detection row's values neither redacted nor
+partly redacted; message-split, counted in pieces, agrees (58 undetected
+values in two pieces each, plus one piece of each of the 2 partly
+redacted). On today's generated set nothing detected is lost on the way
+out. The known-failing check
+was shown to bite: with the entry set to 4 the run failed, `--update`
+included (`known-failing glued-literal: the entry says 4 sent, measured
+3`), and passed again at 3.

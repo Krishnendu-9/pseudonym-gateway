@@ -164,8 +164,12 @@ export function echo(
   return { messages, placeholders, restored, heldBack, exact, firstForm, broken };
 }
 
-/** The generated set's echo by part: `main` (no shape tag), then each shape. */
-export function echoByShape(cases: readonly LabelledCase[]): Record<string, EchoScore> {
+/**
+ * The generated set's cases by part: `main` (no shape tag), then each
+ * shape, in order of appearance. The echo and the sent count (ADR-040) use
+ * the same parts.
+ */
+export function casesByPart(cases: readonly LabelledCase[]): Map<string, LabelledCase[]> {
   const parts = new Map<string, LabelledCase[]>();
   for (const labelled of cases) {
     const tag = labelled.tags.find((t) => t.startsWith(SHAPE_TAG));
@@ -174,5 +178,10 @@ export function echoByShape(cases: readonly LabelledCase[]): Record<string, Echo
     set.push(labelled);
     parts.set(part, set);
   }
-  return Object.fromEntries([...parts].map(([part, set]) => [part, echo(set)]));
+  return parts;
+}
+
+/** The generated set's echo by part: `main` (no shape tag), then each shape. */
+export function echoByShape(cases: readonly LabelledCase[]): Record<string, EchoScore> {
+  return Object.fromEntries([...casesByPart(cases)].map(([part, set]) => [part, echo(set)]));
 }

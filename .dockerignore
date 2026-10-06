@@ -4,5 +4,6 @@ coverage/
 .env
 *.log
 .mutation-in-progress.json
+.head-worktree/
 dev_docs/
 .git/

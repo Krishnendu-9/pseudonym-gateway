@@ -6,6 +6,11 @@ coverage/
 # Written by scripts/mutate.ts while a mutation is in a source file (bug-log 24)
 .mutation-in-progress.json
 
+# The before-copy for the ADR-039 fuzz check, a git worktree (testing guide).
+# Listed before it is created: `git add -A` would commit a worktree as a
+# gitlink with no .gitmodules entry, and actions/checkout fails on it (CI #8)
+.head-worktree/
+
 # Secrets: ignore every .env file except the example
 .env
 .env.*

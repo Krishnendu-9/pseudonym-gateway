@@ -227,6 +227,15 @@ restored is the first way it was written.
   earlier message, it keeps its number, and from then on only the bracket
   form `[CARD_1]` restores, not a bare `CARD_1`.
 - **`Card 1` or `CARD 1` with a space** reserves nothing (see below).
+- **Known limitation: a secret right after a credential word and such a
+  text with a space in it is sent as written.** In `password: [pan 1]` +
+  a password, the password is not redacted: the keyword's value is read
+  from inside `[pan 1]` and ends at its space, so the password after it is
+  never read. With no space (`password: [PAN_1]` + a password) it is
+  redacted. In the generated evaluation set's `glued-literal` shape this
+  is 3 of 108 values (measured on 2026-10-07). Two fixes were built and
+  measured and both sent values that are redacted today, so it is left as
+  it is (ADR-038, bug-log 61).
 
 ### Restoring the answer
 

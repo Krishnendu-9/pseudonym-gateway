@@ -1,5 +1,5 @@
 {
-  "measuredOn": "2026-10-03",
+  "measuredOn": "2026-10-06",
   "generated": {
     "cases": 500,
     "messages": 600,
@@ -243,6 +243,13 @@
         "partial": 0,
         "typed": 92,
         "overRedactions": 41
+      },
+      "keyword-in-literal": {
+        "values": 96,
+        "redacted": 96,
+        "partial": 0,
+        "typed": 96,
+        "overRedactions": 0
       }
     },
     "echo": {
@@ -479,6 +486,82 @@
         "exact": 108,
         "firstForm": 0,
         "broken": 0
+      },
+      "keyword-in-literal": {
+        "messages": 96,
+        "placeholders": 192,
+        "restored": 192,
+        "heldBack": {
+          "markdown-destination": 0,
+          "reference-label": 0,
+          "html-attribute": 0,
+          "url": 0,
+          "unclosed-angle": 0,
+          "unclosed-quote": 0,
+          "host": 0,
+          "bare-space": 0
+        },
+        "exact": 96,
+        "firstForm": 0,
+        "broken": 0
+      }
+    },
+    "sent": {
+      "main": {
+        "values": 1683,
+        "sent": 198
+      },
+      "line-break": {
+        "values": 120,
+        "sent": 7
+      },
+      "message-split": {
+        "values": 120,
+        "sent": 118
+      },
+      "side-by-side": {
+        "values": 80,
+        "sent": 0
+      },
+      "digit-beside": {
+        "values": 40,
+        "sent": 0
+      },
+      "contained": {
+        "values": 70,
+        "sent": 0
+      },
+      "joined-digits": {
+        "values": 30,
+        "sent": 0
+      },
+      "short-id": {
+        "values": 459,
+        "sent": 154
+      },
+      "contact-sheet": {
+        "values": 120,
+        "sent": 0
+      },
+      "misaligned-sheet": {
+        "values": 132,
+        "sent": 0
+      },
+      "in-markup": {
+        "values": 90,
+        "sent": 0
+      },
+      "names": {
+        "values": 612,
+        "sent": 612
+      },
+      "glued-literal": {
+        "values": 108,
+        "sent": 3
+      },
+      "keyword-in-literal": {
+        "values": 96,
+        "sent": 0
       }
     },
     "seed": 20260930
@@ -661,8 +744,21 @@
         "firstForm": 0,
         "broken": 0
       }
+    },
+    "sent": {
+      "all": {
+        "values": 120,
+        "sent": 55
+      }
     }
   },
+  "knownFailing": [
+    {
+      "part": "glued-literal",
+      "sent": 3,
+      "why": "a secret after a credential word and a placeholder-shaped text with a space in it (`password: [pan 1]<password>`) is sent as written; bug-log 61, left unfixed after two fixes each sent values that are redacted today (ADR-038, final amendment)."
+    }
+  ],
   "history": [
     {
       "date": "2026-09-30",
@@ -850,6 +946,42 @@
       "note": "ADR-037: glued-literal shape added (108 values glued to placeholder-shaped text, bug-log 58's class); dataset change only, detectors unchanged",
       "changes": [
         "generated shape glued-literal: over-redactions 35 -> 41"
+      ]
+    },
+    {
+      "date": "2026-10-03",
+      "note": "ADR-038: keyword-in-literal shape added (96 values whose only keyword is inside a placeholder; dataset change); glued-literal echo restored 222 -> 225 is bug-log 61's fix (detection reads no value in a literal)",
+      "changes": [
+        "generated shape keyword-in-literal: 0 values -> 96",
+        "generated echo keyword-in-literal: 0 messages -> 96"
+      ]
+    },
+    {
+      "date": "2026-10-06",
+      "note": "ADR-038 (reversed, 2026-10-07): masking undone, bug 61 left unfixed as a known limitation; the glued-literal echo loses the 3 SECRET placeholders of its 3 values that are now sent (bug-log 61)",
+      "changes": [
+        "generated echo glued-literal: restored 225 -> 222"
+      ]
+    },
+    {
+      "date": "2026-10-06",
+      "note": "ADR-040: first count of labelled personal values sent as written (pre-registered in 58229f2)",
+      "changes": [
+        "generated sent main: 0 values -> 1683",
+        "generated sent line-break: 0 values -> 120",
+        "generated sent message-split: 0 values -> 120",
+        "generated sent side-by-side: 0 values -> 80",
+        "generated sent digit-beside: 0 values -> 40",
+        "generated sent contained: 0 values -> 70",
+        "generated sent joined-digits: 0 values -> 30",
+        "generated sent short-id: 0 values -> 459",
+        "generated sent contact-sheet: 0 values -> 120",
+        "generated sent misaligned-sheet: 0 values -> 132",
+        "generated sent in-markup: 0 values -> 90",
+        "generated sent names: 0 values -> 612",
+        "generated sent glued-literal: 0 values -> 108",
+        "generated sent keyword-in-literal: 0 values -> 96",
+        "held-out sent all: 0 values -> 120"
       ]
     }
   ]

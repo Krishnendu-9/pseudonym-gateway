@@ -17,9 +17,12 @@
 // The echo measurement (ADR-033) is held the same way, part by part:
 // restored placeholders may only go up; what a rule held back, later
 // mentions restored in their first form, and broken round trips may only
-// go down.
+// go down. So is the count of values sent as written (ADR-040): it may only
+// go down. Its known-failing entries are written by hand and kept by every
+// update; run.ts checks them against each run.
 
 import type { EchoScore } from './echo.js';
+import type { KnownFailing, SentScore } from './sent.js';
 import type { DatasetScore, ShapeScore, TypeScore } from './score.js';
 import { PERSONAL_TYPES, type PersonalType } from './types.js';
 import { HELD_BACK_RULES } from '../src/redaction/restore.js';
@@ -36,6 +39,11 @@ export interface StoredDataset {
    * Absent before it existed.
    */
   readonly echo?: Readonly<Record<string, EchoScore>>;
+  /**
+   * Personal values sent as written (ADR-040), by the same parts as the
+   * echo. Absent before it existed.
+   */
+  readonly sent?: Readonly<Record<string, SentScore>>;
 }
 
 /** A type's row, or an empty one for a type the stored dataset predates. */
@@ -58,6 +66,11 @@ export interface Baseline {
   readonly generated: StoredDataset & { readonly seed: number };
   /** Null until the held-out set has cases. */
   readonly heldOut: StoredDataset | null;
+  /**
+   * Parts of the generated set where values are known to be sent, and why
+   * (ADR-040). Written by hand; a run never writes it, and keeps it.
+   */
+  readonly knownFailing?: readonly KnownFailing[];
   /** Every time a worse count or a changed dataset was accepted, and why. */
   readonly history: readonly {
     readonly date: string;
@@ -196,6 +209,35 @@ export function compareEcho(
 }
 
 /**
+ * Compares one dataset's sent count (ADR-040) with its stored one: values
+ * sent as written may only go down. A part that appears or disappears, or
+ * whose number of values moved, is a changed dataset; that is also how the
+ * count's first run is recorded.
+ */
+export function compareSent(
+  name: string,
+  stored: Readonly<Record<string, SentScore>> | undefined,
+  current: Readonly<Record<string, SentScore>> | undefined,
+): Comparison {
+  const worse: string[] = [];
+  const better: string[] = [];
+  const changed: string[] = [];
+  const parts = new Set([...Object.keys(stored ?? {}), ...Object.keys(current ?? {})]);
+  for (const part of parts) {
+    const before = stored?.[part];
+    const now = current?.[part];
+    if (!before || !now || before.values !== now.values) {
+      changed.push(`${name} sent ${part}: ${before?.values ?? 0} values -> ${now?.values ?? 0}`);
+      continue;
+    }
+    if (before.sent === now.sent) continue;
+    const line = `${name} sent ${part}: sent as written ${before.sent} -> ${now.sent}`;
+    (now.sent < before.sent ? better : worse).push(line);
+  }
+  return { worse, better, changed };
+}
+
+/**
  * Whether the held-out set is scored in this run. While it is being written
  * it has no baseline and is only linted; it is measured from the moment its
  * author asks for the first measurement, and on every run after that.
@@ -220,12 +262,14 @@ export function verdict(comparison: Comparison): Verdict {
 const stored = (
   score: DatasetScore,
   echo: Readonly<Record<string, EchoScore>> | undefined,
+  sent: Readonly<Record<string, SentScore>> | undefined,
 ): StoredDataset => ({
   cases: score.cases,
   messages: score.messages,
   types: score.types,
   ...(Object.keys(score.shapes).length > 0 ? { shapes: score.shapes } : {}),
   ...(echo ? { echo } : {}),
+  ...(sent ? { sent } : {}),
 });
 
 export interface Measurement {
@@ -235,14 +279,20 @@ export interface Measurement {
     readonly seed: number;
     /** By part (`main`, then each shape); absent in a run that does not echo. */
     readonly echo?: Readonly<Record<string, EchoScore>>;
+    /** Values sent as written (ADR-040), by the same parts as the echo. */
+    readonly sent?: Readonly<Record<string, SentScore>>;
   };
   readonly heldOut: DatasetScore | undefined;
   /** The held-out set's echo, one total. */
   readonly heldOutEcho?: EchoScore;
+  /** The held-out set's sent count, one total. */
+  readonly heldOutSent?: SentScore;
 }
 
 const heldOutEcho = (now: Measurement): Record<string, EchoScore> | undefined =>
   now.heldOutEcho ? { all: now.heldOutEcho } : undefined;
+const heldOutSent = (now: Measurement): Record<string, SentScore> | undefined =>
+  now.heldOutSent ? { all: now.heldOutSent } : undefined;
 
 /** How a fresh measurement differs from the baseline (everything is new if there is none). */
 export function compareAll(previous: Baseline | undefined, now: Measurement): Comparison {
@@ -257,6 +307,8 @@ export function compareAll(previous: Baseline | undefined, now: Measurement): Co
     compare('held-out', previous.heldOut, now.heldOut),
     compareEcho('generated', previous.generated.echo, now.generated.echo),
     compareEcho('held-out', previous.heldOut?.echo, heldOutEcho(now)),
+    compareSent('generated', previous.generated.sent, now.generated.sent),
+    compareSent('held-out', previous.heldOut?.sent, heldOutSent(now)),
   );
 }
 
@@ -286,8 +338,12 @@ export function nextBaseline(
   }
   return {
     measuredOn: now.date,
-    generated: { ...stored(now.generated.score, now.generated.echo), seed: now.generated.seed },
-    heldOut: now.heldOut ? stored(now.heldOut, heldOutEcho(now)) : null,
+    generated: {
+      ...stored(now.generated.score, now.generated.echo, now.generated.sent),
+      seed: now.generated.seed,
+    },
+    heldOut: now.heldOut ? stored(now.heldOut, heldOutEcho(now), heldOutSent(now)) : null,
+    ...(previous?.knownFailing ? { knownFailing: previous.knownFailing } : {}),
     history,
   };
 }
