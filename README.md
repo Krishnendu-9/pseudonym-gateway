@@ -3,12 +3,14 @@
 **An OpenAI-compatible privacy gateway that pseudonymises personal data before it
 reaches an LLM, and restores it in the reply.**
 
-> **Status: work in progress (Phase 5 of 8 done: detection, the gateway,
-> streaming and the evaluation are built, and a CI workflow runs the checks,
-> tests and evaluation; person names can be switched on, off by default:
-> the model runs inside the gateway and reproduces its published
-> measurement exactly; CI does not run it yet).** Not ready for production
-> use.
+> **Status: work in progress (Phase 6 of 8 done: detection, the gateway,
+> streaming, the evaluation and person names are built, and a CI workflow
+> runs the checks, tests and evaluation. Person names can be switched on,
+> off by default: the model runs inside the gateway, reproduces its
+> published measurement exactly on the CPU it was measured on and on an AMD
+> EPYC 7763, and differs by one detection in 933 on two Intel Xeon models;
+> a separate workflow checks it on GitHub's runners by hand and daily,
+> against each CPU model's own baseline).** Not ready for production use.
 > Pseudonym runs as a gateway: `POST /v1/chat/completions` (OpenAI format,
 > streaming and non-streaming) redacts emails, phone numbers, Aadhaar, PAN,
 > card numbers, UPI IDs, IFSC codes, IP addresses, API keys in known formats, secrets written after a
@@ -443,7 +445,10 @@ eval:names` sends the 1,998 measured messages through it and compares
   in a separate process (ADR-037, step 4b).
 - **Install:** the runtime (`onnxruntime-node` 1.30.0,
   `@huggingface/tokenizers` 0.2.0) is an exact optional dependency, about
-  302 MB on Windows and 301 MB of it on Linux, never loaded with names off;
+  302 MB on Windows and 301 MB of it on Linux, never loaded with names off
+  (on Linux x64 set `ONNXRUNTIME_NODE_INSTALL=skip` when installing, or its
+  install script also downloads 273 MB of GPU libraries that names never
+  load: measured, ADR-036);
   the model comes from `npm run fetch:model` (178.5 MB), kept only if its
   SHA-256 matches, and checked again at start-up: with names on, the
   gateway refuses to start if the list, a file or the runtime is wrong or
@@ -461,20 +466,25 @@ eval:names` sends the 1,998 measured messages through it and compares
     boundary;
   - **differed slightly** on another runner's **Intel Xeon Platinum
     8573C**, on the same Linux as the EPYC run, so not because of the
-    operating system. Its figures, beside the published ones, never in
-    their place:
+    operating system, and identically on a fourth runner's **Intel Xeon
+    6973P-C**. Their figures, beside the published ones, never in their
+    place:
 
-    | Generated set (1,998 messages)  | i5-12450H and EPYC 7763 | Xeon Platinum 8573C |
-    | ------------------------------- | ----------------------- | ------------------- |
-    | Names found (612)               | 501 (81.8%)             | 502 (82.0%)         |
-    | Detections, precision           | 933, 70.8%              | 934, 70.8%          |
-    | False positives per 1,000 words | 5.85                    | 5.85                |
-    | Held-out (45)                   | 41 (i5-12450H only)     | not run (spent)     |
+    | Generated set (1,998 messages)  | i5-12450H and EPYC 7763 | Xeon Platinum 8573C and Xeon 6973P-C |
+    | ------------------------------- | ----------------------- | ------------------------------------ |
+    | Names found (612)               | 501 (81.8%)             | 502 (82.0%)                          |
+    | Detections, precision           | 933, 70.8%              | 934, 70.8%                           |
+    | False positives per 1,000 words | 5.85                    | 5.85                                 |
+    | Held-out (45)                   | 41 (i5-12450H only)     | not run (spent)                      |
 
-  - The difference is small (one detection in 933, a correct name). The
-    likely reason, not shown: the Xeon has AVX-512 and AMX and the other
-    two do not, and the runtime picks its compute kernels by instruction
-    set. The held-out figure stays the i5-12450H's. **Not yet:** CI on
+  - Four CPUs, two answers: the two without AVX-512 agree with each other,
+    and the two with AVX-512 and AMX agree with each other, byte for byte.
+    The difference is small (one detection in 933, a correct name). The
+    likely reason: the runtime picks its compute kernels by instruction
+    set. That explanation predicted the Xeon 6973P-C's result before it was
+    looked at, and held; it is still **not shown**, since no run has looked
+    at which kernels were chosen. The held-out figure stays the
+    i5-12450H's. **Not yet:** CI on
     every push. The Names workflow runs by hand and once a day, comparing
     each run with its own CPU model's baseline (a CPU with none yet passes
     with a warning until one is committed), until a rule set in advance
@@ -760,9 +770,10 @@ machine.
 | **Held-out** (separate session, run once, never tuned on) | **41/45 (91.1%)**   | 79.3–96.5%   | 41/46 (89.1%)   |
 
 Both rows were measured on the Intel Core i5-12450H. The generated row is
-reproduced exactly on an AMD EPYC 7763 and differs slightly on an Intel
-Xeon Platinum 8573C (502/612, 662/934); the held-out row is not re-run on
-any other CPU ([Person names](#person-names)).
+reproduced exactly on an AMD EPYC 7763 and differs slightly, and
+identically, on an Intel Xeon Platinum 8573C and an Intel Xeon 6973P-C
+(502/612, 662/934); the held-out row is not re-run on any other CPU
+([Person names](#person-names)).
 
 The held-out figure is the one to quote: the generated set and the
 detector configuration share an author, while the held-out set was

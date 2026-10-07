@@ -57,6 +57,7 @@ import {
   outcomeLines,
   parseIndex,
   textsSha256,
+  withholdResults,
   type NamesBaseline,
 } from './names/gateway.js';
 import { LATENCY_SIZES_KIB, median, speedText } from './names/latency.js';
@@ -94,6 +95,13 @@ const reference = readJson(REFERENCE) as NamesBaseline;
 const cpuModel = cpus()[0]?.model.trim() ?? 'unknown CPU';
 const entry = baselineFor(parseIndex(readJson(INDEX)), cpuModel);
 const baseline = entry && (readJson(join(REPO, 'eval', entry.file)) as NamesBaseline);
+// On a CPU model with no baseline, measurements stay out of the log (they
+// go to names-result.json), so that its predicted group can be committed
+// before anyone sees them (ADR-036, the standing step for a new CPU).
+const blind = withholdResults(entry);
+const show = (line = ''): void => {
+  if (!blind) write(line);
+};
 const cases = firstMessages(generateCases(), reference.dataset.messages);
 const texts = messageTexts(cases);
 const mib = (bytes: number): string => `${(bytes / 2 ** 20).toFixed(0)} MiB`;
@@ -143,7 +151,7 @@ if (!args['no-speed']) {
   await timed(speedText(texts, WARM_UP_BYTES));
   const full = speedText(texts, SPEED_BYTES);
   msPerKiB = (await timed(full)) / (Buffer.byteLength(full) / 1024);
-  write(`Speed: ${msPerKiB.toFixed(1)} ms per KiB on ${Buffer.byteLength(full)} bytes.`);
+  show(`Speed: ${msPerKiB.toFixed(1)} ms per KiB on ${Buffer.byteLength(full)} bytes.`);
   for (const kib of LATENCY_SIZES_KIB) {
     const runs: number[] = [];
     for (let rep = 0; rep < LATENCY_REPS; rep++) {
@@ -151,8 +159,8 @@ if (!args['no-speed']) {
     }
     latency[kib] = median(runs)!;
   }
-  write(
-    `Added latency (median of ${LATENCY_REPS}): ${LATENCY_SIZES_KIB.map((k) => `${k} KiB ${Math.round(latency[k]!)} ms`).join(', ')}.`,
+  show(
+    `Added latency (median of ${LATENCY_REPS}):${LATENCY_SIZES_KIB.map((k) => `${k} KiB ${Math.round(latency[k]!)} ms`).join(', ')}.`,
   );
 }
 
@@ -232,24 +240,28 @@ const repeat = {
 const m = measured.metrics;
 const pct = (c: { hit: number; of: number }): string =>
   `${c.hit}/${c.of} (${(Math.floor(share(c) * 1000) / 10).toFixed(1)}%)`;
-write();
-write(
+show();
+show(
   `Messages: ${texts.length} (${cases.length} cases), through the server in ${Math.round(setMs / 1000)} s.`,
 );
 const against = (hash: string | undefined): string =>
   hash === undefined ? 'no baseline for this CPU' : `baseline ${hash.slice(0, 16)}…`;
-write(`B's spans:  ${measured.spans.model} (${against(baseline?.spans.model)})`);
-write(`Names:      ${measured.spans.names} (${against(baseline?.spans.names)})`);
-write(
+show(`B's spans:  ${measured.spans.model} (${against(baseline?.spans.model)})`);
+show(`Names:      ${measured.spans.names} (${against(baseline?.spans.names)})`);
+show(
   `Second pass: B's spans ${repeat.model.slice(0, 16)}…, names ${repeat.names.slice(0, 16)}… (must equal the first).`,
 );
-write(
+show(
   `Detections ${measured.detections}; R ${pct(m.recall)}; main PERSON ${pct(m.main)}; precision ${pct(m.precision)}; ${fpPer1000(m).toFixed(2)} per 1,000 words.`,
 );
-write(
+show(
   `Memory: ${mib(loadedRss - baseRss)} more resident after the model started; peak ${mib(peakRss - baseRss)} over the run (6a's measure); process peak ${mib(peakRss)}.`,
 );
-write(`Event loop: longest delay ${(delay.max / 1e6).toFixed(0)} ms while the messages ran.`);
+show(`Event loop: longest delay ${(delay.max / 1e6).toFixed(0)} ms while the messages ran.`);
+if (blind) {
+  write();
+  write('Results withheld from this log (a CPU model with no baseline): see names-result.json.');
+}
 const result = outcome(measured, repeat, baseline);
 // Hashes and counts only, never a text: a new CPU's baseline is committed from it.
 writeFileSync(
@@ -267,6 +279,12 @@ writeFileSync(
       outcome: result,
       secondPass: repeat,
       measured,
+      // Machine figures, also withheld from the log on a new CPU.
+      speed: { msPerKiB: msPerKiB ?? null, latencyMedianMs: latency },
+      memory: {
+        afterStartMiB: Math.round((loadedRss - baseRss) / 2 ** 20),
+        peakAddedMiB: Math.round((peakRss - baseRss) / 2 ** 20),
+      },
     },
     null,
     2,

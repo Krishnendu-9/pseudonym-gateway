@@ -17,6 +17,7 @@ import {
   outcomeLines,
   parseIndex,
   textsSha256,
+  withholdResults,
   type NamesBaseline,
 } from '../../../../eval/names/gateway.js';
 import type { Metrics } from '../../../../eval/names/measure.js';
@@ -216,9 +217,16 @@ describe('the outcome of a run (C1 and C3)', () => {
     expect(exitCode(o)).toBe(0);
     const lines = outcomeLines(o, 'CPU Y');
     expect(lines[0]).toContain('NEW CPU: no baseline for "CPU Y"');
-    expect(lines[0]).toContain('names-result.json');
-    expect(lines[1]).toContain('two separate runs on this CPU model that agree');
-    expect(lines[1]).toContain('then a human commit');
+    expect(lines[0]).toContain('withheld from this log');
+    expect(lines[1]).toContain('Before opening names-result.json');
+    expect(lines[1]).toContain('predicted group');
+    expect(lines[2]).toContain('two separate runs on this CPU model that agree');
+    expect(lines[2]).toContain('then a human commit');
+  });
+
+  it('results are withheld from the log exactly when the CPU model has no baseline', () => {
+    expect(withholdResults(undefined)).toBe(true);
+    expect(withholdResults({ file: 'names-baseline.json', source: 's' })).toBe(false);
   });
 
   it('two passes that disagree on either hash: not repeatable, exit 1, whatever the baseline says', () => {

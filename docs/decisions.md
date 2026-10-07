@@ -4701,6 +4701,19 @@ written here, and the Docker build follows the same choice. Not
 every package's install script, the second would put a file in CI that
 no lockfile pins.
 
+> **Verified in Phase 6c (2026-10-07), and the setting does real work.**
+> With the skip, on Linux (a Docker container on the i5-12450H and three
+> GitHub runner jobs): the two files are present, no provider library is
+> fetched, `onnxruntime-node` is 301,068,136 bytes, and the names tests and
+> `eval:names` run on B (both checks pass; the fallback was not needed).
+> Without it (Names run #4, `default`): the install script downloads the
+> CUDA, TensorRT and shared provider libraries, **273,153,528 bytes more**
+> (574,221,664 in all; the CUDA provider alone 272,054,000), and none of
+> them is ever loaded. So `ONNXRUNTIME_NODE_INSTALL: skip` in CI's `npm ci`
+> and in the Names workflow saves **about 273 MB of NuGet download and disk
+> per install** on linux/x64, and takes NuGet out of CI's dependencies. It
+> is not a no-op. The figures are in "Step 4b … the GitHub runners", below.
+
 **The runtime is pinned exactly, with a bump procedure.** `package.json`
 lists `onnxruntime-node` as `"1.30.0"`, no caret and no tilde (and
 `@huggingface/tokenizers` as `"0.2.0"`), and `package-lock.json` records
@@ -5521,6 +5534,7 @@ from the runs' logs (I cannot read the run logs from here):
 | Names #1          | AMD EPYC 7763 64-Core (4 CPUs)           | `96a5c328…` | `ba1a6b82…` | 933        | 501 of 612 (81.8%) | 661 of 933 (70.8%) | 5.85               | **identical**        |
 | Names #2          | Intel Xeon Platinum 8573C (4 CPUs)       | `d1f611f0…` | `46dd8ff3…` | 934        | 502 of 612 (82.0%) | 662 of 934 (70.8%) | 5.85               | **different**        |
 | Names #3          | AMD EPYC 7763 64-Core (4 CPUs)           | `96a5c328…` | `ba1a6b82…` | 933        | 501 of 612 (81.8%) | 661 of 933 (70.8%) | 5.85               | **identical**        |
+| Names #4          | Intel Xeon 6973P-C (4 CPUs)              | `d1f611f0…` | `46dd8ff3…` | 934        | 502 of 612 (82.0%) | 662 of 934 (70.8%) | as #2 (same names) | new CPU (= #2)       |
 
 Run #2 in full: B's spans
 `d1f611f06ea88b2feaa2bfdb5e8164bede8cafe8a905503e185b99f6f654bbfb`, names
@@ -5570,6 +5584,41 @@ identical spans on three of them and slightly different spans on one:
   been deterministic wherever it was run more than once: on the
   i5-12450H, 9 runs, the same spans every time. The Xeon and the EPYC have
   one run each so far.
+- **The hypothesis, tested on a fourth machine (Names run #4, 2026-10-07).
+  The prediction first, then its test; the order is the point.**
+  - _The prediction:_ from the three CPUs above, the instruction-set
+    hypothesis says a CPU with AVX-512 and AMX should give the Xeon
+    Platinum 8573C's spans, not the baseline's. Run #4 landed on an
+    **Intel Xeon 6973P-C**, an AVX-512 and AMX part, and the user predicted,
+    **before `names-result.json` was opened**, that it would match the
+    8573C rather than the baseline. **This prediction's provenance is
+    weaker than the rest of this ADR's:** it was made in chat and not
+    committed before the result was opened, unlike every pre-registration
+    here. That was the user's omission, as the user records it. The
+    standing step below makes the next one a committed pre-registration.
+  - _The test:_ it matched the 8573C **byte for byte**: B's spans
+    `d1f611f0…`, names `46dd8ff3…`, 934 detections, 502 of 612, precision
+    662 of 934, main 145 of 153; its second pass identical to both. With no
+    baseline for its model, its outcome was NEW CPU (exit 0).
+  - **So the hypothesis has predicted a fourth machine out of sample, and
+    held.** It is still **not shown**: no run has looked at which kernels
+    the runtime selected, and agreeing with a prediction is evidence for
+    the explanation, not a demonstration of it.
+  - **Two stable groups, not per-CPU variation.** The two AVX2-class parts
+    (i5-12450H, EPYC 7763) give one pair of hashes; the two AVX-512 and
+    AMX parts (Xeon Platinum 8573C, Xeon 6973P-C) give the other, identical
+    to each other across two CPU generations. Four CPUs, two answers. That
+    is what the hypothesis predicts; it is also why C1 still keys by CPU
+    model and not by group (above): the grouping is the hypothesis's, and a
+    fifth CPU is checked against its own observed result, not against the
+    group the theory assigns it.
+  - **The CUDA libraries were on disk and changed nothing.** #4 used the
+    `default` install, so the CUDA, TensorRT and shared provider libraries
+    were installed (below), and its spans still equalled the 8573C's, a
+    `skip`-equivalent run, exactly. The code-reading argument that only the
+    runtime's built-in CPU provider runs (the session is created with an
+    empty provider list) is now **measured**: providers on disk did not
+    change one span.
 
 **Which install the runs used.** Neither run's input is in what
 `eval:names` prints (it shows the variable as its own process sees it,
@@ -5590,6 +5639,17 @@ stopping rule. **It could not have affected the spans either way:**
 empty provider list (`resolveBackendAndExecutionProviders` in
 `onnxruntime-common`) and runs on its built-in CPU provider only, so CUDA
 libraries on disk are never loaded.
+
+**Measured (Names run #4, `default` input, 2026-10-07): a `default`
+install on linux/x64 does fetch the CUDA libraries.** The claim above was
+read from the package's metadata; #4 measured it true. `onnxruntime-node`
+was **574,221,664 bytes** (by `du -sb`), against 301,068,136 with `skip`:
+**273,153,528 bytes (about 273 MB) more**, including
+`libonnxruntime_providers_cuda.so` 272,054,000,
+`libonnxruntime_providers_tensorrt.so` 1,084,896 and
+`libonnxruntime_providers_shared.so` 14,632. And with those libraries on
+disk the spans were unchanged from a `skip`-equivalent run on the same
+kind of CPU (the 8573C's, above), so "never loaded" is measured too.
 
 **The comparison between runs #1 and #2 is controlled on everything but
 the CPU model:** the same kernel, distribution, C library and runner
@@ -5629,6 +5689,37 @@ instruction set would silently pass a CPU that has the same instruction
 sets but chooses other kernels. **Do not "simplify" the keying to match
 the theory**: the instruction-set explanation belongs here, as the likely
 explanation, not in the code.
+
+### Standing step: a new CPU's predicted group is committed before its result is opened (the user, 2026-10-07)
+
+New CPU models keep appearing on GitHub's runners, and each is a chance
+to test the instruction-set hypothesis out of sample. Run #4's test
+depended on someone remembering to predict first, and the prediction was
+not committed. From now on it is a standing step:
+
+1. **The run keeps its results out of the log.** On a CPU model with no
+   baseline, `eval:names` prints the machine line (OS, CPU model, Node) and
+   nothing it measured: no hash, no count, no speed, no memory. Everything
+   goes to `names-result.json` (`withholdResults` in
+   `eval/names/gateway.ts`; shown on this machine by running it with its
+   own model removed from the index: only the machine line and the
+   instructions were printed).
+2. **Before opening `names-result.json`**, write into this ADR, for that
+   CPU model: its instruction-set facts that bear on the hypothesis
+   (AVX-512, AMX), with the public source they come from, and the
+   **predicted group**: the i5-12450H / EPYC 7763 hashes (`96a5c328…` /
+   `ba1a6b82…`), or the Xeon Platinum 8573C / Xeon 6973P-C hashes
+   (`d1f611f0…` / `46dd8ff3…`). If the facts cannot be found, the entry
+   says "no prediction" rather than guessing.
+3. **Commit that entry** (and push it) before the file is opened.
+4. Then open the file and record the result against the committed
+   prediction: held, failed, or a third pair of hashes. **A failed
+   prediction is a result against the hypothesis**, recorded as one; it
+   changes nothing about the keying, which is by CPU model (C1) precisely
+   so that it does not depend on the hypothesis.
+
+The step does not replace the minting rule: a predicted and confirmed
+group is still no baseline until two counted runs on that model agree.
 
 ### C1 and C3 as built (Phase 6c, 2026-10-07)
 
@@ -5805,7 +5896,7 @@ pair of hashes every time**. Amended accordingly; everything else stands:
   output, so **#3 is pending on the same question, not separately
   disqualified**. A provisional reading would be 2 of 10 (#1 on the EPYC
   7763, #2 on the Xeon Platinum 8573C) with #3 pending, but no number is
-  settled until the run below.
+  settled until the run below. **Settled by that run (#4): 3 of 10, below.**
 
 #### Pre-registered: the `default` run decides all three (the user, 2026-10-07; written and committed before that run)
 
@@ -5840,6 +5931,37 @@ measurement means for evidence about inputs that the logs did not keep.
 that costs every counted run so far** (0 of 10). Whichever it gives is
 applied as written.
 
+**Result (Names run #4, 2026-10-07): branch 1, applied as written.** The
+`default` run installed CUDA libraries: `libonnxruntime_providers_cuda.so`
+(272,054,000 bytes), `libonnxruntime_providers_tensorrt.so` (1,084,896)
+and `libonnxruntime_providers_shared.so` (14,632) appeared in the package's
+`bin` folder, `onnxruntime-node` 574,221,664 bytes against 301,068,136.
+So "no CUDA on disk" means the input was `skip`, and **#1, #2 and #3 all
+count**. **Tally: 3 of 10 counted, on two CPU models: AMD EPYC 7763 2
+(#1, #3), Intel Xeon Platinum 8573C 1 (#2).** Run #4 itself does not
+count (a `default` run), and its CPU, the Intel Xeon 6973P-C, has no
+baseline, so it checked nothing against one (outcome NEW CPU). In the
+close-out's terms so far: 4 runs, 3 counted on two models, 1 uncounted
+(`default`, on an unbaselined CPU), 0 incomplete. The outcome that would
+have cost all three counted runs was not the one measured; nothing was
+chosen after the fact.
+
+**What each CPU model still needs** (the rule for minting a baseline,
+above: two completed counted runs in separate jobs, each with its own
+second pass, identical):
+
+| CPU model                 | Counted runs | With their own second pass | Baseline                               | Needs                                         |
+| ------------------------- | ------------ | -------------------------- | -------------------------------------- | --------------------------------------------- |
+| Intel Core i5-12450H      | (local)      | (local, many)              | `names-baseline.json`                  | nothing                                       |
+| AMD EPYC 7763             | 2 (#1, #3)   | 1 (#3; #1 predates C3)     | the i5's (in the index, not confirmed) | one more counted run with its own second pass |
+| Intel Xeon Platinum 8573C | 1 (#2)       | 0 (#2 predates C3)         | none                                   | two counted runs with their own second pass   |
+| Intel Xeon 6973P-C        | 0            | 0 (#4 had one, uncounted)  | none                                   | two counted runs with their own second pass   |
+
+#4's result cannot mint the 6973P-C's baseline, because a `default` run
+never counts. If the 8573C and the 6973P-C are minted with identical
+results, each still gets its own entry in the index (C1 keys by model;
+they may share one file, as the i5 and the EPYC do).
+
 **Daily, and temporary (the user, 2026-10-07).** The workflow runs once a
 day as well as by hand (`schedule`, 04:23 UTC; a scheduled run installs
 with `skip`, so it counts). Daily, not weekly: at one run a week, about six
@@ -5853,12 +5975,15 @@ is outside the project's control.
 2026-10-07).** When the work on this project finishes:
 
 1. Record here **every run, not only the counted ones**: the total, then
-   how many were counted (compared with a committed baseline for their CPU
-   model) on how many models, and how many **checked nothing** because
-   their CPU model had no baseline (the NEW CPU outcome, which exits 0), by
-   model, and any that did not complete. For example: "17 runs: 11 counted
-   on two models, 6 on an unbaselined CPU (Xeon Platinum 8573C), 0
-   incomplete". With each run's CPU model and two hashes, and which
+   how many were counted (by the rule's own definition, "What counts"
+   above: a completed run with the `skip` input) on how many models, and
+   how many **checked nothing** because their CPU model had no baseline
+   (the NEW CPU outcome, which exits 0), by model, and any that did not
+   complete. For example: "17 runs: 11 counted on two models, 6 on an
+   unbaselined CPU (Xeon Platinum 8573C), 0 incomplete". **For each counted
+   run, also whether it was checked against its own CPU model's
+   baseline** (a counted run on a model with no baseline yet counts, and
+   checked nothing). With each run's CPU model and two hashes, and which
    models' baselines were committed and when. The reason: an unknown CPU
    passes with an annotation nobody reads on a daily scheduled job, so a
    change in GitHub's fleet could produce weeks of green runs that checked
@@ -5870,6 +5995,35 @@ is outside the project's control.
 4. **The rule is not loosened to fit whatever was collected, and it is not
    dropped.** Fewer runs than required is recorded as fewer runs than
    required, not as a smaller threshold.
+
+**Corrected 2026-10-07 (after run #4):** step 1 first said "counted
+(compared with a committed baseline for their CPU model)". That
+parenthesis was mine, a restatement, and it disagreed with the rule it
+summarised: by it, run #2 would not count (the Xeon Platinum 8573C has no
+baseline of its own; #2 was compared with the i5-12450H's, before C1),
+while by the rule's definition it does. The parenthesis is replaced by the
+rule's definition; nothing in the rule changed.
+
+**The principle, stated generally: when a later summary and the
+pre-registered text disagree, the rule wins and the summary is corrected,
+never the reverse.** That is how a pre-registration erodes in practice: not
+by an amendment, which is dated and argued, but by a convenient
+restatement further down the page that a later reader takes for the rule.
+Every summary in this ADR of a pre-registered rule (tallies, close-out
+steps, README and user-manual sentences) is read against the rule it
+summarises, and where they differ, the summary is the one that changes.
+
+**Counted runs so far, and what each was checked against:**
+
+| Run | CPU model                 | Input                   | Counted | Checked against its own model's baseline                                               |
+| --- | ------------------------- | ----------------------- | ------- | -------------------------------------------------------------------------------------- |
+| #1  | AMD EPYC 7763             | `skip` (by inference)   | yes     | no: compared with the i5-12450H's baseline, before C1 gave the EPYC an entry           |
+| #2  | Intel Xeon Platinum 8573C | `skip` (by inference)   | yes     | no: compared with the i5-12450H's baseline, before C1; the 8573C still has no baseline |
+| #3  | AMD EPYC 7763             | `skip` (by inference)   | yes     | yes: the EPYC's entry in the index (C1), which points to the i5's file                 |
+| #4  | Intel Xeon 6973P-C        | `default` (measurement) | no      | no: no baseline for its model (NEW CPU)                                                |
+
+The three "by inference" inputs rest on the pre-registered conditional,
+settled by #4 (branch 1). From run #5 on, each run prints its input.
 
 <a id="adr-037"></a>
 

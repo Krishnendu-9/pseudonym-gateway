@@ -1301,7 +1301,11 @@ cost: they are slow, and they wrongly redact some ordinary words.
 1. Install the default way (`npm install` or `npm ci`): the runtime
    (`onnxruntime-node` 1.30.0, `@huggingface/tokenizers` 0.2.0) comes as an
    optional dependency, about 302 MB on Windows. `--omit=optional` leaves
-   it out; with names on, the gateway then refuses to start.
+   it out; with names on, the gateway then refuses to start. **On Linux
+   x64**, install with `ONNXRUNTIME_NODE_INSTALL=skip` set (as CI does):
+   without it the runtime's install script also downloads about 273 MB of
+   GPU provider libraries from NuGet, which names never load (measured,
+   ADR-036).
 2. `npm run fetch:model`: four files, 178.5 MB, from a pinned commit of
    `Xenova/bert-base-multilingual-cased-ner-hrl`, each kept only if its
    SHA-256 matches (licence: the step 4a section above).
@@ -1336,8 +1340,8 @@ block **501 found (81.8%)**; in the main cases 145 of 153. On the held-out
 set, run once: **41 of 45**. On that CPU every name the gateway finds on
 the generated set is exactly what the measurement found: `npm run
 eval:names` checks it, span by span. So does an AMD EPYC 7763; an Intel
-Xeon Platinum 8573C finds one name more ("Which platforms the figures hold
-on", below).
+Xeon Platinum 8573C and an Intel Xeon 6973P-C each find the same one name
+more ("Which platforms the figures hold on", below).
 
 ### What is not found
 
@@ -1422,14 +1426,19 @@ the same comparison, span by span:
   running the same Linux as the EPYC: 502 of 612 found (82.0%) against 501
   (81.8%), 934 detections against 933, precision 70.8% and false positives
   5.85 per 1,000 words in both. One more detection, and it is a correct
-  name.
+  name;
+- **differed in exactly the same way** on a fourth runner's **Intel Xeon
+  6973P-C**: the same names, byte for byte, as the Xeon Platinum 8573C.
 
-The code, the model and every other pinned input were the same, and the
-operating system is ruled out (the EPYC and the Xeon ran the same one), so
-the difference comes with that CPU. The likely reason, not shown: the
-Xeon has wider vector instructions (AVX-512 and AMX) than the other two,
-and the runtime picks its compute kernels by what the CPU has. The
-published figures stay as measured, the Xeon's are reported beside them,
+So four CPUs give two answers: the two without AVX-512 (the i5-12450H and
+the EPYC 7763) agree with each other, and the two with AVX-512 and AMX
+(the two Xeons) agree with each other. The code, the model and every other
+pinned input were the same, and the operating system is ruled out (the
+EPYC and the 8573C ran the same one). The likely reason: the runtime picks
+its compute kernels by the instructions the CPU has. That explanation
+predicted the 6973P-C's result before it was looked at, and held; it is
+still not shown, since no run has looked at which kernels were chosen. The
+published figures stay as measured, the Xeons' are reported beside them,
 and the held-out figure (41 of 45) is not re-run on any other CPU. Speed
 differs a great deal more than the names: 308–332 ms per KiB on the
 i5-12450H under Windows, 450.7 on it under Linux with 4 CPUs, 292.1 on the

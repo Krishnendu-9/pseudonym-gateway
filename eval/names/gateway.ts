@@ -188,8 +188,17 @@ export function outcomeLines(o: Outcome, cpuModel: string, entry?: BaselineEntry
       ];
     case 'new-cpu':
       return [
-        `NEW CPU: no baseline for "${cpuModel}". This run is that CPU model's first result (ADR-036): it passes, and its result is in names-result.json.`,
+        `NEW CPU: no baseline for "${cpuModel}". It passes; its results are withheld from this log and written only to names-result.json.`,
+        'Before opening names-result.json: write the predicted group for this CPU model into ADR-036 and commit it (the standing step for a new CPU).',
         'Its baseline needs two separate runs on this CPU model that agree (ADR-036), then a human commit: copy "measured" from names-result.json into eval/names-baseline-<cpu>.json and add the CPU model to eval/names-baselines.json.',
       ];
   }
 }
+
+/**
+ * Whether this run's results stay out of the log: on a CPU model with no
+ * baseline, so that the prediction for it (ADR-036's standing step) can be
+ * written and committed before anyone sees its hashes, counts or speed.
+ * They are still all written to names-result.json.
+ */
+export const withholdResults = (entry: BaselineEntry | undefined): boolean => entry === undefined;
