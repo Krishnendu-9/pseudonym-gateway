@@ -1,0 +1,6 @@
+{
+  "mode": "calls",
+  "model": "gemini-2.5-flash",
+  "calls": "s1,s2,s3",
+  "startedAt": "2026-10-07T13:33:47.979Z"
+}

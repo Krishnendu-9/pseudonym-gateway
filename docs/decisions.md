@@ -7397,3 +7397,70 @@ Recordings and their metadata are kept byte for byte: the
 `test/fixtures/gemini-7b/` folder is in `.prettierignore`, since
 reformatting Google's bytes would destroy the evidence and leaving them
 would fail `format:check`.
+
+**The model for the run: `gemini-2.5-flash`** (the user's choice,
+2026-10-07), chosen deliberately over the newer Flash models in the list:
+the run measures the protocol, not the model. The 7a reading (section 4)
+found that `reasoning_effort: "none"` turns thinking off only for 2.5
+models, and that thinking "cannot be turned off for Gemini 2.5 Pro or 3
+models"; on a model whose thinking cannot be switched off, the latency
+figures would carry thinking time for no benefit to a protocol
+measurement. It is sent in the **bare form** (`gemini-2.5-flash`), as in
+Gemini's own examples, although the model list gives
+`models/gemini-2.5-flash`; which form the chat endpoint accepts is
+recorded as a finding either way. **A second reason the pick holds:** AI
+Studio's rate-limit page (read by the user, 2026-10-07) shows
+`gemini-2.5-flash` at **5 requests per minute, 250,000 tokens per minute,
+20 requests per day**, and Gemini 2 Flash and Gemini 2.5 Pro at **0 / 0**:
+no free allowance at all.
+
+**The split (decided by the user, 2026-10-07, before any chat call).**
+The day's allowance is 20 requests (it resets at midnight Pacific,
+section 4) and the plan was 18, so the run is split. **First the three
+shape calls only** (`s1` not streamed, `s2` streamed, `s3` streamed with
+`stream_options.include_usage`): they answer P1 and the usage order, which
+this phase exists for; spending the allowance on probes and then finding
+every stream fails would be the wrong order. The run stops after them.
+The probes follow in a later run, from a list proposed with its call
+count before it runs; `reasoning_effort` is trimmed from seven values to
+three (`none`, `medium`, `xhigh`). Spacing: 15 s after each call ends,
+at most 4 a minute, within the 5.
+
+**Pre-registered: the two-form model probe** (written before the run).
+`s1` sends the bare name, `gemini-2.5-flash`. If it is answered **404**,
+exactly one call follows, `s1-prefixed`, identical except for the model
+`models/gemini-2.5-flash`; both are recorded. If the prefixed form also
+fails, the run stops; if it succeeds, `s2` and `s3` use it. **This is not
+a retry:** a retry repeats a failed request hoping for a different
+answer, and the no-retry rule stands. `s1-prefixed` is a different
+request that tests a question stated here in advance (which form of the
+model name does the chat endpoint accept?), and it is made at most once,
+only on a 404, which is the answer that asks the question. Any other
+failure of `s1` is not followed by it.
+
+**Attempt 3 (2026-10-07, 13:33 UTC): stopped after two calls, by the
+pre-registered rule.** `s1` (bare name) was answered **404**, so
+`s1-prefixed` followed once, and was answered **404** too; the run
+stopped before `s2` and `s3`. Both bodies are the same array-shaped error:
+"This model models/gemini-2.5-flash is no longer available to new users.
+Please update your code to use models/gemini-3.8-flash … We recommend you
+to use the Interactions API". Findings:
+
+- **The model-name question is answered, though not the way it was
+  framed:** the bare name reached the same model as the prefixed one (the
+  error for the bare request names `models/gemini-2.5-flash`), so the
+  endpoint accepts both forms; the 404 is about the model's availability
+  to this account, not the name's form.
+- **Neither the model list nor AI Studio's rate-limit page tells whether a
+  model can be used.** `models/gemini-2.5-flash` is in the list (attempt 2) and AI Studio shows it at 5 / 250,000 / 20; it is still refused to a
+  new user.
+- **P1 and the usage order are still untested**: no chat call has
+  succeeded.
+- **The 404 uses the same status as an unknown model** (attempt 1), so a
+  client of the gateway cannot tell "no such model" from "not available to
+  you"; the gateway's 502 `provider_error` (the body is never read) hides
+  both. Recorded, not changed.
+
+Calls to `gemini-2.5-flash` today: 2, both 404. Whether a 404 counts
+against the 20-a-day allowance is not known; AI Studio's usage page would
+show it.

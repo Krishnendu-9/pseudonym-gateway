@@ -3,7 +3,12 @@
 //
 //   npx tsx --env-file=.env scripts/measure-gemini.ts --list-models --out test/fixtures/gemini-7b
 //   npx tsx --env-file=.env scripts/measure-gemini.ts --headers --model <name>
-//   npx tsx --env-file=.env scripts/measure-gemini.ts --model <name> --out test/fixtures/gemini-7b
+//   npx tsx --env-file=.env scripts/measure-gemini.ts --model <name> --out test/fixtures/gemini-7b [--calls s1,s2,s3]
+//
+// `--calls` picks calls by id, so the run can be split to fit a day's
+// allowance (20 requests on the free tier). If `s1` is answered 404 for the
+// bare model name, one call with `models/<name>` follows: the
+// pre-registered two-form probe of ADR-041 section 10, not a retry.
 //
 // The model is named on the command line, never taken from .env (which
 // keeps the local Ollama setup), so the command that produced a recording
@@ -62,6 +67,8 @@ const { values: args } = parseArgs({
     headers: { type: 'boolean', default: false },
     model: { type: 'string' },
     out: { type: 'string' },
+    // Comma-separated call ids (s1,s2,s3): the run is split to fit a day's allowance.
+    calls: { type: 'string' },
   },
 });
 const mode = args['list-models'] ? 'list-models' : args.headers ? 'headers' : 'calls';
@@ -91,7 +98,12 @@ function newAttempt(out: string): string {
     .map(Number);
   const dir = join(out, `attempt-${Math.max(0, ...used) + 1}`);
   mkdirSync(dir);
-  const about = { mode, model: args.model ?? null, startedAt: new Date().toISOString() };
+  const about = {
+    mode,
+    model: args.model ?? null,
+    calls: mode === 'calls' ? (args.calls ?? 'all') : null,
+    startedAt: new Date().toISOString(),
+  };
   writeFileSync(join(dir, 'attempt.json'), `${JSON.stringify(about, null, 2)}\n`);
   return dir;
 }
@@ -190,11 +202,11 @@ globalThis.fetch = async (input, init) => {
   });
 };
 
-const provider = (baseUrl: string) =>
+const provider = (baseUrl: string, modelName: string = model) =>
   createOpenAICompatibleProvider(
     {
       baseUrl,
-      model,
+      model: modelName,
       apiKey: key,
       timeoutMs: TIMEOUT_MS,
       maxResponseBytes: 1_048_576,
@@ -389,38 +401,48 @@ if (mode === 'headers') {
 
 // --- mode 3: the live run ------------------------------------------------
 
+const selected = args.calls?.split(',') ?? CALLS.map((c) => c.id);
+const unknown = selected.filter((id) => !CALLS.some((c) => c.id === id));
+if (unknown.length > 0) {
+  console.error(`unknown call ids: ${unknown.join(', ')}`);
+  process.exit(1);
+}
+const toRun = CALLS.filter((c) => selected.includes(c.id));
 const out = newAttempt(args.out!);
-const adapter = provider(GEMINI_BASE_URL);
-console.log(`model ${model}, ${CALLS.length} calls, ${SPACING_MS / 1000} s apart, into ${out}`);
+console.log(`model ${model}, ${toRun.length} calls, ${SPACING_MS / 1000} s apart, into ${out}`);
 
-for (const [n, call] of CALLS.entries()) {
-  if (n > 0) await sleep(SPACING_MS);
+/** Makes one call and records it; returns the status, or undefined if no answer came. */
+async function measure(
+  call: Call,
+  modelName: string,
+  id: string = call.id,
+): Promise<number | undefined> {
   captured = undefined;
   const started = Date.now();
-  const outcome = await run(adapter, call);
+  const outcome = await run(provider(GEMINI_BASE_URL, modelName), call);
   const record = captured as Captured | undefined;
   await record?.done.catch(() => undefined);
   const ms = Date.now() - started;
   if (!record) {
-    console.log(`${call.id} ${call.what}: no response (${JSON.stringify(outcome)}, ${ms} ms)`);
+    console.log(`${id} ${call.what}: no response (${JSON.stringify(outcome)}, ${ms} ms)`);
     writeFileSync(
-      join(out, `${call.id}.meta.json`),
-      `${JSON.stringify({ ...call, outcome, ms }, null, 2)}\n`,
+      join(out, `${id}.meta.json`),
+      `${JSON.stringify({ ...call, id, model: modelName, outcome, ms }, null, 2)}\n`,
     );
-    continue;
+    return undefined;
   }
   const bytes = Buffer.concat(record.bytes);
   const isSse = /text\/event-stream/i.test(
     record.headers.find(([name]) => name === 'content-type')?.[1] ?? '',
   );
   const ext = isSse ? 'sse' : 'json';
-  writeFileSync(join(out, `${call.id}.response.${ext}`), bytes);
+  writeFileSync(join(out, `${id}.response.${ext}`), bytes);
   const shape = shapeOf(bytes.toString('utf8'), isSse);
   const meta = {
-    id: call.id,
+    id,
     what: call.what,
     recordedOn: new Date().toISOString(),
-    model,
+    model: modelName,
     sentBody: JSON.parse(record.sentBody) as unknown,
     status: record.status,
     responseHeaders: Object.fromEntries(record.headers),
@@ -431,17 +453,46 @@ for (const [n, call] of CALLS.entries()) {
     outcome,
     shape,
   };
-  writeFileSync(join(out, `${call.id}.meta.json`), `${JSON.stringify(meta, null, 2)}\n`);
+  writeFileSync(join(out, `${id}.meta.json`), `${JSON.stringify(meta, null, 2)}\n`);
   console.log(
-    `${call.id} ${call.what}: ${record.status}, ${bytes.length} B, ${ms} ms; ${JSON.stringify(outcome)}; ${JSON.stringify(shape)}`,
+    `${id} ${call.what} (${modelName}): ${record.status}, ${bytes.length} B, ${ms} ms; ${JSON.stringify(outcome)}; ${JSON.stringify(shape)}`,
   );
-  if (record.status === 429) {
-    console.log('429: the run stops here (no retries)');
-    break;
-  }
-  if (record.status !== 200 && record.status !== 400) {
-    console.log(`status ${record.status}: the run stops here`);
-    break;
-  }
+  return record.status;
 }
+
+/** Whether the run goes on after this status (ADR-041 section 10). */
+function goesOn(status: number | undefined): boolean {
+  if (status === 429) {
+    console.log('429: the run stops here (no retries)');
+    return false;
+  }
+  if (status !== undefined && status !== 200 && status !== 400) {
+    console.log(`status ${status}: the run stops here`);
+    return false;
+  }
+  return true;
+}
+
+let liveModel = model;
+let calls = 0;
+for (const call of toRun) {
+  if (calls > 0) await sleep(SPACING_MS);
+  let status = await measure(call, liveModel);
+  calls++;
+  // The pre-registered two-form probe: on a 404 for the bare name, exactly
+  // one call with the prefixed name. Not a retry (ADR-041 section 10).
+  if (call.id === 's1' && status === 404 && !liveModel.startsWith('models/')) {
+    console.log('s1: 404 for the bare name; the pre-registered prefixed probe follows');
+    await sleep(SPACING_MS);
+    liveModel = `models/${model}`;
+    status = await measure(call, liveModel, 's1-prefixed');
+    calls++;
+    if (status !== 200) {
+      console.log('both forms of the model name failed: the run stops here');
+      break;
+    }
+  }
+  if (!goesOn(status)) break;
+}
+console.log(`${calls} chat calls made`);
 globalThis.fetch = realFetch;
