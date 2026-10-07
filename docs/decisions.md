@@ -4247,6 +4247,12 @@ Median of 5 runs (E and Ollama: 3), each on a different stretch of text:
 Event loop blocked up to 161–208 ms at a time by A and B (onnxruntime
 calls on the main thread).
 
+> **Corrected by measurement (2026-10-07, ADR-036 "Step 4b").** These are
+> the longest event-loop delays measured while A and B ran, not delays
+> shown to be caused by inference: with B moved to a worker thread the
+> longest delay was 94–129 ms, in the same range. The runtime runs
+> inference on its own threads.
+
 **Note written AFTER seeing the 6a results (2026-10-03). Not part of the
 pre-registered rule and not a change to it.** Everything above this note
 under "The stopping rule" was fixed before any model ran; this note was
@@ -4293,6 +4299,12 @@ _Why it may still be the right shape, or part of one._
 - The event loop is blocked for up to 208 ms per call whatever the size,
   which affects every concurrent request until inference moves to a
   worker thread.
+
+  > **Contradicted by measurement (2026-10-07, ADR-036 "Step 4b").** Moving
+  > inference to a worker thread did not reduce the longest event-loop
+  > delay (94–129 ms with the thread, 126 ms in-process the same day). The
+  > thread was kept for module isolation and a clean boundary for the
+  > queue and the timeout, not for the event loop.
 
 _Possible shapes, for the user to decide (none adopted):_ an absolute
 limit on added latency at a reference size (for example the median at
@@ -4383,7 +4395,9 @@ registry figures below where they differ. **Built 2026-10-07 (step 4b):**
 the worker thread, B's code moved from the comparison script, and the
 proof that the gateway reproduces 6a's span SHA-256s exactly; "Step 4b",
 at the end of this ADR, with the gateway's measured speed and memory
-(which replace the 325 MiB note for the gateway).
+(which replace the 325 MiB note for the gateway). **Final summary
+of this ADR, and what it leaves for Phase 6c:** "Where this ADR stands at
+the end of Phase 6b", its last section.
 
 **Context.** ADR-035 ships B+F (B =
 `Xenova/bert-base-multilingual-cased-ner-hrl@263e82c06569`, int8, at high
@@ -5207,7 +5221,7 @@ dataset hash, **B's span SHA-256 `96a5c3289a275cf91c4743ade7b5ec2f46c92a1974b9b1
 `ba1a6b82da7c951da9dda75862bdb7656db17f968294f80255b708be0570c7b3` (D0's,
 in D0's format: `{start, end}` per span, recovered by recomputing it from
 the saved 6a spans)**, 933 detections and every metric of ADR-035's B+F
-row. Result, on every run (4 of 4, below): **identical**, field by field: B's
+row. Result, on every run (7 of 7: the four below and three more in the gates, the last on the final code of step 5): **identical**, field by field: B's
 spans, the names, R 501/612 (81.8%), main PERSON 145/153, precision
 661/933, 5.85 per 1,000 words, every row and lookalike count. So the
 published 81.8% describes the spans the gateway produces on this machine,
@@ -5263,14 +5277,26 @@ it overlapped the test runs of this step.
   the gateway.** It is the whole process's resident memory (the thread is
   in the process), so it includes the server and the second JavaScript
   heap a thread has. Well under ADR-035's 1.5 GiB limit.
-- **The event loop is not measurably freer.** The longest delay with the
-  model in a thread (94–129 ms) is in the range the in-process script
-  showed (126 ms today, 161 ms in 6a): inference already ran on the
-  runtime's own threads, so what remains on the loop is the gateway's own
-  work per message (detection, redaction). What the thread does give: the
-  tokenizer and the window loop for a large request no longer run on the
-  loop, a thread that dies is seen as a crash rather than taking the
-  server's JavaScript with it, and the runtime is loaded only there.
+- **The worker did not buy event-loop isolation.** The longest
+  event-loop delay with the model in a thread (94–129 ms over the three
+  runs; 71 ms in the final gate's run) is in the range the in-process
+  script showed for B (126 ms today, 161 ms in 6a). The runtime already
+  ran inference on its own threads, so moving it to a worker thread took
+  nothing measurable off the loop; what remains there is the gateway's own
+  work per request (parsing, detection, redaction). ADR-035 expected the
+  opposite ("until inference moves to a worker thread"); that expectation
+  is contradicted by this measurement, and a dated note there says so.
+  **What the thread does buy:** module isolation (the runtime, the
+  tokenizer and the model are loaded only inside the thread; nothing the
+  server loads imports them, so names off never loads them, and a missing
+  runtime is a refused start rather than a failed import in the server),
+  and a clean boundary: one channel, one call at a time, behind which
+  `NameDetector` keeps the queue, the timeout and every fail-closed rule,
+  with the thread's exit seen as a crash. It does **not** contain a native
+  crash: bug-log 68 shows a native abort in the thread ends the whole
+  process. Not measured: whether a large request's tokenization (done in
+  JavaScript before the first window runs) would have blocked the loop
+  noticeably in-process; the evaluation's messages are small.
 
 **Found: a run cannot be cut short** (bug-log 68). Stopping the thread
 (`worker.terminate()`) while the runtime is inside an inference ends the
@@ -5278,8 +5304,8 @@ whole process (0xC0000409 on Windows, 5 of 5); on an idle thread it takes
 about 35 ms. The runtime has no cancel for a native run in Node
 (`RunOptions.terminate` is WebAssembly only). `terminate()` and `close()`
 are documented as idle-only, and nothing in the gateway calls them.
-Whether a call that runs too long should be stopped is open (ADR-037,
-"Open after step 4b").
+A call that runs too long is not stopped (ADR-037, step 4b: the user
+chose option 1, which holds while the body limit bounds call length).
 
 **The names-off proof, run again on the shipped code** (the procedure in
 the testing guide; a clean copy of the working tree in the session
@@ -5303,6 +5329,40 @@ each fresh install took 7.9–13.2 s to answer `/health`, every later one
 binary outside the lockfile in the `--omit=optional` install
 (`node_modules/esbuild/lib/downloaded-@esbuild-win32-x64-esbuild.exe`,
 11.7 MB), this time printing nothing.
+
+### Where this ADR stands at the end of Phase 6b (2026-10-07)
+
+Every part of it is built, on Windows x64. What each decision now is, and
+how it is checked:
+
+| Decision                                                     | Built as                                                                                     | Checked by                                                                                                   |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| (a) the runtime: exact optional dependencies, native         | `onnxruntime-node` 1.30.0, `@huggingface/tokenizers` 0.2.0, loaded only in the worker thread | the lockfile's integrity hashes (`npm ci`); the names-off proof (step 4b: refused start when absent)         |
+| (b) the model: pinned download, SHA-256 at download and load | `npm run fetch:model`, `checkModelFiles` at start-up                                         | `name-model.test.ts`, `fetch-model.test.ts`; 17 mutations (step 4a)                                          |
+| the name list: pinned by hash                                | `NAME_LIST_SHA256`, checked at start-up                                                      | `join.test.ts`, `names.test.ts`                                                                              |
+| load failure or mismatch refuses start-up                    | `startNameDetection` → `NameStartupError`, exit 1                                            | unit tests per code; the proof's names-on runs                                                               |
+| timeout, full queue or crash → 503, never names off          | `NameDetector` (step 3), unchanged behind the worker                                         | `names.test.ts`, `name-worker.test.ts`, the names project on B itself                                        |
+| no restart after a crash                                     | a crashed worker stays crashed; health unhealthy                                             | the same                                                                                                     |
+| a call past its timeout is not stopped (ADR-037)             | option 1, tied to the body limit                                                             | comments at the body limit and the timeout; bug-log 68                                                       |
+| the four frozen inputs and the two joins                     | pins above, the moved code (steps 2, 3, 4b), D0                                              | `npm run eval:names`: B's spans and the names identical to 6a's, every metric, 7 runs of 7 (needs the model) |
+
+**What it still leaves open, for Phase 6c and later:**
+
+1. **Linux, all of it.** The install size, and the postinstall download
+   with and without `ONNXRUNTIME_NODE_INSTALL=skip` (the skip is still an
+   assumption; its two checks and its fallback are above). Whether the
+   native runtime on Linux reproduces the Windows spans: `npm run
+eval:names` on a Linux runner answers it, and if the hashes differ the
+   published figures describe Windows only (this ADR's caveat).
+2. **CI with the model.** Neither `npm run test:names` nor `npm run
+eval:names` runs in CI; both need the runtime and the 178.5 MB model
+   (downloaded per run, or cached by its SHA-256 values, "(b)" above).
+3. **Platforms without a build:** darwin/x64 has no binary in the package
+   (step 4a); names on would refuse to start there. Not checked.
+4. **The model's licence**: the two open points above stand.
+5. **Docker** (Phase 8): the same install setting as CI, the model files
+   in the image or mounted, and a health check that allows for a cold
+   first start (bug-log 66).
 
 <a id="adr-037"></a>
 
@@ -5628,33 +5688,43 @@ asserted never called on every refusal:
   and the same answer uncorrupted goes through; a thread that exits makes
   every request a 503 and health unhealthy.
 
-**The timeout and the queue (this step sets them from its measurements,
-as this ADR left them; for the user's review).**
+**The timeout and the queue.**
 `PSEUDONYM_NAMES_TIMEOUT_MS` and `PSEUDONYM_NAMES_MAX_QUEUE`, optional and
 absent from the parsed configuration unless set, like `PSEUDONYM_NAMES`;
 `nameOptions()` (wiring.ts) applies the defaults, so a names-off
 configuration is still exactly the one from before names existed (the env
-test caught a first draft that defaulted them in the schema).
-Defaults, **provisional, for the user to confirm or change**:
+test caught a first draft that defaulted them in the schema). A first
+draft of this amendment proposed 120 s, the provider timeout's default:
+about 1.4 times the gateway's own measured worst case, but below the 134.6 s
+the slowest measured run would need for a full body, so a legitimate
+maximum-size request would have been refused on a slow run. **Replaced, at
+the user's request, by a derived value:**
 
-- **Timeout 120,000 ms**, the provider timeout's default. The largest
-  request the body limit allows (256 KiB) took about 79–85 s of name
-  detection at the three measured gateway speeds (308–332 ms per KiB), so
-  it fits with about 1.4 times to spare on this machine. It would not fit
-  at 6a's slowest measured speed for B (524 ms per KiB, 134 s): a slower
-  machine or a busy one refuses the largest requests with a 503 (never
-  sends them without names); `PSEUDONYM_NAMES_TIMEOUT_MS` raises it. The
-  timeout counts waiting in the queue too, so a request behind a large one
-  can be refused for the time the large one takes.
-- **Queue 8.** Each waiting request is a parsed body the gateway already
-  holds (at most 256 KiB of text each, so about 2 MiB for eight); at the
-  measured 1 KiB and 4 KiB latencies (141–148 ms, 1.06–1.16 s) eight
-  typical chat requests wait at most about 9 s together, well inside the
-  timeout. More than that is load the model cannot serve in time anyway,
-  and is refused at once rather than after waiting out the timeout.
+- **Timeout 202,000 ms, derived.** The slowest name-detection throughput
+  ever measured on a full 256 KiB body is **525.889 ms per KiB** (B 524.319
+  - F 1.570, the comparison script's run of 2026-10-03,
+    `D:\pseudonym-6a\runs\2026-10-03-move-after`). Every other full-body
+    run: the script 275.0–442.1 (six runs) and the gateway 287.7–331.9 (four
+    runs). The largest request the default body limit allows carries at most
+    256 KiB of text, so at that speed it takes **134.6 s**. **Margin 1.5**:
+    the gateway's path was up to 1.21 times the script's in the one session
+    that measured both, so a gateway run as slow as the slowest script run
+    would take about 163 s; 1.5 covers that with room left. 134.6 × 1.5 =
+    201.9 s, rounded up to the second: **202 s**. The derivation is the code
+    that computes it (`NAMES_TIMEOUT_MS_DEFAULT`, wiring.ts), with these
+    numbers beside it. The timeout counts waiting in the queue too, so a
+    request behind a large one can still be refused for the time the large
+    one takes.
+- **Queue 8, chosen, not derived.** It bounds how many requests wait while
+  the model works on another, and so the memory they hold (bodies the
+  gateway has already parsed: at most 256 KiB of text each, about 2 MiB for
+  eight) and how many are told "wait" instead of refused at once. It does
+  not bound how long they wait; the timeout does. At the measured 1 KiB
+  and 4 KiB latencies (141–148 ms, 1.06–1.16 s), eight chat-sized requests
+  wait about 9 s at most together, well inside the timeout.
 
-**Open after step 4b: should a call that runs past its timeout be
-stopped?** Step 3 left it to this step: a worker thread can be stopped,
+**Should a call that runs past its timeout be stopped? Decided by the
+user (2026-10-07): option 1, never.** Step 3 left it to this step: a worker thread can be stopped,
 which an in-process fake could not. This step found that it cannot be
 stopped safely (bug-log 68): stopping the thread during an inference ends
 the whole process, and the runtime has no cancel for a native run.
@@ -5692,7 +5762,28 @@ the timeout is almost always a large request that will finish, after
 which 1 recovers on its own; health already reports the hold, so an
 orchestrator can restart on a sustained "unhealthy". If a definite
 cut-off is wanted, 2 gives it without risking the process. 4 only if
-stopping the work itself matters. Not implemented until the user decides.
+stopping the work itself matters.
+
+**Decision (the user, 2026-10-07): option 1, as built and as recommended.**
+Nothing was implemented for it; it is the behaviour step 3 built.
+
+**What option 1 depends on: the body limit.** It is safe only because a
+call's length is bounded: the model's work grows with the text, and the
+text is bounded by `PSEUDONYM_MAX_BODY_BYTES` (256 KiB by default,
+ADR-015), so a call past its timeout is a large request that finishes
+within about 79–135 s as measured, after which the detector recovers by
+itself. **Option 1 holds while the body limit bounds call length.** The
+names timeout is derived from the same limit (above). Raising the body
+limit therefore changes two names decisions at once: calls can run for
+longer than anyone measured, with nothing able to stop them, and the
+derived timeout no longer covers the largest request. **If the body limit
+is ever raised, option 4, the model in a child process that can be
+killed, is the right answer**, with the span proof, the names tests and
+the names-off proof run again, and the timeout derived again. So that
+someone relaxing the limit finds this out: the comment at
+`PSEUDONYM_MAX_BODY_BYTES` in `src/config/env.ts`, the comment at
+`NAMES_TIMEOUT_MS_DEFAULT` in `src/config/wiring.ts` and
+`.env.example` all say so and point here.
 
 <a id="adr-038"></a>
 

@@ -3056,3 +3056,31 @@ Results in ADR-036, "Step 4b".
 30 of 31 caught, each by a test aimed at it. W6 is equivalent: a stray
 "ready" has no id, so without the guard it looks up no call and is
 ignored anyway; the guard stays because the type check needs it. **Not mutation-checked:** the names project and `eval:names` themselves (they need the model and minutes per run). What is known about them: the names tests fail, not skip, without the model files (`beforeAll` runs the file check), and `eval:names`'s comparison logic is covered by G1–G5 above.
+
+## Phase 6b step 5 — closing the step 4 checks (2026-10-07)
+
+After the step 4b follow-ups (the names timeout derived, ADR-037; the
+event-loop finding, ADR-036; bug 66's likely cause), every step 4
+mutation was run again against the final code: 4a's 17 and 4b's 32 (C4
+now removes the timeout's margin, C5 takes the timeout from a faster run;
+`wiring.test.ts` pins the derived default, 202,000 ms). **47 of 49
+caught**, each by the same tests as before; the two survivors are the
+equivalent ones already explained, M2 (4a) and W6 (4b). A check after the
+run found every mutated file back as written (each `find` text present
+exactly once, no file different from the commit but those this step
+changed on purpose).
+
+**One unexplained failure in the final gate (2026-10-07).** The first
+`npm test` of the gate failed: 21 of 3,024 tests in 11 files (20 timeouts
+in detection, redaction-property, phone-metadata, integration and three
+timing files, none in code this step changed; and one assertion in
+`no-leak.test.ts`, "expected 1 request, got 5", in the file where three
+tests had just timed out, so most likely late requests from those reaching
+the shared mock provider). The run took 1,227 s against 71–73 s for every
+other full run that day. The gate's next step, the coverage run of the
+same main-project tests, passed 2,935 of 2,935, and `npm test` run again
+alone passed 3,024 of 3,024 in 71 s, with free memory sampled every 5 s
+and never below 5.1 GB. Free memory during the failed run was not sampled
+(about 6 GB just before the gate). Not reproduced, cause not known: the
+pattern of bug-log 57 (everything slow at once, unrelated tests timing
+out), without its evidence. Recorded here, not in the bug log.

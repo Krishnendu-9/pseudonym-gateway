@@ -27,6 +27,13 @@ const envSchema = z.object({
   // 256 KiB (ADR-015): about 64k English tokens; redacting it takes about
   // 0.25 s for prose and about 1.1 s for digit-heavy text, during which the
   // event loop serves nothing else.
+  // It also bounds how long the name model can work on one request (about
+  // 79-135 s at 256 KiB as measured), which two names decisions rest on
+  // (ADR-037, step 4b): a call past its timeout is never stopped, only
+  // waited out, and the names timeout is derived from this size
+  // (NAMES_TIMEOUT_MS_DEFAULT, wiring.ts). Raising it changes both; with a
+  // larger limit, the model belongs in a child process that can be killed
+  // (option 4 there), since a worker thread cannot be stopped mid-call.
   PSEUDONYM_MAX_BODY_BYTES: z.coerce.number().int().positive().default(262_144),
   // 1 MiB (ADR-020): the most of a non-streamed provider response the
   // gateway will read, all of which it holds in memory. About 250,000

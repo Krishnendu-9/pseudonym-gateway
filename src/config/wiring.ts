@@ -29,8 +29,29 @@ export function serverConfig(env: Env): ServerConfig {
   };
 }
 
-/** Defaults for the name detector (ADR-037; set from Phase 6b step 4b's measurements). */
-export const NAMES_TIMEOUT_MS_DEFAULT = 120_000;
+// The name detector's defaults (ADR-037, Phase 6b step 4b follow-up).
+//
+// The timeout is derived: the time the largest request the default body
+// limit allows would take at the slowest name-detection speed ever measured
+// on a full 256 KiB body, with a margin. Slowest: 525.889 ms per KiB, B
+// 524.319 + F 1.570, the comparison script's run of 2026-10-03
+// (D:/pseudonym-6a/runs/2026-10-03-move-after); every other full-body run,
+// script or gateway, was between 275.0 and 442.1. 256 KiB at that speed is
+// 134.6 s. The margin, 1.5, covers the gateway's own path being slower than
+// the script's (up to 1.21 times in the one session that measured both)
+// with room to spare: 201.9 s, rounded up to the second. If the body limit
+// is raised, this no longer covers the largest request, and option 1 of
+// ADR-037's step 4b decision (never stop a long call) no longer holds as
+// decided: see PSEUDONYM_MAX_BODY_BYTES in env.ts.
+const SLOWEST_MS_PER_KIB = 525.889;
+const LARGEST_TEXT_KIB = 256;
+const TIMEOUT_MARGIN = 1.5;
+export const NAMES_TIMEOUT_MS_DEFAULT =
+  Math.ceil((SLOWEST_MS_PER_KIB * LARGEST_TEXT_KIB * TIMEOUT_MARGIN) / 1000) * 1000;
+// The queue is chosen, not derived: it bounds how many requests wait while
+// the model works (their bodies are already held: eight at most 2 MiB of
+// text) and so how many are told "wait" rather than refused at once. It
+// does not bound how long they wait; the timeout does.
 export const NAMES_MAX_QUEUE_DEFAULT = 8;
 
 /** The name detector's timeout and queue (read only when names are on). */

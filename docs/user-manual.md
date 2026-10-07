@@ -1186,7 +1186,7 @@ reasoning lands in the answer itself.
 
 ## Phase 6b step 3 — person names in the request path (2026-10-03)
 
-(As written at step 3. Names became usable in step 4b, below.)
+(As written at step 3. Names became usable in step 4b: see "Person names", below.)
 
 Names are wired into the gateway, but **the name model is not built in
 yet**, so names cannot be used: with `PSEUDONYM_NAMES=true` the gateway
@@ -1233,7 +1233,7 @@ longer dropped.
 
 ## Phase 6b step 4a — the name runtime and the model files (2026-10-07)
 
-(As written at step 4a. Names became usable in step 4b, below.)
+(As written at step 4a. Names became usable in step 4b: see "Person names", below.)
 
 Names still cannot be used: the part that runs the model is not built yet
 (step 4b), so `PSEUDONYM_NAMES=true` still refuses to start. What exists now
@@ -1290,49 +1290,115 @@ looks for the model under `models/` in the directory it is started from.
 Hashing the files takes about 0.2 s at start-up. With names off, none of
 this runs.
 
-## Phase 6b step 4b — person names, usable (2026-10-07)
+## Person names (Phase 6b, 2026-10-07; ADR-035, ADR-036, ADR-037)
 
-Names can now be switched on. They are **off by default**: they are slow
-and wrongly redact some ordinary words (about one in every 170 on the
-generated set; ADR-035). To use them:
+Names are **off by default**. With them off, a name in a message is sent
+to the provider as written. Turn them on only if you accept what they
+cost: they are slow, and they wrongly redact some ordinary words.
 
-1. Install the default way (`npm install` or `npm ci`), which includes the
-   runtime.
-2. `npm run fetch:model` (178.5 MB, checked by SHA-256).
+### Turning them on
+
+1. Install the default way (`npm install` or `npm ci`): the runtime
+   (`onnxruntime-node` 1.30.0, `@huggingface/tokenizers` 0.2.0) comes as an
+   optional dependency, about 302 MB on Windows. `--omit=optional` leaves
+   it out; with names on, the gateway then refuses to start.
+2. `npm run fetch:model`: four files, 178.5 MB, from a pinned commit of
+   `Xenova/bert-base-multilingual-cased-ner-hrl`, each kept only if its
+   SHA-256 matches (licence: the step 4a section above).
 3. Set `PSEUDONYM_NAMES=true` and start the gateway.
 
 At start-up the gateway checks the name list, then the model files, then
-starts the model in a worker thread of its own; it refuses to start (one
-line on stderr, exit code 1) if any of these fails, with the codes in the
-step 4a table above (`NAME_MODEL_LOAD_FAILED` also when the runtime is not
-installed). Starting takes about 1.1–1.7 s more than with names off on a
-laptop CPU (the first start after an install can take over 10 s, names on
-or off: bug-log 66).
+starts the model in a worker thread of its own. If any of them fails it
+does not start: one line on stderr and exit code 1, with the codes in the
+step 4a table above (`NAME_MODEL_LOAD_FAILED` when the runtime is missing
+or the model does not load). Starting takes about 1.1–1.7 s more than with
+names off on a laptop CPU. The first start after an install can take over
+10 s, names on or off (bug-log 66): allow for it in anything that waits for
+the gateway.
 
-**What it costs, measured through the gateway** on a laptop (Intel
-i5-12450H; ADR-036, "Step 4b"): about 0.31–0.33 s per KiB of request text,
-so about 0.14 s for a 1 KiB request, 1.1 s for 4 KiB, 5 s for 16 KiB and
-21 s for 64 KiB, added before the request is sent; about 290 MiB more
-memory while idle and up to about 370 MiB while working.
+### How a name is found
 
-**Two settings**, read only with names on:
+Two finders, joined: a multilingual named-entity model (B in ADR-035,
+run on your machine; text never leaves it for this) and a list of given
+and family names from Wikidata (F, 718 spellings, Latin and Devanagari).
+The model's guesses are kept when it is very sure (0.9 or more), or fairly
+sure (0.6 or more) with a word nearby that introduces or addresses a
+person ("name", "Mr", "Dear", "Hi", "Regards", and their Hindi and
+romanised Hindi equivalents). Each name becomes `[PERSON_1]`,
+`[PERSON_2]`… and is restored in the answer, streamed or not, like every
+other value. Names are never validated, so any validated value (a card
+number, an IFSC code with a known bank) wins where the two overlap.
+
+### What is found, measured
+
+On the generated set's 612-name block: **501 found (81.8%)**; in the main
+cases 145 of 153. On the held-out set, run once: **41 of 45**. Every name
+the gateway finds on the generated set is exactly what the measurement
+found: `npm run eval:names` checks it, span by span.
+
+### What is not found
+
+- About one name in five on the generated set (111 of 612) and 4 of 45
+  on the held-out set.
+- **Names in all lower case**: almost never (3 of 59).
+- **A name broken by an invisible character** (a soft hyphen or a
+  zero-width space inside it) is covered to the end of the word only when
+  the model or the list found part of that word; a second word of the
+  name is not reached that way (ADR-036, option 2).
+- "Asha" and "Asha Rao" in one conversation are two values with two
+  placeholders: nothing links a first name to a full name.
+
+### What it takes that is not a name
+
+About 5.85 words in every 1,000 of ordinary text on the generated set
+(about one in 170), and words that look like names: on the generated set
+most often names of deities (17), places (12), companies (8) and festivals
+(6). **Public figures are names and are redacted**, so a question about a
+well-known person reaches the provider with a placeholder in place of the
+name; there is no allowlist. Over-redaction is a cost to the answer's
+quality, not a leak: the value comes back in the answer.
+
+### When names cannot be found
+
+The request is refused with a 503 (`name_detection_unavailable`) and is
+**never sent without them**: the model failed, did not answer in time, has
+too many requests waiting, or has crashed. The model works on one request
+at a time; others wait in a queue.
+
+- A request that runs past the timeout gets its 503, but the model
+  finishes the work: a call cannot be interrupted (bug-log 68). Meanwhile
+  `GET /health` answers 503 `{"status":"unhealthy"}` and other requests
+  wait or are refused; health is ok again when the call ends.
+- After a crash every request is refused and health stays unhealthy until
+  the gateway is restarted; it does not restart the model itself.
+
+### Settings (read only with names on)
 
 | Variable                     | Default | What it does                                                                                                    |
 | ---------------------------- | ------- | --------------------------------------------------------------------------------------------------------------- |
-| `PSEUDONYM_NAMES_TIMEOUT_MS` | 120000  | How long a request may wait for its names, queued and running together. Past it: 503, never sent without names. |
+| `PSEUDONYM_NAMES_TIMEOUT_MS` | 202000  | How long a request may wait for its names, queued and running together. Past it: 503, never sent without names. |
 | `PSEUDONYM_NAMES_MAX_QUEUE`  | 8       | How many requests may wait while the model works on another. More: 503 at once. 0 means none wait.              |
 
-The model works on one request at a time. A request that runs past the
-timeout gets its 503, but the model finishes it (it cannot be interrupted:
-bug-log 68); meanwhile `GET /health` answers 503 `{"status":"unhealthy"}`
-and other requests wait or are refused, and health is ok again when it
-ends. At the measured speed the largest request the body limit allows
-(256 KiB) takes about 80–85 s, so it fits the default timeout on this
-machine; on a slower one, raise the timeout or expect large requests to
-be refused.
+The timeout's default is derived, not picked: the largest request the
+default body limit allows (256 KiB of text) at the slowest speed ever
+measured (526 ms per KiB) takes 134.6 s, and 202 s is that with a margin
+of 1.5. **If you raise `PSEUDONYM_MAX_BODY_BYTES`**, raise this timeout in
+proportion, and know that the model then works for longer on one request
+than anything measured, with no way to stop it (ADR-037). The queue's 8 is
+a choice: it bounds how many requests wait, not how long.
 
-**Checking it yourself:** `npm run test:names` runs the gateway's name
-tests against the real model, and `npm run eval:names` sends the 1,998
-generated messages the published figures were measured on through the
-gateway and checks that it finds exactly the same names (testing guide,
-step 4b). Neither runs in CI yet.
+### What it costs
+
+Measured through the gateway on a laptop (Intel i5-12450H, no GPU; three
+runs): about 0.31–0.33 s per KiB of request text, so about 0.14 s added to
+a 1 KiB request, 1.1 s to 4 KiB, 5 s to 16 KiB and 21 s to 64 KiB, before
+the request is sent; about 290 MiB more memory while idle and up to about
+370 MiB while working.
+
+### Checking it yourself
+
+`npm run test:names` runs the name tests against the real model (it
+fails, rather than skipping, without the model), and `npm run eval:names`
+sends the 1,998 generated messages the published figures were measured on
+through the gateway and checks that it finds exactly the same names. Both
+need the model; neither runs in CI yet (Phase 6c).

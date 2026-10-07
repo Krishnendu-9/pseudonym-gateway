@@ -1,9 +1,12 @@
-// The name model in a worker thread (Phase 6b step 4b). B runs off the
-// event loop: while it works on one request's texts, the gateway keeps
-// serving everything else (health, names-off traffic, streams already
-// under way). The queue, the timeout and every fail-closed rule stay in
-// NameDetector (names.ts); this module is only the channel to the thread,
-// and implements the same NameModel contract the step 3 fake did.
+// The name model in a worker thread (Phase 6b step 4b). What the thread
+// buys, measured (ADR-036, "Step 4b"): module isolation (the runtime and
+// the model are loaded only inside it, never by the server's own code) and
+// a clean boundary behind which NameDetector (names.ts) keeps the queue,
+// the timeout and every fail-closed rule. Not event-loop isolation: the
+// runtime already ran inference on its own threads, and the longest
+// event-loop delay was the same with the thread as without it. This module
+// is only the channel to the thread, and implements the same NameModel
+// contract the step 3 fake did.
 //
 // Both sides of the channel are here. The thread's entry
 // (name-worker-entry.ts) loads the runtime and the model and calls

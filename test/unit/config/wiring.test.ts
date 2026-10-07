@@ -66,11 +66,11 @@ describe('nameOptions', () => {
     expect(nameOptions(env)).toEqual({ timeoutMs: 1005, maxQueue: 1006 });
   });
 
-  it('defaults to 120 s and 8 waiting (ADR-037, step 4b), applied here, not in the parsed configuration', () => {
+  it('defaults to 202 s and 8 waiting (ADR-037, step 4b), applied here, not in the parsed configuration', () => {
     const plain = loadEnv({ PSEUDONYM_MODEL: 'qwen3:8b' });
     expect('PSEUDONYM_NAMES_TIMEOUT_MS' in plain).toBe(false);
     expect('PSEUDONYM_NAMES_MAX_QUEUE' in plain).toBe(false);
-    expect(nameOptions(plain)).toEqual({ timeoutMs: 120_000, maxQueue: 8 });
+    expect(nameOptions(plain)).toEqual({ timeoutMs: 202_000, maxQueue: 8 });
   });
 
   it('accepts a queue of 0 (no request waits), not a timeout of 0', () => {

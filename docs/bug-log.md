@@ -2734,7 +2734,7 @@ the ADR-039 check against 9ec51b7 shows no difference. Kind 2 belonged to
 bug 61's option-1 fix, not to the masking, and went with it (bug-log 61,
 final). The fuzz keeps its tables.
 
-## 66. The built gateway once gave no `/health` answer within 10 seconds of starting (2026-10-07, seen once in Phase 6b step 4a; not reproduced, no cause claimed)
+## 66. The built gateway once gave no `/health` answer within 10 seconds of starting (2026-10-07, seen once in Phase 6b step 4a; likely cause: a cold first start after a fresh install, shown as a pattern in step 4b)
 
 **Symptom:** in step 4a's names-off proof (ADR-036, "Step 4a: installed
 and measured"), the first run of the proof driver started the built
@@ -2758,8 +2758,8 @@ each run, so a port already in use (which makes Fastify's `listen` fail
 and the process exit) is one possibility; a slow start on a busy machine
 (the conditions of bug 57) is another. Neither is shown.
 
-**Root cause:** not known. Recorded on the same basis as bug 57: the
-evidence as it stands, no cause claimed.
+**Root cause:** first logged as not known, on the same basis as bug 57.
+**Now named as likely (below): a cold first start after a fresh install.**
 
 **Why it matters now:** Phase 6b step 4b adds a worker thread to start-up
 with names on (the model's files hashed, then the runtime and a 178.5 MB
@@ -2786,10 +2786,23 @@ later start was not**:
 
 Each slow start answered, exited cleanly when stopped, and printed
 nothing on stderr. So a first start after an install can take longer than
-the 10 s 4a's driver waited, with names off as well as on, which fits the
-4a symptom; it does not show why the first start is slow (the files are
-new to the machine; what reads them that long was not looked into). Still
-no cause claimed.
+the 10 s 4a's driver waited, with names off as well as on.
+
+**Likely cause: a cold first start after a fresh install.** Three fresh
+installs in three configurations, each with the same pattern: the first
+start took 7.9–13.2 s to answer, every later start 0.7–1.7 s. 4a's
+silent run fits it: it was the first start in a fresh `npm ci
+--omit=optional` copy, the configuration that took 13.2 s here, and the
+driver waited about 10 s; the next four starts in that copy answered. What
+makes the first start slow is not established: the files of a new install
+are being read for the first time (by Node, and by whatever else on the
+machine reads new files), which is consistent with every observation
+here, but no measurement isolated it. It does not look like a fault in the
+gateway: each slow start answered, printed nothing on stderr and stopped
+cleanly. **What follows from it:** anything that waits for the gateway to
+start, a test driver, a health check in Docker (Phase 8) or a CI step,
+must allow well over 13 s for the first start after an install, or it
+will report a failure that is only a cold start.
 
 ## 67. The name worker said it was ready and then never answered (2026-10-07, found and fixed in Phase 6b step 4b, before any test existed)
 

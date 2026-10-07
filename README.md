@@ -399,6 +399,59 @@ evaluation's case format cannot express any of the four yet
 yet"), so neither dataset contains them
 ([ADR-021](docs/decisions.md#adr-021)).
 
+## Person names
+
+**Off by default.** With `PSEUDONYM_NAMES=true`, every request's names
+are found before anything is sent and replaced like every other value
+(`[PERSON_1]`, restored in the answer). They are off by default because
+they fail two of the three limits set before measuring
+([ADR-035](docs/decisions.md#adr-035)): too slow, and too many ordinary
+words taken for names.
+
+- **How:** a multilingual named-entity model
+  ([`Xenova/bert-base-multilingual-cased-ner-hrl`](https://huggingface.co/Xenova/bert-base-multilingual-cased-ner-hrl),
+  pinned to a commit, run locally in a worker thread of the gateway's own)
+  joined with a list of given and family names from Wikidata (CC0). Names
+  never leave the machine to be found.
+- **Found:** 81.8% of the generated set's 612 names, 41 of 45 on the
+  held-out set ([Measured results](#choosing-a-person-name-detector-phase-6a)).
+  The gateway reproduces the published measurement exactly: `npm run
+eval:names` sends the 1,998 measured messages through it and compares
+  every span by SHA-256 ([ADR-036](docs/decisions.md#adr-036), step 4b).
+- **Missed:** names in all lower case (3 of 59 found); a name broken by an
+  invisible character is covered to the end of the word only when part of
+  that word was found, and its second word is not reached that way; "Asha"
+  and "Asha Rao" are two values, not linked.
+- **Taken though not names:** about 5.85 words in 1,000 of ordinary text,
+  most often names of deities, places, companies and festivals. **Public
+  figures are names and are redacted**: a question about a well-known
+  person reaches the provider without the name. No allowlist.
+- **Cost, measured through the gateway** (2026-10-07, Intel i5-12450H, no
+  GPU, three runs): 308–332 ms per KiB of text; about 0.14 s added to a
+  1 KiB request, 1.1 s to 4 KiB, 21 s to 64 KiB; about 286 MiB more memory
+  while idle, about 367 MiB at its peak.
+- **Fails closed:** if names cannot be found (the model failed, timed out,
+  is busy, crashed) the request gets a 503 and is never sent without them.
+  A call that runs past its timeout cannot be interrupted, so the model
+  finishes it while `GET /health` reports unhealthy
+  ([ADR-037](docs/decisions.md#adr-037)). The timeout's default, 202 s, is
+  derived from the slowest speed measured on the largest body the 256 KiB
+  limit allows; **raising `PSEUDONYM_MAX_BODY_BYTES` invalidates both that
+  and the decision not to stop long calls**, and would call for the model
+  in a separate process (ADR-037, step 4b).
+- **Install:** the runtime (`onnxruntime-node` 1.30.0,
+  `@huggingface/tokenizers` 0.2.0) is an exact optional dependency, about
+  302 MB on Windows (Linux not measured yet), never loaded with names off;
+  the model comes from `npm run fetch:model` (178.5 MB), kept only if its
+  SHA-256 matches, and checked again at start-up: with names on, the
+  gateway refuses to start if the list, a file or the runtime is wrong or
+  missing ([ADR-036](docs/decisions.md#adr-036)).
+- **Licence:** the model's repository states none; it is a conversion of
+  Davlan's model (AFL-3.0), a fine-tune of Google's multilingual BERT
+  (Apache-2.0); open points in ADR-036.
+- **Not yet:** CI does not run the model (Phase 6c), and nothing has been
+  measured on Linux.
+
 ## Measured results
 
 Two datasets, reported separately. Every number in this section is
@@ -716,28 +769,9 @@ could not have been on by default anyway (one request takes seconds).
 limits, so the one with the highest recall, B and F together (81.8%), is
 what Phase 6 builds, **off by default** behind `PSEUDONYM_NAMES`. It
 fails the false-positive limit by 5.85 times (about one wrongly redacted
-word in every 170) and the speed limit. Names in all lower case are
-almost never found (3 of 59). With names on
-([ADR-037](docs/decisions.md#adr-037)), every request's names are found
-before anything is sent, by the model in a worker thread of its own, and
-a request whose names cannot be found (the model failed, timed out, is
-busy or has crashed) gets a 503 and is never sent without them. Measured
-through the gateway (2026-10-07, same machine, three runs): **308–332 ms
-per KiB** (about 0.14 s added to a 1 KiB request, 1.1 s to 4 KiB) and
-**about 367 MiB** at its peak (286 MiB while idle), so the 6a table's
-286 ms and 325 MiB describe the comparison script, not the gateway. How the model runtime, the model file and the name list
-reach a machine, and what the held-out figure depends on, is
-[ADR-036](docs/decisions.md#adr-036). The runtime (`onnxruntime-node`
-1.30.0 and `@huggingface/tokenizers` 0.2.0) is an exact optional
-dependency, about 302 MB on disk on Windows (Linux not measured yet); with
-names off it is never loaded. The model files come from
-`npm run fetch:model`, which downloads them from a pinned commit of
-[`Xenova/bert-base-multilingual-cased-ner-hrl`](https://huggingface.co/Xenova/bert-base-multilingual-cased-ner-hrl)
-and keeps each only if its SHA-256 matches; with names on, the gateway
-checks them again at start-up and refuses to start if one is missing or
-different. Licence: that repository states none; it is a conversion of
-Davlan's model, AFL-3.0, a fine-tune of Google's multilingual BERT,
-Apache-2.0 (open points in ADR-036).
+word in every 170) and the speed limit. The table's speed and memory are
+the comparison script's; the gateway's own, measured through it, are in
+[Person names](#person-names) (about 310–330 ms per KiB, about 367 MiB).
 
 **Observed after the measurement, not before:** B alone meets both
 accuracy requirements (62.5% of names, 0.96 false positives per 1,000
