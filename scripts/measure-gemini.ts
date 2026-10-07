@@ -1,8 +1,19 @@
 // The Phase 7b live run against Gemini's OpenAI-compatible endpoint
-// (ADR-041 section 10). Two modes:
+// (ADR-041 section 10). Three modes:
 //
-//   npx tsx --env-file=.env scripts/measure-gemini.ts --headers
-//   npx tsx --env-file=.env scripts/measure-gemini.ts --out test/fixtures/gemini-7b
+//   npx tsx --env-file=.env scripts/measure-gemini.ts --list-models --out test/fixtures/gemini-7b
+//   npx tsx --env-file=.env scripts/measure-gemini.ts --headers --model <name>
+//   npx tsx --env-file=.env scripts/measure-gemini.ts --model <name> --out test/fixtures/gemini-7b
+//
+// The model is named on the command line, never taken from .env (which
+// keeps the local Ollama setup), so the command that produced a recording
+// names the model that produced it. Every run that writes goes to its own
+// new folder, `<out>/attempt-N` (the next unused N), with an attempt.json
+// naming the mode, the model and the time: a rerun never overwrites an
+// earlier attempt's bytes.
+//
+// `--list-models` sends `GET {base}/models` with the key and no content,
+// and records the answer.
 //
 // `--headers` sends one plain and one streamed request through the real
 // adapter to a local server on 127.0.0.1 and prints the request headers
@@ -21,11 +32,10 @@
 // stops the run; a 400 is a probe's result; a stream the adapter rejects is
 // a finding, recorded, and the run moves on.
 //
-// The key and the model come from PSEUDONYM_PROVIDER_API_KEY and
-// PSEUDONYM_MODEL. The key is never printed. Answers are never printed
+// The key comes from PSEUDONYM_PROVIDER_API_KEY and is never printed. Answers are never printed
 // either: only counts and shapes (a model may invent a value).
 
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
@@ -47,17 +57,43 @@ const EMAIL = 'asha.verma@example.com';
 const PLANTED = [CARD, CARD.replaceAll(' ', ''), EMAIL];
 
 const { values: args } = parseArgs({
-  options: { headers: { type: 'boolean', default: false }, out: { type: 'string' } },
+  options: {
+    'list-models': { type: 'boolean', default: false },
+    headers: { type: 'boolean', default: false },
+    model: { type: 'string' },
+    out: { type: 'string' },
+  },
 });
-if (!args.headers && !args.out) {
-  console.error('usage: measure-gemini.ts --headers | --out <dir>');
+const mode = args['list-models'] ? 'list-models' : args.headers ? 'headers' : 'calls';
+if (
+  (mode === 'list-models' && !args.out) ||
+  (mode === 'headers' && !args.model) ||
+  (mode === 'calls' && (!args.model || !args.out))
+) {
+  console.error(
+    'usage: measure-gemini.ts --list-models --out <dir> | --headers --model <name> | --model <name> --out <dir>',
+  );
   process.exit(1);
 }
 const key = process.env.PSEUDONYM_PROVIDER_API_KEY;
-const model = process.env.PSEUDONYM_MODEL;
-if (!key || !model) {
-  console.error('PSEUDONYM_PROVIDER_API_KEY and PSEUDONYM_MODEL must both be set');
+if (!key) {
+  console.error('PSEUDONYM_PROVIDER_API_KEY must be set');
   process.exit(1);
+}
+const model = args.model ?? '';
+
+/** Creates `<out>/attempt-N` for the next unused N and records how it was made. */
+function newAttempt(out: string): string {
+  mkdirSync(out, { recursive: true });
+  const used = readdirSync(out)
+    .map((name) => /^attempt-(\d+)$/.exec(name)?.[1])
+    .filter((n) => n !== undefined)
+    .map(Number);
+  const dir = join(out, `attempt-${Math.max(0, ...used) + 1}`);
+  mkdirSync(dir);
+  const about = { mode, model: args.model ?? null, startedAt: new Date().toISOString() };
+  writeFileSync(join(dir, 'attempt.json'), `${JSON.stringify(about, null, 2)}\n`);
+  return dir;
 }
 
 interface Call {
@@ -272,9 +308,39 @@ function shapeOf(text: string, isStream: boolean): Record<string, unknown> {
   };
 }
 
-// --- mode 1: the headers, against a local server -------------------------
+// --- mode 1: the model list ----------------------------------------------
 
-if (args.headers) {
+if (mode === 'list-models') {
+  const dir = newAttempt(args.out!);
+  const url = new URL('models', GEMINI_BASE_URL);
+  const response = await fetch(url, { headers: { authorization: `Bearer ${key}` } });
+  const record = captured as Captured | undefined;
+  await record?.done;
+  const bytes = Buffer.concat(record?.bytes ?? []);
+  writeFileSync(join(dir, 'models.response.json'), bytes);
+  const meta = {
+    request: `GET ${url.href}`,
+    recordedOn: new Date().toISOString(),
+    status: response.status,
+    responseHeaders: Object.fromEntries(record?.headers ?? []),
+    bytes: bytes.length,
+  };
+  writeFileSync(join(dir, 'models.meta.json'), `${JSON.stringify(meta, null, 2)}\n`);
+  console.log(`GET models: ${response.status}, ${bytes.length} B, written to ${dir}`);
+  try {
+    const json = JSON.parse(bytes.toString('utf8')) as { data?: { id?: unknown }[] };
+    const ids = (json.data ?? []).map((m) => m.id);
+    console.log(`${ids.length} models:`);
+    for (const id of ids) console.log(`  ${String(id)}`);
+  } catch {
+    console.log('the answer is not JSON');
+  }
+  process.exit(0);
+}
+
+// --- mode 2: the headers, against a local server -------------------------
+
+if (mode === 'headers') {
   const arrived: string[][] = [];
   const server = createServer((req: IncomingMessage, res) => {
     arrived.push(req.rawHeaders);
@@ -321,12 +387,11 @@ if (args.headers) {
   process.exit(0);
 }
 
-// --- mode 2: the live run ------------------------------------------------
+// --- mode 3: the live run ------------------------------------------------
 
-const out = args.out!;
-mkdirSync(out, { recursive: true });
+const out = newAttempt(args.out!);
 const adapter = provider(GEMINI_BASE_URL);
-console.log(`model ${model}, ${CALLS.length} calls, ${SPACING_MS / 1000} s apart`);
+console.log(`model ${model}, ${CALLS.length} calls, ${SPACING_MS / 1000} s apart, into ${out}`);
 
 for (const [n, call] of CALLS.entries()) {
   if (n > 0) await sleep(SPACING_MS);

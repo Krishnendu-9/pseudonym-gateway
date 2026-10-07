@@ -5,3 +5,5 @@ dev_docs/
 .claude/
 CLAUDE.md
 eval/baseline.json
+# Recorded provider answers and their metadata, kept byte for byte as written (ADR-041).
+test/fixtures/gemini-7b/

@@ -1,0 +1,19 @@
+{
+  "request": "GET https://generativelanguage.googleapis.com/v1beta/openai/models",
+  "recordedOn": "2026-10-07T13:25:57.346Z",
+  "status": 200,
+  "responseHeaders": {
+    "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+    "content-encoding": "gzip",
+    "content-type": "application/json; charset=UTF-8",
+    "date": "Wed, 07 Oct 2026 13:25:57 GMT",
+    "server": "scaffolding on HTTPServer2",
+    "server-timing": "gfet4t7; dur=153",
+    "transfer-encoding": "chunked",
+    "vary": "Origin, X-Origin, Referer",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "SAMEORIGIN",
+    "x-xss-protection": "0"
+  },
+  "bytes": 10052
+}

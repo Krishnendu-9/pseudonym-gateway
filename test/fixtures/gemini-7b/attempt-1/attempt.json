@@ -1,0 +1,6 @@
+{
+  "mode": "calls",
+  "model": "qwen3:8b",
+  "startedAt": "2026-10-07T13:09:01Z",
+  "note": "Written by hand after the folder layout was added: the run predates attempt.json. The model came from PSEUDONYM_MODEL in .env (the local Ollama model), before --model existed; startedAt is s1's recordedOn less its 880 ms, rounded down."
+}
