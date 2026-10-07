@@ -7173,3 +7173,149 @@ unsupported `reasoning_effort` value is rejected before it is sent.
 (free tier), put in `.env` as `PSEUDONYM_PROVIDER_API_KEY` (gitignored,
 never committed or logged), and the model name chosen from those AI Studio
 offers on the free tier, for `PSEUDONYM_MODEL`.
+
+**Decided (the user, 2026-10-07): option A, with both conditions.** 7b is
+split: the offline work (the refactor, the strict fake) first, the live
+calls to Gemini in a separate run, after the predictions below are
+committed.
+
+### 7. Predictions for the live run (written and committed before any call to Gemini)
+
+- **P1, the `[DONE]` terminator.** The adapter treats a stream that ends
+  without `data: [DONE]` as failed (`bad_response`): Ollama ends a stream
+  that failed midway without it, so its absence is how a failure shows.
+  Gemini's documentation does not say whether it sends `[DONE]`. **If it
+  does not, every Gemini stream fails today**: every streamed request
+  through the gateway would end in an error event, after the content had
+  already been sent. The live run tests this; it is written here so that
+  the run tests it rather than explains it afterwards.
+
+### 8. A `spii` finish on a redacted request: an external check, surfaced, never mapped (decided 2026-10-07)
+
+Gemini can stop a generation because it found "Sensitive Personally
+Identifiable Information" (`spii`, section 4). **On a request that went
+through the gateway, that is evidence that something the provider
+considers personal data reached it unredacted**: an external check on the
+gateway's core promise, by a system that knows nothing about our
+placeholders. So it is **never quietly mapped to a finish reason** (not to
+`content_filter`, not to `stop`).
+
+**Where it goes in the response path:**
+
+1. **The adapter** recognises it. Which raw values mean it (`spii`,
+   `SPII`, a field beside the finish reason, or nothing at all because the
+   endpoint folds it into `content_filter`) is a profile entry, filled only
+   from what the live run measures (option A's first condition). On one, the
+   adapter fails the call with its own failure kind (`personal_data_flagged`),
+   never an ordinary finish.
+2. **The gateway** answers that call with its own error, not the
+   provider's answer: a 502 with the code `provider_flagged_personal_data`
+   and a fixed message, so the client learns that the provider flagged
+   personal data and that no answer is given. On a stream that has already
+   started, it is the stream's error event with the same code (the path
+   every mid-stream failure takes), after the text already restored.
+3. **The log** gets an `error`-level entry, not `info`: a fixed message
+   ("the provider flagged personal data in a redacted request"), the route,
+   the provider profile's name and the raw finish value, and never any
+   content (as every log line, ADR-014).
+
+**What it does not prove on its own.** With names off (the default), a
+name is sent as written by design, and so are the values documented as not
+detected (postal addresses, for example); Gemini may flag those, and may
+flag a placeholder it misreads. So a `spii` finish is **a signal to look
+at**, not proof of a detector bug; that is why it is surfaced to the
+client and logged loudly rather than handled. **If the endpoint folds
+`spii` into `content_filter`**, the distinction is lost there, and that is
+recorded as a finding: `content_filter` is not treated as `spii`, since
+safety blocks share it.
+
+**Built in the live run's step**, once the shape is measured; not in this
+offline run (the refactor carries nothing Gemini-specific).
+
+### 9. The offline run: the refactor and the strict fake (2026-10-07, no call to Gemini)
+
+**The refactor (option A), proved unchanged.** `src/providers/ollama.ts`
+was copied to `src/providers/openai-compatible.ts` and generalised:
+`createOpenAICompatibleProvider(config, profile)`, `OpenAICompatibleConfig`
+(the old `OllamaConfig`, unchanged), and `ProviderProfile`, which holds one
+entry, `name`, since nothing has been measured yet. `ollama.ts` is now
+Ollama's profile (`OLLAMA_PROFILE = { name: 'ollama' }`), its stream notes,
+and the names every caller already imported, so no importer changed. The
+three proofs the user set, all held:
+
+1. **Tests:** the 106 provider tests (`ollama.test.ts`,
+   `ollama-recorded-stream.test.ts`, `sse.test.ts`) pass with **no edit at
+   all**, not even an import.
+2. **The recorded Ollama stream** parses identically: a SHA-256 over every
+   event the adapter yields, fed whole, in 4,096-byte pieces and in 7-byte
+   pieces, is `769eeed3…2c29` (26 events) before and after.
+3. **Mutations:** the same 15 adapter mutations, run with
+   `scripts/mutate.ts` on `ollama.ts` before and on `openai-compatible.ts`
+   after: 15 of 15 caught both times, with the same number of failing tests
+   for each.
+
+**Corrections to section 5's design**, found while building the fake from
+the specification (OpenAI's Node SDK types, read 2026-10-07; the API
+reference page refused automated reads):
+
+- **`max_tokens` and `max_completion_tokens` together is not a
+  specification violation**: the types define both and forbid neither.
+  The check was dropped from the fake. The gateway refuses the pair itself
+  (ADR-014's own rule, a 400 before any provider call); a test pins that
+  the provider never sees it.
+- **No duplicate-key or UTF-8 check.** The adapter builds the body with one
+  `JSON.stringify` of one object, which cannot write a key twice or produce
+  invalid UTF-8, so such a check could never fire and could not be shown to
+  work. The fake checks that the body is JSON and an object.
+- **Every check is labelled `spec:` or `policy:`.** `spec:` is the
+  specification (unknown fields, `stream_options` without `stream: true`,
+  more than 4 stop sequences, ranges, the header formats); `policy:` is the
+  gateway's own stricter rule (no `user`, `tools`, `developer` role, `name`,
+  content parts; `n` only 1; `response_format` only `text`/`json_object`),
+  so a policy breach is never reported as a specification one.
+- **The specification's `reasoning_effort` values are exactly the gateway's**
+  (`none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`). So `xhigh`
+  and `max` are not a gateway error; they are outside **Gemini's**
+  documented set (section 4), which the live run measures.
+
+**The strict fake, built.** `test/support/strict-provider.ts` (the checks
+and the full-shaped answers) and `test/integration/strict-provider.test.ts`
+(59 tests, the real gateway and adapter against it). Results:
+
+- **Requests:** 20 request shapes the gateway forwards (every sampling
+  option, both token-limit names, both response formats, one stop string
+  and four, the dropped `user` and `safety_identifier`, all seven
+  `reasoning_effort` values, four stream variants): **0 violations**, and no
+  client header reached the provider.
+- **Answers handled as decided:** a complete answer with every optional
+  field (only the content is passed on); a stream with `"usage": null` on
+  every chunk, an obfuscation field, `: keep-alive` comments and CRLF line
+  ends (content whole, one usage chunk, `[DONE]`); `length` with empty
+  content; `tool_calls` and `function_call` refused (502
+  `provider_bad_response`, or the same code as a stream's error event);
+  401, 500 and 503 become 502 with nothing of the body; an error event
+  mid-stream ends with `provider_error` after the text already sent; a
+  stream cut before `[DONE]` ends with `provider_bad_response` after the
+  text already sent.
+- **Two open decisions pinned as today's behaviour, not endorsed:** a
+  refusal (`content: null`, `refusal` set) is a 502
+  `provider_bad_response`; a 429 with `Retry-After` is a 502
+  `provider_error` and the `Retry-After` is dropped. Both stay open
+  (section 6).
+- **No finding against the gateway.** One test of mine was wrong (it
+  expected the token-limit pair to be forwarded); corrected as above.
+
+**Does the fake earn its place?** Eleven faults planted in the adapter
+(F1–F11: `stream_options` always sent, an unknown field, a message `name`,
+no `Bearer`, the wrong content type, `[DONE]` not required, error events
+not recognised, `tool_calls` accepted, `usage: null` rejected, unknown
+message fields rejected, a refusal read as an empty answer). The
+strict-fake tests alone catch **11 of 11** (F7 only after its test checked
+the error code rather than "an error": without recognition, an error event
+still fails as a malformed chunk). The existing adapter tests catch **10 of
+11**; **F9, rejecting `"usage": null` on a chunk, is caught only by the
+strict fake**: the recorded Ollama stream has no `"usage": null` (0 of its
+events), so a gateway that broke on it would pass every Ollama test and
+fail on any provider that follows the specification. That is the kind of
+fault section 5 built it for. The others it catches a second time, through
+the whole gateway rather than the adapter alone.

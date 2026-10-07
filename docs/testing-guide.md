@@ -3215,3 +3215,65 @@ and never below 5.1 GB. Free memory during the failed run was not sampled
 (about 6 GB just before the gate). Not reproduced, cause not known: the
 pattern of bug-log 57 (everything slow at once, unrelated tests timing
 out), without its evidence. Recorded here, not in the bug log.
+
+## Phase 7b, offline — the adapter refactor and the strict fake provider (2026-10-07, ADR-041)
+
+No call to Gemini was made. Results in ADR-041, section 9.
+
+**Proving the refactor changed nothing on the Ollama path.** Three checks,
+each run before the move (on `src/providers/ollama.ts`) and after (on
+`src/providers/openai-compatible.ts`), with a stop if any of them moved:
+
+1. The three provider test files from `E:\`: 106 of 106 both times, and
+   `git status` shows no test file changed (not even an import).
+2. The recorded stream's parse hash: a scratch script feeds
+   `test/fixtures/ollama-stream-qwen3-4b.sse` to the adapter through a mock
+   server whole, in 4,096-byte pieces and in 7-byte pieces, and hashes every
+   event it yields. Same SHA-256 (`769eeed3…2c29`, 26 events) all three
+   ways, before and after.
+3. The same 15 adapter mutations (the file chosen by `ADAPTER_FILE`) with
+   `scripts/mutate.ts`: 15 of 15 caught both times, each by the same number
+   of failing tests.
+
+**The strict fake** (`test/support/strict-provider.ts`) is a `Responder`
+for the mock provider. It answers 400 to any request that breaks the
+specification or the gateway's own policy, and records each violation,
+labelled `spec:` or `policy:`, in `violations`; every test asserts the list
+is empty. Its answers carry everything the specification allows (see
+ADR-041 section 5). `test/integration/strict-provider.test.ts` runs it:
+
+```powershell
+npx vitest run test/integration/strict-provider.test.ts
+```
+
+59 tests: 24 negative controls (each check shown to fire on a request
+built to break it, and a clean request shown to pass), 21 request tests
+through the real gateway (20 shapes forwarded, and the token-limit pair
+the gateway refuses itself), and 14 answer tests. A client sends two headers
+of its own (`x-client-sentinel`, `cookie`) on every request; the fake
+fails the test if either arrives.
+
+### Mutation checks (run 2026-10-07, `scripts/mutate.ts`)
+
+| Id  | Mutation in `openai-compatible.ts`  | Strict-fake tests | Existing adapter tests |
+| --- | ----------------------------------- | ----------------- | ---------------------- |
+| F1  | `stream_options` sent on every call | 21 of 59          | 2 of 106               |
+| F2  | a field outside the specification   | 30 of 59          | 2 of 106               |
+| F3  | a message `name` sent               | 30 of 59          | 3 of 106               |
+| F4  | the key sent without `Bearer`       | 30 of 59          | 1 of 106               |
+| F5  | the wrong content type sent         | 30 of 59          | 1 of 106               |
+| F6  | a body ending before `[DONE]` taken | 1 of 59           | 1 of 106               |
+| F7  | error events not recognised         | 1 of 59           | 2 of 106               |
+| F8  | `tool_calls` accepted as a finish   | 4 of 59           | 2 of 106               |
+| F9  | `"usage": null` on a chunk rejected | 9 of 59           | **survives**           |
+| F10 | unknown message fields rejected     | 18 of 59          | 8 of 106               |
+| F11 | a refusal read as an empty answer   | 1 of 59           | 1 of 106               |
+
+11 of 11 caught by the strict-fake tests alone. F7 survived the first run:
+without recognition, an error event still fails as a malformed chunk, and
+the test only asked for "an error"; the tests now check the error's code
+(`provider_error` for an error event, `provider_bad_response` for a cut
+stream or a tool-call finish), and F7 is caught. F9 is the strict fake's
+own catch: the recorded Ollama stream has no `"usage": null`, so no
+existing test sends one. After each run, no marker was left and every
+`find` text was back in the file exactly once.
