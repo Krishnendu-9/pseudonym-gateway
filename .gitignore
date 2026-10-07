@@ -31,3 +31,5 @@ CLAUDE.md
 # What the last `npm run eval:names` measured (eval/names-run.ts); committed
 # by hand, as a new CPU's baseline, only after review
 names-result.json
+
+GEMINI.md
