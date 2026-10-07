@@ -6984,3 +6984,192 @@ out. The known-failing check
 was shown to bite: with the entry set to 4 the run failed, `--update`
 included (`known-failing glued-literal: the entry says 4 sent, measured
 3`), and passed again at 3.
+
+<a id="adr-041"></a>
+
+## ADR-041: Phase 7, the second provider: Gemini's OpenAI-compatible endpoint, and a strict fake provider (2026-10-07; in progress)
+
+**Status.** Records 1 to 3 are decided (the user, 2026-10-07). The
+reading (7a) and the strict fake provider's design follow; the adapter
+design is proposed with options and **waits for the user**. Nothing has
+been sent to Gemini.
+
+### 1. Why Gemini, and what that makes the result (recorded before any call)
+
+**OpenAI was the preferred provider.** It is the reference implementation
+of the format this gateway speaks: a difference found there is a
+difference from the specification, while a difference found on Gemini may
+be one compatibility layer (Gemini's) disagreeing with another (Ollama's).
+**It was not used because it costs money**; this phase uses no paid API
+(the user, 2026-10-07). **Gemini's OpenAI-compatible endpoint, on its free
+tier, is used instead.** So every Phase 7 result is **measured against a
+compatibility layer, not the reference**, and is labelled that way wherever
+it appears: "works with Gemini's OpenAI-compatible endpoint" is claimed;
+"works with OpenAI" is not, until it is measured against OpenAI.
+
+**The second check is a strict fake provider in the test suite**, free and
+offline: a provider that follows the OpenAI specification strictly and
+rejects or sends what a lenient layer would let slide, so that a place
+where Ollama and Gemini happen to be lenient in the same way is still
+caught (section 4).
+
+### 2. What is sent to a third party (recorded before any call)
+
+**Every request this phase sends to Gemini carries synthetic data only**,
+by ADR-009: generated in memory from fixed seeds (`src/synthetic/`), the
+published test-card list, reserved example domains (`example.com`),
+documentation and private address ranges, fictional phone ranges, and
+names drawn from Wikidata at random, never a real person's details. No
+real personal data has ever been in this repository's tests, fixtures or
+datasets (rule 4), so none can be sent. This is said here, before the
+first call, because "you sent your test data to Google" is a fair question
+to ask of a privacy gateway, and the answer has to have been true before
+it was asked. Two further points: what reaches Gemini is the gateway's
+**redacted** request (placeholders, not even the synthetic values), except
+in a deliberate measurement of the provider itself, which is said where it
+happens; and Gemini's free tier may use what it receives to improve
+Google's products (to be quoted from Google's current terms in the reading,
+section 3), which is acceptable only because the data is synthetic.
+
+### 3. The dashboard: deferred, not dropped (decided in conversation on 2026-10-04, recorded now)
+
+The project brief's Phase 7 had two parts: a second provider and a small
+page showing a request before and after redaction. **The page was deferred
+on 2026-10-04 in conversation and never written down; this records it.**
+
+- **Deferred, not dropped.** It is the weakest evidence for what this
+  project claims (a page that shows redaction working on chosen examples
+  proves nothing the measured evaluation does not, and suggests more than
+  it measures), and in a privacy gateway it adds surface area where values
+  can escape (a page that displays requests is a page that can leak them).
+- **If it is ever built:** it shows **counts only, never message
+  content**; it is **off by default**; and it comes **after Phase 8**.
+- The project brief's Phase 7 line is updated to match.
+
+### 4. 7a: Gemini's documentation against what the Ollama adapter assumes (read 2026-10-07)
+
+Sources, read on 2026-10-07: "OpenAI compatibility"
+(`ai.google.dev/gemini-api/docs/openai`, last updated 2026-09-02), "API
+errors" (`…/docs/api-errors`, 2026-09-20), "Rate limits"
+(`…/docs/rate-limits`, 2026-09-02), the Gemini API terms
+(`…/gemini-api/terms`, last modified 2026-04-28). Google itself calls the
+OpenAI compatibility "still in beta". The documentation is thin on exactly
+the things this adapter depends on, so **most rows end in "measure in
+7b"**: nothing below is assumed from silence.
+
+| Area                | What `ollama.ts` assumes (from Ollama's source and a recorded stream)                                                                                                                                                                            | What Gemini's documentation says                                                                                                                                                                                                                         | Difference, or what 7b must measure                                                                                                                                                                                                                                       |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Endpoint            | `{base}/chat/completions`, base `http://localhost:11434/v1`                                                                                                                                                                                      | base `https://generativelanguage.googleapis.com/v1beta/openai/`                                                                                                                                                                                          | Configuration only; the URL join already handles the trailing slash.                                                                                                                                                                                                      |
+| Authentication      | `Authorization: Bearer <key>`, sent only when a key is set (local Ollama needs none)                                                                                                                                                             | `Authorization: Bearer $GEMINI_API_KEY`                                                                                                                                                                                                                  | Same header. Gemini **requires** a key: a missing key is a 401, mapped like any provider status. The key comes from `.env` (`PSEUDONYM_PROVIDER_API_KEY`) and is never logged.                                                                                            |
+| Request fields sent | `model`, `messages` (role, content), `stream`, `stream_options.include_usage`, `temperature`, `top_p`, `max_tokens`, `seed`, the two penalties, `reasoning_effort`, `response_format` (`text`/`json_object`), `stop` (≤ 4)                       | Documented: `model`, `messages`, `stream`, `reasoning_effort`, `response_format`, `temperature` and `max_tokens` in examples, `stream_options.include_usage` in one example. **Not documented:** `top_p`, `seed`, the penalties, `stop`, `n`, `logprobs` | For each undocumented field, 7b sends it once and records whether it is honoured, ignored or rejected. **Silently ignored** would matter: a client sending `seed` for repeatable answers would not get them. Not assumed either way.                                      |
+| `reasoning_effort`  | Forwards any of `none, minimal, low, medium, high, xhigh, max` (ADR-014's schema)                                                                                                                                                                | Accepts `minimal, low, medium, high, none`; `none` turns thinking off only for 2.5 models ("cannot be turned off for Gemini 2.5 Pro or 3 models"); unset means the model's default                                                                       | **`xhigh` and `max` are outside Gemini's set** (rejected or ignored: measure). Thinking may be **on by default**, so a first token can come late (the per-wait timeout, 120 s by default, must cover it: measure) and thinking may use the `max_tokens` budget.           |
+| Thoughts in output  | Drops `reasoning` (Ollama's thinking field) and keeps `content` only                                                                                                                                                                             | Thought summaries appear only when asked for through `extra_body.google.thinking_config.include_thoughts`, which the gateway never sends                                                                                                                 | Expected: no thoughts in `content`. Measure that `content` carries only the answer.                                                                                                                                                                                       |
+| Response fields     | `id`, `created`, one choice with `message.content` a **string**, `finish_reason` in `stop / length / content_filter`, optional `usage`; extra fields are dropped                                                                                 | Not specified beyond "OpenAI format"                                                                                                                                                                                                                     | Measure: whether `id` and `created` are present, whether `content` can be **null** (a blocked or empty answer), which `finish_reason` values appear.                                                                                                                      |
+| Finish reasons      | `stop`, `length`, `content_filter`; anything else is `bad_response` (a 502)                                                                                                                                                                      | Gemini's own block reasons: `safety`, `recitation`, `spii`, `blocklist`, `prohibited_content` (and the native API has `MAX_TOKENS`, `OTHER`)                                                                                                             | How these map onto OpenAI's values on this endpoint is **undocumented**: measure. **`spii` matters to this project**: Gemini can block a generation for "Sensitive Personally Identifiable Information". The gateway sends placeholders, so this should be rare; measure. |
+| Stream shape        | `data:` chunks; first with `delta.role`; `delta.content` string or empty; a chunk with `finish_reason`; with `include_usage`, a `choices: []` chunk with `usage` after it; **`data: [DONE]` required** (a stream ending without it is a failure) | "standard OpenAI-format chunks"; `include_usage` shown in one example                                                                                                                                                                                    | **The most important thing to measure**: whether `[DONE]` is sent (if not, every Gemini stream fails today), whether usage arrives once and after the finish (usage twice, or before the finish, is `bad_response` today), the content type `text/event-stream`.          |
+| Mid-stream error    | An OpenAI-style `data: {"error": …}` event is a `stream_error`; Ollama itself ends without `[DONE]`                                                                                                                                              | The errors page mentions errors in SSE with `"event_type": "error"`, not specifically for this endpoint                                                                                                                                                  | Measure if possible; a provoked error mid-stream may not be reproducible on demand. An error event that is not `{"error": …}` would parse as a bad chunk: a failure either way, but named `bad_response`.                                                                 |
+| Error responses     | Any non-2xx is `http` with the status; the body is never read (it can echo the prompt)                                                                                                                                                           | `{"error": {"code", "message"}}`; 400, 401, 402, 403, 404, 429, 503                                                                                                                                                                                      | Nothing to change: the body is still never read. **402** (prepaid credit) cannot occur on the free tier.                                                                                                                                                                  |
+| Rate limits         | Not considered (local Ollama has none)                                                                                                                                                                                                           | RPM, input TPM, RPD; RPD resets at midnight Pacific; exceeding one returns `429 RESOURCE_EXHAUSTED`; "wait and retry". Free-tier numbers are shown only in Google AI Studio                                                                              | **A 429 is mapped to our 502 today**, with no retry information for the client. Whether to map it to a 429 or 503 with `Retry-After` is a decision for later (not in this ADR). The free-tier limits bound how many measurement calls 7c can make per day.                |
+| Data use            | Local: nothing leaves the machine                                                                                                                                                                                                                | Unpaid Services: "Google uses the content you submit … to provide, improve, and develop Google products"; "human reviewers may read, annotate, and process your API input and output"; "Do not submit sensitive, confidential, or personal information"  | Consistent with section 2: only synthetic data, and normally only placeholders. Recorded so the choice is visible.                                                                                                                                                        |
+
+### 5. The strict fake provider (designed in 7a, built with the adapter)
+
+A provider in the test suite that follows the OpenAI chat-completions
+specification **to the letter on both sides**. Its job is the one neither
+real provider can do: catch places where Ollama and Gemini happen to be
+lenient in the same way, so a fault in the gateway passes both. Built from
+the specification, not from either provider's behaviour.
+
+**Strict about what the gateway sends** (each a 400 from the fake, which
+fails the test):
+
+- Only fields the specification defines; any other top-level field.
+- `stream_options` without `stream: true` (the adapter should never send
+  it; both real providers may ignore it).
+- More than 4 stop sequences; `max_tokens` and `max_completion_tokens`
+  together; a `reasoning_effort` outside the specification's values;
+  `response_format` of any shape but `{type: "text" | "json_object"}`.
+- Messages: a role outside `system`, `user`, `assistant`; content that is
+  not a string; a `name` field (the gateway rejects them earlier; the fake
+  proves none slips through).
+- Headers: exactly `Authorization: Bearer <key>` and
+  `Content-Type: application/json`; and **no client header forwarded**
+  (none of the test client's own headers may arrive).
+- The body: valid UTF-8 JSON without duplicate keys.
+
+**Strict, and complete, in what it sends** (everything the specification
+allows, which lenient providers mostly omit):
+
+- Non-streamed: `object`, `model`, `system_fingerprint`, `service_tier`,
+  `message.refusal: null`, `message.annotations: []`, `logprobs: null`,
+  and `usage` with its nested token details: the gateway must accept
+  fields it does not use.
+- **A refusal**: `message.content: null` with `message.refusal` set.
+  Today that is a `bad_response` (a 502); the fake makes the case exist,
+  and what the gateway should do with it is a decision for the adapter
+  ADR, not a default.
+- Streamed: a first chunk with `delta: {role: "assistant", content: ""}`;
+  `"usage": null` in every chunk when `include_usage` is set, then a final
+  `choices: []` chunk with `usage`, then `[DONE]`; the same `id` on every
+  chunk; SSE comment lines (`: keep-alive`); `\r\n` line endings; extra
+  per-chunk fields (such as an obfuscation padding field).
+- Every finish reason the specification has, including those the gateway
+  must refuse (`tool_calls`, `function_call`), and `length` with empty
+  content.
+- Errors: a 429 with a `Retry-After` header and the specification's error
+  body; 401, 500, 503; a mid-stream `data: {"error": …}` event; a stream
+  cut without `[DONE]`.
+
+Where the strict fake and a real provider disagree with the gateway in
+different ways, the fake's verdict is about the specification and the real
+provider's about practice; both are reported, neither overrides the other.
+
+### 6. The adapter: one OpenAI-compatible adapter, or a second one (options; waits for the user)
+
+Today `src/providers/ollama.ts` (323 lines) holds two kinds of code: what
+any OpenAI-compatible provider needs (the request body built field by
+field, the size caps, the timeouts, the SSE reading, the order checks on
+a stream, the failure mapping) and what is Ollama's (the comments about
+`reasoning` and `"content":""`, the default base URL, an optional key).
+Almost all of it is the first kind.
+
+- **Option A: one OpenAI-compatible adapter with provider profiles.**
+  Rename and generalise `ollama.ts` into `openai-compatible.ts`; a profile
+  per provider (`ollama`, `gemini`) holds only data: whether a key is
+  required, any measured quirk (for example accepted `reasoning_effort`
+  values, or a finish-reason mapping), and nothing else. _Costs:_ a
+  refactor of the adapter and its tests (renames, comments), with the
+  Ollama path proved unchanged: every existing adapter test passes
+  unedited apart from imports, the recorded Ollama stream still parses
+  identically, and the adapter's mutation checks are run again. _Gains:_
+  one stream reader, one set of order checks, one place a bug is fixed;
+  the strict fake tests the code both providers use.
+- **Option B: a second adapter, `gemini.ts`, beside `ollama.ts`.**
+  _Costs:_ about 300 lines copied, two stream readers that will drift, a
+  bug fixed in one and not the other, the strict fake run against both,
+  twice the mutation checks. _Gains:_ the Ollama path is untouched, so
+  nothing already measured can move.
+- **Option C: a shared core and two thin adapters.** The provider-neutral
+  parts move to a core module; `ollama.ts` and `gemini.ts` become small
+  files around it. In practice it is option A with the profiles as
+  modules instead of data; it costs a little more structure and gains
+  room for a provider whose differences are behaviour rather than data.
+
+**Recommendation: A**, with two conditions. First, the structure is
+decided now but **each profile's contents are decided only from what 7b
+measures**, not from the documentation's silences in section 4; a profile
+starts empty and gains an entry only with the recorded evidence for it.
+Second, **the Ollama path must be shown unchanged** before anything Gemini
+is added: the refactor is its own step, with its own proof, like the moves
+of Phase 6b. C if 7b finds a difference that is not expressible as data.
+B only if keeping the Ollama code byte-for-byte untouched is worth two
+copies of the stream reader.
+
+**Not decided here, coming in 7b or later:** what the gateway does with a
+refusal (content null), how a 429 reaches the client, and whether an
+unsupported `reasoning_effort` value is rejected before it is sent.
+
+**What 7b needs from the user:** a Gemini API key from Google AI Studio
+(free tier), put in `.env` as `PSEUDONYM_PROVIDER_API_KEY` (gitignored,
+never committed or logged), and the model name chosen from those AI Studio
+offers on the free tier, for `PSEUDONYM_MODEL`.
