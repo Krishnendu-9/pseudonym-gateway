@@ -5520,6 +5520,7 @@ from the runs' logs (I cannot read the run logs from here):
 | L2                | Intel Core i5-12450H (Debian 12, 4 CPUs) | `96a5c328…` | `ba1a6b82…` | 933        | 501 of 612 (81.8%) | 661 of 933 (70.8%) | 5.85               | **identical**        |
 | Names #1          | AMD EPYC 7763 64-Core (4 CPUs)           | `96a5c328…` | `ba1a6b82…` | 933        | 501 of 612 (81.8%) | 661 of 933 (70.8%) | 5.85               | **identical**        |
 | Names #2          | Intel Xeon Platinum 8573C (4 CPUs)       | `d1f611f0…` | `46dd8ff3…` | 934        | 502 of 612 (82.0%) | 662 of 934 (70.8%) | 5.85               | **different**        |
+| Names #3          | AMD EPYC 7763 64-Core (4 CPUs)           | `96a5c328…` | `ba1a6b82…` | 933        | 501 of 612 (81.8%) | 661 of 933 (70.8%) | 5.85               | **identical**        |
 
 Run #2 in full: B's spans
 `d1f611f06ea88b2feaa2bfdb5e8164bede8cafe8a905503e185b99f6f654bbfb`, names
@@ -5684,6 +5685,18 @@ explanation, not in the code.
   `test/unit/eval/names/gateway.test.ts`; `eval/names-run.ts` wires it.
   First run with both, on the i5-12450H: identical to its baseline, second
   pass identical.
+- **Confirmed working on a real runner (Names run #3, 2026-10-07, as
+  reported by the user).** The run landed on an AMD EPYC 7763; its output
+  shows both mechanisms: C1 selected that CPU model's entry ("Identical to
+  the baseline for AMD EPYC 7763 64-Core Processor", the exact model string
+  the index holds), and C3's second pass ran and equalled the first ("Second
+  pass: equal to the first"). B's spans `96a5c328…`, names `ba1a6b82…`, 933
+  detections, R 501/612, precision 661/933, 5.85 per 1,000 words; 293.0 ms
+  per KiB (run #1: 292.1). Its install step printed the same as run #1:
+  `onnxruntime-node` 301,068,136 bytes, `libonnxruntime.so.1` 45,828,512,
+  `onnxruntime_binding.node` 389,488. **Which install input it ran with is
+  not recorded yet** (the message giving it arrived unfilled), and with it
+  whether #3 is a counted run.
 
 ### The model in CI: a cache keyed by the pins, the pinned download behind it (Phase 6c, 2026-10-07; the user chose option M2)
 
