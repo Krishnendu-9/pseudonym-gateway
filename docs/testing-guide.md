@@ -45,6 +45,52 @@ like tests timing out at 30 s that take 2–4 s alone, often
 `detect.test.ts`, and sometimes "Failed to start forks worker"; they are
 not code failures, and the same run passes once memory is free.
 
+**Every test run samples the machine (2026-10-07).** After two slow gate
+runs with no data on why (bug-log 57; the 1,227 s run of step 5), a
+Vitest global setup (`test/support/machine-sampling.ts`, logic in
+`scripts/machine-sampler.ts`) samples the machine for the whole of every
+run, `npm test`, coverage, timing and names alike, locally and in CI:
+
+- **Every 5 s, and once more at the end:** free memory (`os.freemem()`,
+  what the operating system reports as available), CPU busy since the
+  last sample (all cores), how many processes are running, how many are
+  Node and the memory those hold, and the gap since the last sample. A gap
+  much longer than 5 s means the sampler itself was held up: a stalled or
+  sleeping machine.
+- **Where:** `.machine-samples/<UTC time>-<pid>.tsv` at the repo root
+  (gitignored, dockerignored), a `#` line with the platform, CPUs, total
+  memory and Node version, then one tab-separated line per sample. Each
+  line is appended as it is taken, so a run that hangs or is killed still
+  leaves its samples. The newest 20 files are kept.
+- **At the end of the run**, one line on the console, after Vitest's own
+  summary: the number of samples, the lowest free memory and when, how
+  many samples were below 3,500 MB, the most CPU, processes and Node
+  memory seen, and the longest gap. In CI it is in the job's log.
+- **It holds numbers only:** no process names, command lines or paths.
+- **What it costs:** on Linux it reads `/proc` in its own process. On
+  Windows each sample runs `tasklist`: about 0.4–0.5 s on an idle
+  machine, over 4 s under the full suite's load (bug-log 69, which is why
+  a listing may take up to 15 s), every 5 s; a small load during the
+  timing tests.
+- **Shown to see a squeeze:** with a separate process holding 2 GiB during
+  a test run, the summary read "free memory lowest 4053 MB" and "Node …
+  holding up to 2279 MB", against about 6,000 MB and 200 MB without it.
+
+When a run fails or is slow, keep its `.tsv` with the test output: the
+lowest free memory against 3,500 MB, the Node memory, and any long gap
+say which of bug-log 57's explanations, if any, fits.
+
+Tested by `test/unit/scripts/machine-sampler.test.ts` (12: the three
+process listings on fixed inputs and a fake `/proc`, this machine's real
+listing, the line and summary formats, pruning, a run shorter than the
+interval, a real run). Mutation checks (2026-10-07): every process counted
+as Node, no last sample at stop, old files never pruned, the low-memory
+count dropped, the held-up flag never set, non-numeric `/proc` entries
+counted: **6 of 6 caught**, the last only after the fake `/proc/self` was
+given a `comm` like the real one (until then it was skipped for having
+none, so the numeric filter was never tested). The sampler's own first
+full run found bug-log 69.
+
 **Why `npm test` and the coverage run report different counts.** On
 2026-10-03, `npm test` reported 2,754 tests in 98 files and
 `npm run test:coverage` 2,665 in 82. The difference, 89 tests in 16
@@ -3014,8 +3060,19 @@ during an inference ends the test process (bug-log 68).
 
 **`npm run eval:names`** prints counts, hashes, timings and memory, and
 exits 1 if any compared field differs (`npx tsx eval/names-run.ts
---no-speed` skips the timing runs). Run on 2026-10-07, four times: all
-identical to the baseline (ADR-036, "Step 4b").
+--no-speed` skips the timing runs). Run on 2026-10-07 seven times on the
+real code: all identical to the baseline (ADR-036, "Step 4b").
+
+**Showing it can fail (negative controls, same day).** To repeat: copy
+the tree (`git ls-files -co --exclude-standard -z | tar --null -T - -cf - | tar -xf - -C <dir>`),
+link the repo's `node_modules` and `models/` into the copy (PowerShell
+`New-Item -ItemType Junction`), run `npx tsx eval/names-run.ts --no-speed`
+in it once unperturbed (must say identical), then change one line by hand
+and run again. N1, one of B's scores + 1e-12 as it leaves the worker
+(`name-worker.ts`, `#reply`): exit 1, `DIFFERENT … spans.model`. N2, one
+name span one character longer (`find.ts`, `nameSpans`): exit 1,
+`DIFFERENT … spans.names`. In both, every metric stayed identical: only
+the hashes see changes this small. Results in ADR-036, "Step 4b".
 
 ### Repeating the names-off proof (step 4b)
 

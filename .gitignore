@@ -26,3 +26,5 @@ models/
 # Private working docs (see CLAUDE.md "Documentation")
 dev_docs/
 CLAUDE.md
+# Machine samples taken during test runs (scripts/machine-sampler.ts)
+.machine-samples/

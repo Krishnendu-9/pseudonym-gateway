@@ -5230,6 +5230,25 @@ with the runtime from the project's own `node_modules`. The held-out
 before, on the four frozen inputs and the two joins (D0), and the B code
 it ran is now the moved code proven identical here.
 
+**The comparison can fail: negative controls (2026-10-07, after step 5,
+at the user's request).** Seven identical runs are evidence only if a run
+that differs is caught. Two scratch copies of the tree at `496d523` (the
+step 5 commit; `node_modules` and `models/` linked from the repo, nothing
+in the repo changed), each first run **unperturbed**, then with **one
+line** changed by hand, each change firing once per run:
+
+| Copy | Change (one line)                                                        | Unperturbed run   | Perturbed run                                                                 |
+| ---- | ------------------------------------------------------------------------ | ----------------- | ----------------------------------------------------------------------------- |
+| N1   | `name-worker.ts`: the first span B returns in the run, its score + 1e-12 | identical, exit 0 | **exit 1, `DIFFERENT … spans.model`**; names and every metric still identical |
+| N2   | `find.ts`: the first name span of the run, one character longer          | identical, exit 0 | **exit 1, `DIFFERENT … spans.names`**; B's spans and every metric identical   |
+
+So each hash catches a change no metric shows: a score moved in its
+twelfth decimal place (no threshold crossed, so the names are the same),
+and one name one character longer (the same values counted as covered).
+B's spans hashed to `b3fce2ea…` under N1 and the names to `45bd9ef9…`
+under N2. The logic of the comparison itself is covered by mutations G1
+to G5 (testing guide, step 4b).
+
 **Seen while proving the move, not changed: re-running the comparison
 today does not reproduce ADR-035's table.** The generated set has 204
 more messages than in 6a (the `glued-literal` and `keyword-in-literal`

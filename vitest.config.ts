@@ -30,7 +30,9 @@ export default defineConfig({
     environment: 'node',
     // Refuses to run while a mutation may still be written into a source file
     // (bug-log 24, scripts/mutation-marker.ts).
-    globalSetup: ['test/support/mutation-guard.ts'],
+    // Then samples the machine for the whole run (free memory, CPU,
+    // processes) into .machine-samples/ (scripts/machine-sampler.ts).
+    globalSetup: ['test/support/mutation-guard.ts', 'test/support/machine-sampling.ts'],
     // A timeout only guards against a hang. The 5 s default failed property
     // tests on a busy machine, so no test asserts wall-clock time any more:
     // linear-time tests compare growth ratios instead (test/support/linear-time.ts).

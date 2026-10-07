@@ -2862,3 +2862,38 @@ decision, which this finding changes.
 **Fix:** none in this step. **Guarded by:** the names test that stops the
 thread now does so between calls; the hazard is in the method's
 documentation and here.
+
+## 69. The machine sampler lost the process count under load, the moments it was built for (2026-10-07, found by its first full run; fixed the same day)
+
+**Symptom:** the first `npm test` with the new machine sampler
+(`scripts/machine-sampler.ts`) failed one test, the sampler's own "this
+machine: some processes" (`processes()` returned nothing, after 4,145 ms).
+The run's sample file showed the same thing: six samples in a row, 5 to
+35 s into the run, while the CPU was at up to 100%, had "-" for every
+process column.
+
+**Root cause:** on Windows the sampler lists processes with `tasklist`,
+which I had given a 4 s time limit after timing it at 0.4–0.5 s on an idle
+machine. Under the full suite's load it took longer, the limit killed it,
+and the reading was dropped: the sampler lost its process count exactly
+when the machine was busiest, the case it exists to record.
+
+**First fix, not enough:** the limit raised to `LISTING_TIMEOUT_MS`,
+15 s. The next full run failed the same test at 15,141 ms, with a 20 s gap
+between samples: under that load `tasklist` took longer than 15 s.
+
+**Root cause, second part:** the listing was starved of CPU by the busy
+test workers. Timed back to back under a running main suite (scratch
+script): 14,053 ms at normal priority, 1,198 ms with the `tasklist`
+process raised to high priority right after it started (then 1,499 against
+969 and 686 against 556 ms as the load eased).
+
+**Fix:** on Windows the sampler raises the listing's priority
+(`os.setPriority`, best-effort; Unix refuses a raise without root, and its
+`ps` was not the problem), and keeps the 15 s limit. One sample is taken
+at a time, so a slow listing delays the next one instead of piling up,
+and the longer gap itself says the machine was struggling.
+
+**Guarded by:** the sampler's own test of this machine's processes,
+which runs inside the full suite (where it failed); and the evidence each
+run now writes (a "-" in the process columns of the `.tsv` file).

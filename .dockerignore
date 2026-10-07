@@ -8,3 +8,4 @@ coverage/
 dev_docs/
 .git/
 models/
+.machine-samples/
