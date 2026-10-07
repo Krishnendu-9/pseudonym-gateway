@@ -5221,7 +5221,7 @@ dataset hash, **B's span SHA-256 `96a5c3289a275cf91c4743ade7b5ec2f46c92a1974b9b1
 `ba1a6b82da7c951da9dda75862bdb7656db17f968294f80255b708be0570c7b3` (D0's,
 in D0's format: `{start, end}` per span, recovered by recomputing it from
 the saved 6a spans)**, 933 detections and every metric of ADR-035's B+F
-row. Result, on every run (7 of 7: the four below and three more in the gates, the last on the final code of step 5): **identical**, field by field: B's
+row. Result, on every run (8 of 8: the four below, three more in the gates, the last on the final code of step 5, and one in Phase 6c after the run started printing its machine): **identical**, field by field: B's
 spans, the names, R 501/612 (81.8%), main PERSON 145/153, precision
 661/933, 5.85 per 1,000 words, every row and lookalike count. So the
 published 81.8% describes the spans the gateway produces on this machine,
@@ -5354,16 +5354,16 @@ binary outside the lockfile in the `--omit=optional` install
 Every part of it is built, on Windows x64. What each decision now is, and
 how it is checked:
 
-| Decision                                                     | Built as                                                                                     | Checked by                                                                                                   |
-| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| (a) the runtime: exact optional dependencies, native         | `onnxruntime-node` 1.30.0, `@huggingface/tokenizers` 0.2.0, loaded only in the worker thread | the lockfile's integrity hashes (`npm ci`); the names-off proof (step 4b: refused start when absent)         |
-| (b) the model: pinned download, SHA-256 at download and load | `npm run fetch:model`, `checkModelFiles` at start-up                                         | `name-model.test.ts`, `fetch-model.test.ts`; 17 mutations (step 4a)                                          |
-| the name list: pinned by hash                                | `NAME_LIST_SHA256`, checked at start-up                                                      | `join.test.ts`, `names.test.ts`                                                                              |
-| load failure or mismatch refuses start-up                    | `startNameDetection` → `NameStartupError`, exit 1                                            | unit tests per code; the proof's names-on runs                                                               |
-| timeout, full queue or crash → 503, never names off          | `NameDetector` (step 3), unchanged behind the worker                                         | `names.test.ts`, `name-worker.test.ts`, the names project on B itself                                        |
-| no restart after a crash                                     | a crashed worker stays crashed; health unhealthy                                             | the same                                                                                                     |
-| a call past its timeout is not stopped (ADR-037)             | option 1, tied to the body limit                                                             | comments at the body limit and the timeout; bug-log 68                                                       |
-| the four frozen inputs and the two joins                     | pins above, the moved code (steps 2, 3, 4b), D0                                              | `npm run eval:names`: B's spans and the names identical to 6a's, every metric, 7 runs of 7 (needs the model) |
+| Decision                                                     | Built as                                                                                     | Checked by                                                                                                              |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| (a) the runtime: exact optional dependencies, native         | `onnxruntime-node` 1.30.0, `@huggingface/tokenizers` 0.2.0, loaded only in the worker thread | the lockfile's integrity hashes (`npm ci`); the names-off proof (step 4b: refused start when absent)                    |
+| (b) the model: pinned download, SHA-256 at download and load | `npm run fetch:model`, `checkModelFiles` at start-up                                         | `name-model.test.ts`, `fetch-model.test.ts`; 17 mutations (step 4a)                                                     |
+| the name list: pinned by hash                                | `NAME_LIST_SHA256`, checked at start-up                                                      | `join.test.ts`, `names.test.ts`                                                                                         |
+| load failure or mismatch refuses start-up                    | `startNameDetection` → `NameStartupError`, exit 1                                            | unit tests per code; the proof's names-on runs                                                                          |
+| timeout, full queue or crash → 503, never names off          | `NameDetector` (step 3), unchanged behind the worker                                         | `names.test.ts`, `name-worker.test.ts`, the names project on B itself                                                   |
+| no restart after a crash                                     | a crashed worker stays crashed; health unhealthy                                             | the same                                                                                                                |
+| a call past its timeout is not stopped (ADR-037)             | option 1, tied to the body limit                                                             | comments at the body limit and the timeout; bug-log 68                                                                  |
+| the four frozen inputs and the two joins                     | pins above, the moved code (steps 2, 3, 4b), D0                                              | `npm run eval:names`: B's spans and the names identical to 6a's, every metric, 8 runs of 8 on Windows (needs the model) |
 
 **What it still leaves open, for Phase 6c and later:**
 
@@ -5382,6 +5382,64 @@ eval:names` runs in CI; both need the runtime and the 178.5 MB model
 5. **Docker** (Phase 8): the same install setting as CI, the model files
    in the image or mounted, and a health check that allows for a cold
    first start (bug-log 66).
+
+### Pre-registered: what a Linux span comparison means (Phase 6c, 2026-10-07; written and committed before any Linux run)
+
+The rule below is the user's, set before anything names-related has run
+on Linux. It is committed before the first Linux run, as this ADR's
+measurements have been, so that the result cannot shape the rule.
+
+**The comparison.** `npm run eval:names` on Linux x64: Node 22.23.3
+(`.nvmrc`), the runtime and tokenizer from the lockfile, the four model
+files by their pinned SHA-256 values, the name list by its hash, and the
+same 1,998 generated messages (their hash is part of the check). The run
+records the machine (runner image or distribution, CPU) and
+`ONNXRUNTIME_NODE_INSTALL`'s value at install.
+
+**Definitions, fixed here (proposed with the rule, for the user's review
+before the run):**
+
+- **"Reproduces the Windows spans"** means `eval:names` on Linux reports
+  identical for B's span SHA-256 (`96a5c328…`) **and** the names' SHA-256
+  (`ba1a6b82…`), as well as the messages, the detections and every metric.
+  Either hash differing is "does not reproduce", **even if every metric is
+  identical**: the negative control N1 showed a score can move in its last
+  bits without moving any metric, and that is still a different
+  computation. Which fields differ is reported.
+- **A machine is its operating system image and its CPU model**, both
+  recorded: the runtime chooses its kernels by CPU (this ADR, option 5),
+  so the same Linux on another CPU is another machine. **On each machine,
+  the first run that completes is the one that counts.** It is not re-run
+  in the hope of a match. If later runs on the same machine disagree with
+  its first, that is reported too, as non-determinism there. The rule
+  below applies to each machine's result separately, and the platform that
+  becomes a frozen input is the machine.
+- **A run that does not complete** (a crash, a timeout, a refused start)
+  is not a result in either direction; it is reported, and its cause found
+  before the next run.
+
+**If the Linux runtime does not reproduce the Windows spans:**
+
+- It is a result, not a bug. **Nothing is changed to force agreement**: not
+  the code, the pins, the model, the list, the point or the baseline.
+- **The published figures, 81.8% on the generated set (501 of 612), 41 of
+  45 on the held-out set and 5.85 false positives per 1,000 words, describe
+  Windows** (Windows 11 x64, `onnxruntime-node` 1.30.0 native CPU), and are
+  relabelled to say so wherever they appear (README, user manual, ADR-035).
+- **Both platforms' numbers are reported where both exist**: for the
+  generated set, the Linux run's own metrics beside the Windows ones.
+- **The platform becomes a sixth frozen input**, beside the runtime, the
+  tokenizer, the model bytes, the gazetteer half and the operating point
+  (0.9 / 0.6): the figures describe the platform they were measured on.
+- **The held-out figure is not re-run on Linux.** It is spent; it stays
+  the Windows figure.
+- `eval:names` keeps the Windows baseline as it is; a Linux baseline, from
+  that first completed Linux run and labelled as Linux, is added beside it,
+  never in its place.
+
+**If Linux does reproduce them**, this is said plainly, in this ADR, the
+README and the user manual: the figures hold on both platforms tested
+(Windows 11 x64 and the Linux machine recorded), with the run's details.
 
 <a id="adr-037"></a>
 
