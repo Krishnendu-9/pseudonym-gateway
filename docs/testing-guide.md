@@ -3108,10 +3108,13 @@ through **twice** (option C3; ADR-036, "C1 and C3 as built"):
 Every run writes `names-result.json` (gitignored: the machine, the
 outcome, both passes' hashes, every measured field; no text), which the
 Names workflow attaches as an artifact. **To add a CPU model's baseline**
-(a human commit, after looking at the run): copy the file's `measured`
-object into `eval/names-baseline-<cpu>.json` and add the exact
-`machine.cpuModel` string to `eval/names-baselines.json` with the file and
-a note of which run it came from. Keyed by the exact model string, never by
+(a human commit, after looking at the runs): first **two separate runs on
+that CPU model that agree** (separate jobs; both outcomes NEW CPU; the two
+`names-result.json` files' `secondPass` and `measured` identical), because
+C3 repeats only within one process (ADR-036, the rule for minting a
+baseline); then copy `measured` into `eval/names-baseline-<cpu>.json` and
+add the exact `machine.cpuModel` string to `eval/names-baselines.json` with
+the file and a note of the two runs it came from. Keyed by the exact model string, never by
 CPU family or instruction set (ADR-036). On 2026-10-07 on the i5-12450H:
 identical, second pass identical.
 

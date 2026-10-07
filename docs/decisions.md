@@ -5650,6 +5650,23 @@ explanation, not in the code.
   the workflow attaches to every run. Its baseline is added only by a
   human commit: copy `measured` into `eval/names-baseline-<cpu>.json` and
   add the model to the index.
+- **The rule for minting a baseline (the user, 2026-10-07): two separate
+  runs on that CPU model that agree, not one.** Two completed runs, in
+  separate jobs (so separate processes, sessions and hosts), each passing
+  its own second pass, whose two hashes and every measured field are
+  identical; only then is either run's `measured` committed. **The reason
+  is C3's stated limit:** C3 repeats the messages within one process and
+  one session, so it does not show that a fresh process gives the same
+  spans, and a baseline minted from one run would rest on exactly that
+  untested case. The Xeon Platinum 8573C is such a CPU: one run so far,
+  so no baseline yet. If the two runs disagree, no baseline is minted for
+  that model, and that disagreement is itself a result under the stopping
+  rule (a CPU model that is not deterministic). The two runs used to mint a
+  baseline are also counted runs. (The i5-12450H's baseline met this long
+  before the rule: 8 runs on Windows and 1 on Linux, in separate
+  processes. The EPYC 7763's entry rests on one run, #1, matching the i5's
+  already-minted baseline exactly: it reuses a baseline rather than mints
+  one, and the next counted run on the EPYC checks it.)
 - **Known gap, the unknown-CPU window.** Until a CPU model's baseline is
   committed, runs on it compare against nothing: a change that moved its
   spans would pass there. **There is no tolerance band** to cover the
@@ -5761,9 +5778,17 @@ is outside the project's control.
 **How this is closed out, written now, before the end (the user,
 2026-10-07).** When the work on this project finishes:
 
-1. Record here how many counted runs were collected, on how many CPU
-   models, with each run's CPU model and two hashes, and which models'
-   baselines were committed.
+1. Record here **every run, not only the counted ones**: the total, then
+   how many were counted (compared with a committed baseline for their CPU
+   model) on how many models, and how many **checked nothing** because
+   their CPU model had no baseline (the NEW CPU outcome, which exits 0), by
+   model, and any that did not complete. For example: "17 runs: 11 counted
+   on two models, 6 on an unbaselined CPU (Xeon Platinum 8573C), 0
+   incomplete". With each run's CPU model and two hashes, and which
+   models' baselines were committed and when. The reason: an unknown CPU
+   passes with an annotation nobody reads on a daily scheduled job, so a
+   change in GitHub's fleet could produce weeks of green runs that checked
+   nothing, and a counted total alone would hide it.
 2. State whether the threshold above was reached.
 3. If it was reached, E1 is adopted as the rule says. **If it was not, say
    that E1 was not adopted and that the rule remains open**, with what is

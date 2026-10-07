@@ -217,7 +217,8 @@ describe('the outcome of a run (C1 and C3)', () => {
     const lines = outcomeLines(o, 'CPU Y');
     expect(lines[0]).toContain('NEW CPU: no baseline for "CPU Y"');
     expect(lines[0]).toContain('names-result.json');
-    expect(lines[1]).toContain('needs a human commit');
+    expect(lines[1]).toContain('two separate runs on this CPU model that agree');
+    expect(lines[1]).toContain('then a human commit');
   });
 
   it('two passes that disagree on either hash: not repeatable, exit 1, whatever the baseline says', () => {

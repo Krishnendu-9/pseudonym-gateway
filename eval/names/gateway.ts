@@ -189,7 +189,7 @@ export function outcomeLines(o: Outcome, cpuModel: string, entry?: BaselineEntry
     case 'new-cpu':
       return [
         `NEW CPU: no baseline for "${cpuModel}". This run is that CPU model's first result (ADR-036): it passes, and its result is in names-result.json.`,
-        'Its baseline needs a human commit: copy "measured" from names-result.json into eval/names-baseline-<cpu>.json and add the CPU model to eval/names-baselines.json.',
+        'Its baseline needs two separate runs on this CPU model that agree (ADR-036), then a human commit: copy "measured" from names-result.json into eval/names-baseline-<cpu>.json and add the CPU model to eval/names-baselines.json.',
       ];
   }
 }
