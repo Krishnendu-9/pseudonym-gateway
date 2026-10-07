@@ -1331,10 +1331,12 @@ number, an IFSC code with a known bank) wins where the two overlap.
 
 ### What is found, measured
 
-On the generated set's 612-name block: **501 found (81.8%)**; in the main
-cases 145 of 153. On the held-out set, run once: **41 of 45**. Every name
-the gateway finds on the generated set is exactly what the measurement
-found: `npm run eval:names` checks it, span by span.
+Measured on an **Intel Core i5-12450H**: on the generated set's 612-name
+block **501 found (81.8%)**; in the main cases 145 of 153. On the held-out
+set, run once: **41 of 45**. On that CPU every name the gateway finds on
+the generated set is exactly what the measurement found: `npm run
+eval:names` checks it, span by span. On another CPU the names differ
+slightly ("Which platforms the figures hold on", below).
 
 ### What is not found
 
@@ -1408,10 +1410,21 @@ run and never changes what is found (ADR-036, Phase 6c).
 
 ### Which platforms the figures hold on
 
-The figures above were measured on Windows 11 x64. Under a rule written
-and committed before the run, the same comparison on Linux (Debian 12 in a
-container on the same Intel i5-12450H, 4 logical CPUs) gave exactly the
-same names, span by span: **the figures hold on both platforms tested.**
-It was slower there (450.7 ms per KiB of text on 4 CPUs). Whether another
-CPU gives the same names is being checked on GitHub's runners, by a second
-rule written in advance (ADR-036).
+**The figures describe one CPU, the Intel Core i5-12450H**, where they
+were measured on Windows 11 x64. Under a rule written and committed before
+any Linux run (ADR-036):
+
+- **Same CPU, another operating system:** Linux (Debian 12 in a container,
+  4 logical CPUs against Windows' 12) gave exactly the same names, span by
+  span. The operating system and the number of threads change nothing.
+- **Another CPU:** on a GitHub runner's Intel Xeon Platinum 8573C the names
+  differ slightly: 502 of 612 found (82.0%) against 501 (81.8%), 934
+  detections against 933, precision 70.8% and false positives 5.85 per
+  1,000 words in both. One more detection, and it is a correct name.
+
+The code, the model and every other pinned input were the same; the
+processor was not. The published figures stay the i5-12450H's, the Xeon's are reported beside
+them, and the held-out figure (41 of 45) is not re-run on any other CPU.
+Speed differs a great deal more than the names: 308–332 ms per KiB on the
+i5-12450H under Windows, 450.7 on it under Linux with 4 CPUs, 147.0 on the
+Xeon.

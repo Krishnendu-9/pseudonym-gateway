@@ -4191,6 +4191,15 @@ llama-server to apply the chat template ("connection attempt failed",
 | B+F       | 0.9 / 0.6                                      | 501/612 (81.8%) | 145/153     | 661/933   | 5.85               | 286.0      | 325 MiB | both            |
 | D+F       | port unverified, results excluded (bug-log 56) |                 |             |           |                    |            |         |                 |
 
+> **Relabelled 2026-10-07 (Phase 6c, by ADR-036's pre-registered rule):
+> every figure in this table was measured on an Intel Core i5-12450H.**
+> It holds on that CPU under Windows 11 and Debian 12. On a GitHub runner's
+> Intel Xeon Platinum 8573C, B+F at 0.9 / 0.6 gave 502/612 (82.0%), main
+> 145/153, precision 662/934, 5.85 per 1,000 words: one more detection,
+> a correct name (ADR-036, "Result, Linux machine 2"). The held-out 41 of
+> 45 below is the i5-12450H's and is not re-run on any other CPU. The
+> table itself is left as it was measured.
+
 Judged rows (language, script), R: A en 62.6, hinglish 49.7, hi 9.6,
 latin 59.0, devanagari 1.6; B 63.3, 62.0, 61.6, 60.8, 69.7; D excluded; F 66.6, 67.9, 74.4, 66.1, 78.9; B+F 81.0, 79.1,
 88.0, 79.1, 93.2. Other rows are in the run's output. All-lower-case
@@ -4460,7 +4469,18 @@ together:
    `src/synthetic/wikidata-names.ts`, canonical SHA-256
    `313b89ea3a88ba35265f8f8bf5d2022c8dd85e90cdff4744bc3bb388821f3951`.
 
-**Changing any one of the four orphans the figure**: it then describes
+> **Two more frozen inputs, added 2026-10-07 (Phase 6c).** 5. **The
+> operating point**, 0.9 / 0.6 (`MODEL_POINT`), held fixed by the move
+> standard all along and named here so the list is whole. 6. **The CPU:
+> an Intel Core i5-12450H.** A GitHub runner's Intel Xeon Platinum 8573C
+> gave slightly different spans with every other input the same, while
+> the i5-12450H gave the same spans under Windows 11 and Debian 12 and with
+> 12 or 4 threads ("Result, Linux machine 2", below). So 41 of 45, and the
+> generated set's 81.8% and 5.85, describe that CPU; the operating system
+> has been shown not to matter on it. The held-out figure is not re-run on
+> any other CPU.
+
+**Changing any one of these inputs orphans the figure**: it then describes
 code that no longer ships. The held-out set is spent for names (run once,
 reporting only), so a figure orphaned this way **cannot be re-earned**;
 it can only be re-labelled as describing the configuration it was
@@ -5484,6 +5504,90 @@ creates an inference session on B and runs it, passed 6 of 6. **The skip
 leaves a working CPU runtime**; the fallback is not needed. Not measured
 yet: the install without the skip (the NuGet download), which the names
 workflow's `default` input measures on a runner.
+
+### Result, Linux machine 2 (L1, a GitHub runner): the spans are not reproduced (2026-10-07, Names workflow run #2)
+
+**The runner did not reproduce the Windows spans.** Exit 1, `DIFFERENT
+from eval/names-baseline.json: spans.model, spans.names, detections,
+metrics.precision, metrics.recall, metrics.rows`. As reported by the user
+from the run's log (I cannot read the run's logs from here):
+
+| Field                                    | Runner (machine 2)                                                 | i5-12450H (Windows and Linux, the baseline)                        |
+| ---------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| B's span SHA-256                         | `d1f611f06ea88b2feaa2bfdb5e8164bede8cafe8a905503e185b99f6f654bbfb` | `96a5c3289a275cf91c4743ade7b5ec2f46c92a1974b9b1c5e5f8e82e453ed472` |
+| Names SHA-256                            | `46dd8ff36336bbc80cf61571cb241d3074da08fd421686d7a18b0ee512f16777` | `ba1a6b82da7c951da9dda75862bdb7656db17f968294f80255b708be0570c7b3` |
+| Detections                               | 934                                                                | 933                                                                |
+| Names block (R)                          | 502 of 612 (82.0%)                                                 | 501 of 612 (81.8%)                                                 |
+| Main cases                               | 145 of 153                                                         | 145 of 153                                                         |
+| Precision                                | 662 of 934 (70.8%)                                                 | 661 of 933 (70.8%)                                                 |
+| False positives per 1,000 words          | 5.85                                                               | 5.85                                                               |
+| Rows of the names block                  | differ (which rows is not printed by the run)                      |                                                                    |
+| Speed / 1 KiB / 64 KiB latency           | 147.0 ms per KiB / 83 ms / 9.5 s                                   | 308–332 / 141–148 ms / 20–23 s (Windows)                           |
+| Peak memory (6a's measure) / model start | 452 MiB / 868 ms                                                   | 366–369 MiB / 1.1–1.7 s (Windows)                                  |
+
+**The machine:** GitHub's `ubuntu-24.04` runner, kernel 6.17 (Azure),
+**Intel Xeon Platinum 8573C**, 4 logical CPUs, Node v22.23.3; the model
+from the cache (a hit), checked at start-up; both CPU-runtime files
+present, `onnxruntime-node` 301,006,136 bytes; `test:names` 6 of 6.
+
+**Which install it used** (the user's first question): the run's input is
+not in what the log prints (`eval:names` shows the variable as its own
+process sees it, unset in every run, because the workflow sets it only
+inside the install step's shell). The size fits `skip`: 301,006,136 bytes
+is within 0.02% of the package's registry size, where `default` would have
+added the CUDA provider libraries. **It cannot have affected the spans
+either way:** `loadBert` creates the session with no options, the runtime
+then resolves an empty provider list (`resolveBackendAndExecutionProviders`
+in `onnxruntime-common`, read in the installed 1.30.0) and runs on its
+built-in CPU provider only, so CUDA libraries on disk are never loaded.
+For the stopping rule below it matters: only a `skip` run counts there.
+To be confirmed from the run's page (the install step's `MODE`), and
+whether run #1 completed on this CPU, which would make #1, not #2, this
+machine's counted result.
+
+**Applied as pre-registered** (nothing changed to make the hashes agree):
+
+- **The published figures describe the Intel Core i5-12450H** (81.8% on
+  the generated set, 41 of 45 held-out, 5.85 false positives per 1,000
+  words), measured on Windows 11 and reproduced on Debian 12 on that CPU,
+  and are relabelled to say so in the README, the user manual and ADR-035.
+- **The runner's figures are added beside them, never in their place**:
+  the table above, the README and the user manual.
+- **The CPU becomes a frozen input**, the sixth: the runtime, the
+  tokenizer, the model bytes, the gazetteer half, the operating point
+  (0.9 / 0.6) and the CPU (model). The pre-registration said "the
+  machine"; machine 1 showed the operating system and the thread count do
+  not change a span on one CPU, so the input that is frozen is the CPU,
+  with the operating system shown not to matter on it.
+- **The held-out figure is not re-run on this or any other CPU.** It stays
+  the i5-12450H figure.
+
+**What the two Linux machines establish together.** Machine 1 held the
+CPU fixed and changed the operating system (Windows 11 to Debian 12) and
+the thread count (12 to 4): identical spans, every hash. Machine 2 changed
+the CPU (i5-12450H to Xeon Platinum 8573C): different spans. **The
+variable is the processor**, not the operating system and not the thread
+count. Strictly, machine 2 also differs from machine 1 in its Linux
+distribution (Ubuntu 24.04, Debian 12), kernel and C library; but a change
+of the whole operating system family left every span the same on one CPU,
+so a smaller change within Linux is a much weaker explanation than the CPU.
+Not isolated by a run: an Ubuntu 24.04 container on the i5-12450H would
+remove that last difference. The likely mechanism, not shown: the runtime
+chooses its compute kernels by the instruction sets the CPU has (the Xeon
+has AVX-512 and AMX, the i5 does not), and different kernels round the
+quantised model's arithmetic differently.
+
+**The magnitude, so that "different" is not read as "unstable":** one
+detection in 933 (934 against 933), and that one is a correct name (the
+names block 502 against 501; precision 662 of 934 against 661 of 933,
+both 70.8%); false positives unchanged (5.85 per 1,000 words); main cases
+unchanged. B's raw-span hash differing means scores differ somewhere, as
+the negative control N1 showed a change of 1e-12 would; how many spans
+differ is not known from the log. On the i5-12450H the runtime has given
+the same spans every time (8 runs on Windows, 1 on Linux); on the Xeon
+there is one run so far, so whether it repeats itself there is what further
+runs on that CPU show. On this evidence the runtime differs slightly
+between CPUs, not from run to run.
 
 ### The model in CI: a cache keyed by the pins, the pinned download behind it (Phase 6c, 2026-10-07; the user chose option M2)
 
