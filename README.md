@@ -419,7 +419,7 @@ words taken for names.
   CPU the gateway reproduces the published measurement exactly: `npm run
 eval:names` sends the 1,998 measured messages through it and compares
   every span by SHA-256 ([ADR-036](docs/decisions.md#adr-036), step 4b).
-  On another CPU the spans differ slightly (below).
+  On one other CPU of two tried, the spans differ slightly (below).
 - **Missed:** names in all lower case (3 of 59 found); a name broken by an
   invisible character is covered to the end of the word only when part of
   that word was found, and its second word is not reached that way; "Asha"
@@ -451,26 +451,33 @@ eval:names` sends the 1,998 measured messages through it and compares
 - **Licence:** the model's repository states none; it is a conversion of
   Davlan's model (AFL-3.0), a fine-tune of Google's multilingual BERT
   (Apache-2.0); open points in ADR-036.
-- **The figures describe one CPU, the Intel Core i5-12450H.** Under a rule
-  written and committed before any Linux run
-  ([ADR-036](docs/decisions.md#adr-036), Phase 6c):
-  - **Same CPU, another operating system:** Linux (Debian 12 in a
-    container, 4 logical CPUs against Windows' 12) reproduced the Windows
-    run exactly, every span by SHA-256 and every metric.
-  - **Another CPU:** a GitHub runner (Intel Xeon Platinum 8573C) did not.
-    Its figures, beside the published ones, never in their place:
+- **Which CPUs the figures hold on.** They were measured on an Intel Core
+  i5-12450H. Under a rule written and committed before any Linux run
+  ([ADR-036](docs/decisions.md#adr-036), Phase 6c), the same comparison,
+  every span by SHA-256:
+  - **reproduced them exactly** on the i5-12450H under Linux (Debian 12 in
+    a container, 4 logical CPUs against Windows' 12), and on a GitHub
+    runner's **AMD EPYC 7763**, across a vendor boundary;
+  - **differed slightly** on another runner's **Intel Xeon Platinum
+    8573C**, on the same Linux as the EPYC run, so not because of the
+    operating system. Its figures, beside the published ones, never in
+    their place:
 
-    | Generated set (1,998 messages)  | i5-12450H (published) | Xeon Platinum 8573C |
-    | ------------------------------- | --------------------- | ------------------- |
-    | Names found (612)               | 501 (81.8%)           | 502 (82.0%)         |
-    | Detections, precision           | 933, 70.8%            | 934, 70.8%          |
-    | False positives per 1,000 words | 5.85                  | 5.85                |
-    | Held-out (45)                   | 41                    | not run (spent)     |
+    | Generated set (1,998 messages)  | i5-12450H and EPYC 7763 | Xeon Platinum 8573C |
+    | ------------------------------- | ----------------------- | ------------------- |
+    | Names found (612)               | 501 (81.8%)             | 502 (82.0%)         |
+    | Detections, precision           | 933, 70.8%              | 934, 70.8%          |
+    | False positives per 1,000 words | 5.85                    | 5.85                |
+    | Held-out (45)                   | 41 (i5-12450H only)     | not run (spent)     |
 
-  - So the processor, not the operating system or the thread count,
-    changes the spans, and by little: one detection in 933, a correct
-    name. The held-out figure stays the i5-12450H's. **Not yet:** CI on
-    every push.
+  - The difference is small (one detection in 933, a correct name). The
+    likely reason, not shown: the Xeon has AVX-512 and AMX and the other
+    two do not, and the runtime picks its compute kernels by instruction
+    set. The held-out figure stays the i5-12450H's. **Not yet:** CI on
+    every push. The Names workflow runs by hand and once a day, comparing
+    each run with its own CPU model's baseline (a CPU with none yet passes
+    with a warning until one is committed), until a rule set in advance
+    decides whether it can run on every push.
 
 ## Measured results
 
@@ -751,9 +758,10 @@ machine.
 | Generated, names block                                    | **501/612 (81.8%)** | 78.6–84.7%   | 661/933 (70.8%) |
 | **Held-out** (separate session, run once, never tuned on) | **41/45 (91.1%)**   | 79.3–96.5%   | 41/46 (89.1%)   |
 
-Both rows were measured on the Intel Core i5-12450H; on another CPU the
-spans differ slightly (on a Xeon Platinum 8573C, 502/612 and 662/934), and
-the held-out row is not re-run there ([Person names](#person-names)).
+Both rows were measured on the Intel Core i5-12450H. The generated row is
+reproduced exactly on an AMD EPYC 7763 and differs slightly on an Intel
+Xeon Platinum 8573C (502/612, 662/934); the held-out row is not re-run on
+any other CPU ([Person names](#person-names)).
 
 The held-out figure is the one to quote: the generated set and the
 detector configuration share an author, while the held-out set was

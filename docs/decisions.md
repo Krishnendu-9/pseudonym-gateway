@@ -4193,12 +4193,13 @@ llama-server to apply the chat template ("connection attempt failed",
 
 > **Relabelled 2026-10-07 (Phase 6c, by ADR-036's pre-registered rule):
 > every figure in this table was measured on an Intel Core i5-12450H.**
-> It holds on that CPU under Windows 11 and Debian 12. On a GitHub runner's
-> Intel Xeon Platinum 8573C, B+F at 0.9 / 0.6 gave 502/612 (82.0%), main
-> 145/153, precision 662/934, 5.85 per 1,000 words: one more detection,
-> a correct name (ADR-036, "Result, Linux machine 2"). The held-out 41 of
-> 45 below is the i5-12450H's and is not re-run on any other CPU. The
-> table itself is left as it was measured.
+> B+F's row is reproduced exactly on that CPU under Debian 12 and on a
+> GitHub runner's AMD EPYC 7763. On another runner's Intel Xeon Platinum
+> 8573C, B+F at 0.9 / 0.6 gave 502/612 (82.0%), main 145/153, precision
+> 662/934, 5.85 per 1,000 words: one more detection, a correct name
+> (ADR-036, "Result, the GitHub runners"). The held-out 41 of 45 below is
+> the i5-12450H's and is not re-run on any other CPU. The table itself is
+> left as it was measured.
 
 Judged rows (language, script), R: A en 62.6, hinglish 49.7, hi 9.6,
 latin 59.0, devanagari 1.6; B 63.3, 62.0, 61.6, 60.8, 69.7; D excluded; F 66.6, 67.9, 74.4, 66.1, 78.9; B+F 81.0, 79.1,
@@ -4471,14 +4472,15 @@ together:
 
 > **Two more frozen inputs, added 2026-10-07 (Phase 6c).** 5. **The
 > operating point**, 0.9 / 0.6 (`MODEL_POINT`), held fixed by the move
-> standard all along and named here so the list is whole. 6. **The CPU:
-> an Intel Core i5-12450H.** A GitHub runner's Intel Xeon Platinum 8573C
-> gave slightly different spans with every other input the same, while
-> the i5-12450H gave the same spans under Windows 11 and Debian 12 and with
-> 12 or 4 threads ("Result, Linux machine 2", below). So 41 of 45, and the
-> generated set's 81.8% and 5.85, describe that CPU; the operating system
-> has been shown not to matter on it. The held-out figure is not re-run on
-> any other CPU.
+> standard all along and named here so the list is whole. 6. **The CPU,
+> by model: measured on an Intel Core i5-12450H.** With every other input
+> the same, the spans were identical on the i5-12450H (Windows 11 and
+> Debian 12, 12 or 4 threads) and on a GitHub runner's AMD EPYC 7763, and
+> slightly different on another runner's Intel Xeon Platinum 8573C
+> ("Result, the GitHub runners", below). So the generated set's 81.8% and
+> 5.85 describe the CPU models they were measured or reproduced on, the
+> operating system has been shown not to matter, and 41 of 45 is the
+> i5-12450H's. The held-out figure is not re-run on any other CPU.
 
 **Changing any one of these inputs orphans the figure**: it then describes
 code that no longer ships. The held-out set is spent for names (run once,
@@ -5505,89 +5507,166 @@ leaves a working CPU runtime**; the fallback is not needed. Not measured
 yet: the install without the skip (the NuGet download), which the names
 workflow's `default` input measures on a runner.
 
-### Result, Linux machine 2 (L1, a GitHub runner): the spans are not reproduced (2026-10-07, Names workflow run #2)
+### Result, the GitHub runners (L1): one CPU reproduces the spans, one does not (2026-10-07, Names workflow runs #1 and #2)
 
-**The runner did not reproduce the Windows spans.** Exit 1, `DIFFERENT
-from eval/names-baseline.json: spans.model, spans.names, detections,
-metrics.precision, metrics.recall, metrics.rows`. As reported by the user
-from the run's log (I cannot read the run's logs from here):
+Two manual runs of the Names workflow on `ubuntu-24.04`, the same code
+and the same runner image as far as the logs show (both on kernel
+`6.17.0-1022-azure`), landed on two different CPUs. As reported by the user
+from the runs' logs (I cannot read the run logs from here):
 
-| Field                                    | Runner (machine 2)                                                 | i5-12450H (Windows and Linux, the baseline)                        |
-| ---------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------ |
-| B's span SHA-256                         | `d1f611f06ea88b2feaa2bfdb5e8164bede8cafe8a905503e185b99f6f654bbfb` | `96a5c3289a275cf91c4743ade7b5ec2f46c92a1974b9b1c5e5f8e82e453ed472` |
-| Names SHA-256                            | `46dd8ff36336bbc80cf61571cb241d3074da08fd421686d7a18b0ee512f16777` | `ba1a6b82da7c951da9dda75862bdb7656db17f968294f80255b708be0570c7b3` |
-| Detections                               | 934                                                                | 933                                                                |
-| Names block (R)                          | 502 of 612 (82.0%)                                                 | 501 of 612 (81.8%)                                                 |
-| Main cases                               | 145 of 153                                                         | 145 of 153                                                         |
-| Precision                                | 662 of 934 (70.8%)                                                 | 661 of 933 (70.8%)                                                 |
-| False positives per 1,000 words          | 5.85                                                               | 5.85                                                               |
-| Rows of the names block                  | differ (which rows is not printed by the run)                      |                                                                    |
-| Speed / 1 KiB / 64 KiB latency           | 147.0 ms per KiB / 83 ms / 9.5 s                                   | 308–332 / 141–148 ms / 20–23 s (Windows)                           |
-| Peak memory (6a's measure) / model start | 452 MiB / 868 ms                                                   | 366–369 MiB / 1.1–1.7 s (Windows)                                  |
+| Run               | CPU                                      | B's spans   | Names       | Detections | Names block (R)    | Precision          | FP per 1,000 words | Against the baseline |
+| ----------------- | ---------------------------------------- | ----------- | ----------- | ---------- | ------------------ | ------------------ | ------------------ | -------------------- |
+| baseline (8 runs) | Intel Core i5-12450H (Windows 11)        | `96a5c328…` | `ba1a6b82…` | 933        | 501 of 612 (81.8%) | 661 of 933 (70.8%) | 5.85               | (the baseline)       |
+| L2                | Intel Core i5-12450H (Debian 12, 4 CPUs) | `96a5c328…` | `ba1a6b82…` | 933        | 501 of 612 (81.8%) | 661 of 933 (70.8%) | 5.85               | **identical**        |
+| Names #1          | AMD EPYC 7763 64-Core (4 CPUs)           | `96a5c328…` | `ba1a6b82…` | 933        | 501 of 612 (81.8%) | 661 of 933 (70.8%) | 5.85               | **identical**        |
+| Names #2          | Intel Xeon Platinum 8573C (4 CPUs)       | `d1f611f0…` | `46dd8ff3…` | 934        | 502 of 612 (82.0%) | 662 of 934 (70.8%) | 5.85               | **different**        |
 
-**The machine:** GitHub's `ubuntu-24.04` runner, kernel 6.17 (Azure),
-**Intel Xeon Platinum 8573C**, 4 logical CPUs, Node v22.23.3; the model
+Run #2 in full: B's spans
+`d1f611f06ea88b2feaa2bfdb5e8164bede8cafe8a905503e185b99f6f654bbfb`, names
+`46dd8ff36336bbc80cf61571cb241d3074da08fd421686d7a18b0ee512f16777`;
+`DIFFERENT from eval/names-baseline.json: spans.model, spans.names,
+detections, metrics.precision, metrics.recall, metrics.rows` (which rows is
+not printed); main cases 145 of 153; 147.0 ms per KiB (run #1: 292.1; the
+i5-12450H on Windows: 308–332); peak 452 MiB; model start 868 ms; the model
 from the cache (a hit), checked at start-up; both CPU-runtime files
 present, `onnxruntime-node` 301,006,136 bytes; `test:names` 6 of 6.
 
-**Which install it used** (the user's first question): the run's input is
-not in what the log prints (`eval:names` shows the variable as its own
-process sees it, unset in every run, because the workflow sets it only
-inside the install step's shell). The size fits `skip`: 301,006,136 bytes
-is within 0.02% of the package's registry size, where `default` would have
-added the CUDA provider libraries. **It cannot have affected the spans
-either way:** `loadBert` creates the session with no options, the runtime
-then resolves an empty provider list (`resolveBackendAndExecutionProviders`
-in `onnxruntime-common`, read in the installed 1.30.0) and runs on its
-built-in CPU provider only, so CUDA libraries on disk are never loaded.
-For the stopping rule below it matters: only a `skip` run counts there.
-To be confirmed from the run's page (the install step's `MODE`), and
-whether run #1 completed on this CPU, which would make #1, not #2, this
-machine's counted result.
+**What the four machines establish.** The same code and inputs give
+identical spans on three of them and slightly different spans on one:
+
+- **The operating system does not change the spans.** On the i5-12450H,
+  Windows 11 and Debian 12 agree (and 12 threads agree with 4). The OS
+  caveat is now **closed by data, not argument**: runs #1 and #2 ran the
+  same kernel (`6.17.0-1022-azure`) under the same runner label, so the
+  same distribution and C library, and one matched the baseline while the
+  other did not. The Ubuntu 24.04 container run on the i5-12450H that
+  would have removed that last difference is **cancelled** (the user's
+  decision): run #1 is a better control than it would have been, the same
+  Linux as run #2 on a different CPU. (Not compared: the runner image build
+  each job printed in its "Set up job" step; the identical kernel string
+  suggests the same build.)
+- **Not "a different CPU gives different spans".** Two CPUs across a
+  vendor boundary, an Intel consumer part (i5-12450H) and an AMD server
+  part (EPYC 7763), give identical spans; one CPU of the three, the Intel
+  Xeon Platinum 8573C, differs.
+- **The likely explanation, a hypothesis and stated as one:** the
+  i5-12450H has no AVX-512, the EPYC 7763 (Zen 3) has none either, and the
+  Xeon Platinum 8573C has AVX-512 and AMX. The two AVX2-class parts agree;
+  the wider one differs. That fits all three data points and crosses a
+  vendor boundary, and it is **consistent with the runtime selecting its
+  compute kernels by instruction set**, different kernels rounding the
+  quantised model's arithmetic differently. **It is not shown**: no run
+  has looked at which kernels were chosen, three CPUs are three data
+  points, and the Xeon's being about twice as fast as the EPYC on the same
+  4 CPUs fits the hypothesis without proving it (clock speed and core
+  design differ too).
+- **The magnitude, so that "different" is not read as "unstable":** on the
+  Xeon, one detection more in 933 (934), and that one is a correct name
+  (502 against 501 names found; precision 70.8% in both); false positives
+  and the main cases unchanged. B's raw-span hash differing means scores
+  differ somewhere, as the negative control N1 showed a change of 1e-12
+  would; how many spans differ is not known from the log. The runtime has
+  been deterministic wherever it was run more than once: on the
+  i5-12450H, 9 runs, the same spans every time. The Xeon and the EPYC have
+  one run each so far.
+
+**Which install the runs used.** Neither run's input is in what
+`eval:names` prints (it shows the variable as its own process sees it,
+unset in every run, because the workflow sets it only inside the install
+step's shell). A `default` install on linux/x64 adds the CUDA, shared and
+TensorRT provider libraries from NuGet to the package's `bin` folder
+(`script/install-metadata.js` of the installed 1.30.0): run #2's
+301,006,136 bytes is the package without them (within 0.02% of the
+registry's 301,068,136). **Settled (the user, from run #1's install
+step):** run #1 printed 4 logical CPUs, `onnxruntime-node` 301,068,136
+bytes, and the same two files at the same sizes as run #2
+(`libonnxruntime.so.1` 45,828,512, `onnxruntime_binding.node` 389,488),
+and no CUDA or TensorRT file. The 62 KB between the two runs' directory
+totals is `du`'s accounting, not a provider library (each library is far
+larger). **Both runs are skip-equivalent, and both count** under the
+stopping rule. **It could not have affected the spans either way:**
+`loadBert` creates the session with no options, the runtime resolves an
+empty provider list (`resolveBackendAndExecutionProviders` in
+`onnxruntime-common`) and runs on its built-in CPU provider only, so CUDA
+libraries on disk are never loaded.
+
+**The comparison between runs #1 and #2 is controlled on everything but
+the CPU model:** the same kernel, distribution, C library and runner
+label, the same Node, the same install contents, and **the same 4 logical
+CPUs**, which also rules out the thread count between the two runner jobs
+(as the i5-12450H's 12 against 4 had on one CPU). One gave the baseline's
+spans and the other did not.
 
 **Applied as pre-registered** (nothing changed to make the hashes agree):
 
-- **The published figures describe the Intel Core i5-12450H** (81.8% on
-  the generated set, 41 of 45 held-out, 5.85 false positives per 1,000
-  words), measured on Windows 11 and reproduced on Debian 12 on that CPU,
-  and are relabelled to say so in the README, the user manual and ADR-035.
-- **The runner's figures are added beside them, never in their place**:
-  the table above, the README and the user manual.
-- **The CPU becomes a frozen input**, the sixth: the runtime, the
-  tokenizer, the model bytes, the gazetteer half, the operating point
-  (0.9 / 0.6) and the CPU (model). The pre-registration said "the
-  machine"; machine 1 showed the operating system and the thread count do
-  not change a span on one CPU, so the input that is frozen is the CPU,
-  with the operating system shown not to matter on it.
-- **The held-out figure is not re-run on this or any other CPU.** It stays
-  the i5-12450H figure.
+- **The published figures were measured on the Intel Core i5-12450H**
+  (81.8% on the generated set, 41 of 45 held-out, 5.85 false positives per
+  1,000 words), are reproduced exactly on Debian 12 on that CPU and on the
+  AMD EPYC 7763, and differ slightly on the Intel Xeon Platinum 8573C. They
+  are relabelled to say so in the README, the user manual and ADR-035.
+- **The Xeon's figures are added beside them, never in their place.**
+- **The CPU becomes a frozen input**, by its model: the figures describe
+  the CPU models they were measured or reproduced on.
+- **The held-out figure is not re-run on any other CPU.** It stays the
+  i5-12450H figure.
 
-**What the two Linux machines establish together.** Machine 1 held the
-CPU fixed and changed the operating system (Windows 11 to Debian 12) and
-the thread count (12 to 4): identical spans, every hash. Machine 2 changed
-the CPU (i5-12450H to Xeon Platinum 8573C): different spans. **The
-variable is the processor**, not the operating system and not the thread
-count. Strictly, machine 2 also differs from machine 1 in its Linux
-distribution (Ubuntu 24.04, Debian 12), kernel and C library; but a change
-of the whole operating system family left every span the same on one CPU,
-so a smaller change within Linux is a much weaker explanation than the CPU.
-Not isolated by a run: an Ubuntu 24.04 container on the i5-12450H would
-remove that last difference. The likely mechanism, not shown: the runtime
-chooses its compute kernels by the instruction sets the CPU has (the Xeon
-has AVX-512 and AMX, the i5 does not), and different kernels round the
-quantised model's arithmetic differently.
+**E1 is settled by data, not by the rule.** The same code on two runner
+hosts gave one green run (#1, the EPYC) and one red run (#2, the Xeon). An
+every-push check against the one baseline would have failed depending on
+which runner it landed on, not on any change. That is what the proposed
+per-CPU-model agreement (S2) and per-CPU-model baselines (C1) exist to
+handle. Both runs count (above), so the stopping rule as first written
+applied: two counted runs disagreed, E1 was not adopted, and the question
+returned to the user, who confirmed S2 (the amendment below) and asked for
+a daily schedule rather than a weekly one.
 
-**The magnitude, so that "different" is not read as "unstable":** one
-detection in 933 (934 against 933), and that one is a correct name (the
-names block 502 against 501; precision 662 of 934 against 661 of 933,
-both 70.8%); false positives unchanged (5.85 per 1,000 words); main cases
-unchanged. B's raw-span hash differing means scores differ somewhere, as
-the negative control N1 showed a change of 1e-12 would; how many spans
-differ is not known from the log. On the i5-12450H the runtime has given
-the same spans every time (8 runs on Windows, 1 on Linux); on the Xeon
-there is one run so far, so whether it repeats itself there is what further
-runs on that CPU show. On this evidence the runtime differs slightly
-between CPUs, not from run to run.
+**C1 is keyed by CPU model, not by instruction set** (the user's
+decision). The keying must not depend on a hypothesis drawn from three
+CPUs: a baseline per CPU model asserts only what has been observed and
+stays correct if the hypothesis turns out wrong, while a baseline per
+instruction set would silently pass a CPU that has the same instruction
+sets but chooses other kernels. **Do not "simplify" the keying to match
+the theory**: the instruction-set explanation belongs here, as the likely
+explanation, not in the code.
+
+### C1 and C3 as built (Phase 6c, 2026-10-07)
+
+- **C1, one baseline per CPU model.** `eval/names-baselines.json` maps the
+  exact CPU model string a run reports (`os.cpus()[0].model`, surrounding
+  whitespace trimmed, nothing else) to a baseline file in `eval/` and a
+  note of where it came from. `eval/names-baseline.json`, the published
+  baseline, is unchanged (the pre-registration: "the Windows baseline as
+  it is"). Two models point to it: the i5-12450H (measured) and the AMD
+  EPYC 7763 (run #1, identical in every compared field, so the same file
+  records exactly what was observed). The Intel Xeon Platinum 8573C has no
+  entry yet: run #2's log did not print its per-row metrics, so its
+  baseline comes from the result file of a later counted run on that CPU,
+  committed by a human (a run that reproduces #2's hashes has #2's
+  metrics, since the metrics are computed from the names).
+- **An unknown CPU passes with a warning** (exit 0, a `::warning::`
+  annotation on GitHub), says it is that CPU model's first result, and
+  writes `names-result.json` (the machine, the outcome, both passes' hashes
+  and every measured field; hashes and counts only, never a text), which
+  the workflow attaches to every run. Its baseline is added only by a
+  human commit: copy `measured` into `eval/names-baseline-<cpu>.json` and
+  add the model to the index.
+- **Known gap, the unknown-CPU window.** Until a CPU model's baseline is
+  committed, runs on it compare against nothing: a change that moved its
+  spans would pass there. **There is no tolerance band** to cover the
+  window: no metric is compared "within a margin" on any CPU; a CPU is
+  either compared exactly or not at all. The window closes for each CPU
+  model when its baseline is committed.
+- **C3, the messages twice in one run.** `eval:names` puts all 1,998
+  messages through the gateway a second time, in the same process and the
+  same worker, and fails ("NOT REPEATABLE", exit 1) unless both passes give
+  the same two hashes, checked before any baseline. Not covered: whether a
+  fresh process (a new session) gives the same spans as this one; the
+  separate runs of the stopping rule cover that across runs.
+- The logic is in `eval/names/gateway.ts` (`parseIndex`, `baselineFor`,
+  `outcome`, `exitCode`, `outcomeLines`), tested in
+  `test/unit/eval/names/gateway.test.ts`; `eval/names-run.ts` wires it.
+  First run with both, on the i5-12450H: identical to its baseline, second
+  pass identical.
 
 ### The model in CI: a cache keyed by the pins, the pinned download behind it (Phase 6c, 2026-10-07; the user chose option M2)
 
@@ -5648,6 +5727,50 @@ an every-push check would fail by host, not by change.
   models are the least that "across hosts" can mean. They are a judgement,
   fixed here so that the decision is not made by whichever run is in front
   of us.
+
+**Amendment S2 (2026-10-07, the user's decision, made after runs #1 and #2
+and because of them).** The rule above asked for one pair of hashes on
+every host. Runs #1 and #2 answered that: the same code gave one pair on
+the AMD EPYC 7763 and another on the Intel Xeon Platinum 8573C, so under
+the rule as written E1 could never be adopted, and an every-push check
+against one baseline would fail by host. With one baseline per CPU model
+(C1), the question that matters becomes whether **each CPU model gives one
+pair of hashes every time**. Amended accordingly; everything else stands:
+
+- **E1 is adopted only when all of these hold:** at least **10** counted
+  runs; at least **2 distinct CPU models** among them, with at least **3**
+  counted runs on each of at least two; **every counted run on a CPU model
+  gives the same two hashes as every other counted run on that model**
+  (different models may differ); and every CPU model counted has its
+  baseline committed.
+- **Any two counted runs on the same CPU model disagree** (or a run fails
+  its own second pass): that model is not deterministic, E1 is not
+  adopted, and the question returns to the user.
+- The count does not restart: runs #1 and #2 count (both used `skip`),
+  one on each of two models, so 2 of 10 so far.
+
+**Daily, and temporary (the user, 2026-10-07).** The workflow runs once a
+day as well as by hand (`schedule`, 04:23 UTC; a scheduled run installs
+with `skip`, so it counts). Daily, not weekly: at one run a week, about six
+weeks to reach 10 runs, and this project finishes first. It exists only to
+accumulate counted runs on as many runner CPUs as possible; it is removed,
+or replaced by E1, when the rule is closed out (below). GitHub does not
+choose a runner's CPU on request, so which models appear, and how often,
+is outside the project's control.
+
+**How this is closed out, written now, before the end (the user,
+2026-10-07).** When the work on this project finishes:
+
+1. Record here how many counted runs were collected, on how many CPU
+   models, with each run's CPU model and two hashes, and which models'
+   baselines were committed.
+2. State whether the threshold above was reached.
+3. If it was reached, E1 is adopted as the rule says. **If it was not, say
+   that E1 was not adopted and that the rule remains open**, with what is
+   missing (runs, models, or runs per model).
+4. **The rule is not loosened to fit whatever was collected, and it is not
+   dropped.** Fewer runs than required is recorded as fewer runs than
+   required, not as a smaller threshold.
 
 <a id="adr-037"></a>
 

@@ -3094,6 +3094,34 @@ exits 1 if any compared field differs (`npx tsx eval/names-run.ts
 --no-speed` skips the timing runs). Run on 2026-10-07 seven times on the
 real code: all identical to the baseline (ADR-036, "Step 4b").
 
+**Since Phase 6c it compares with the baseline of the CPU model it runs
+on** (`eval/names-baselines.json`, option C1) and puts the messages
+through **twice** (option C3; ADR-036, "C1 and C3 as built"):
+
+| What happens                                    | Exit | Says                                                |
+| ----------------------------------------------- | ---- | --------------------------------------------------- |
+| Both passes agree and match this CPU's baseline | 0    | `Identical to the baseline for <CPU> (eval/<file>)` |
+| Both passes agree and differ from it            | 1    | `DIFFERENT from the baseline for <CPU> …: <fields>` |
+| The two passes disagree (checked first)         | 1    | `NOT REPEATABLE`                                    |
+| This CPU model has no baseline                  | 0    | `NEW CPU …` (and a `::warning::` on GitHub)         |
+
+Every run writes `names-result.json` (gitignored: the machine, the
+outcome, both passes' hashes, every measured field; no text), which the
+Names workflow attaches as an artifact. **To add a CPU model's baseline**
+(a human commit, after looking at the run): copy the file's `measured`
+object into `eval/names-baseline-<cpu>.json` and add the exact
+`machine.cpuModel` string to `eval/names-baselines.json` with the file and
+a note of which run it came from. Keyed by the exact model string, never by
+CPU family or instruction set (ADR-036). On 2026-10-07 on the i5-12450H:
+identical, second pass identical.
+
+Mutation checks (2026-10-07, `scripts/mutate.ts`): the model string not
+trimmed; inherited keys counted as models; matching by family (a prefix)
+instead of the exact model; the second pass not checked; the second pass
+checked on B's hash only; a new CPU failing the run; no baseline counted
+as identical; any file name accepted in the index; padded model names
+accepted: **9 of 9 caught**, each by a test in `gateway.test.ts`.
+
 **Showing it can fail (negative controls, same day).** To repeat: copy
 the tree (`git ls-files -co --exclude-standard -z | tar --null -T - -cf - | tar -xf - -C <dir>`),
 link the repo's `node_modules` and `models/` into the copy (PowerShell

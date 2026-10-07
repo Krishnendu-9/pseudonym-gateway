@@ -1335,8 +1335,9 @@ Measured on an **Intel Core i5-12450H**: on the generated set's 612-name
 block **501 found (81.8%)**; in the main cases 145 of 153. On the held-out
 set, run once: **41 of 45**. On that CPU every name the gateway finds on
 the generated set is exactly what the measurement found: `npm run
-eval:names` checks it, span by span. On another CPU the names differ
-slightly ("Which platforms the figures hold on", below).
+eval:names` checks it, span by span. So does an AMD EPYC 7763; an Intel
+Xeon Platinum 8573C finds one name more ("Which platforms the figures hold
+on", below).
 
 ### What is not found
 
@@ -1410,21 +1411,26 @@ run and never changes what is found (ADR-036, Phase 6c).
 
 ### Which platforms the figures hold on
 
-**The figures describe one CPU, the Intel Core i5-12450H**, where they
-were measured on Windows 11 x64. Under a rule written and committed before
-any Linux run (ADR-036):
+The figures were measured on an **Intel Core i5-12450H** under Windows 11
+x64. Under a rule written and committed before any Linux run (ADR-036),
+the same comparison, span by span:
 
-- **Same CPU, another operating system:** Linux (Debian 12 in a container,
-  4 logical CPUs against Windows' 12) gave exactly the same names, span by
-  span. The operating system and the number of threads change nothing.
-- **Another CPU:** on a GitHub runner's Intel Xeon Platinum 8573C the names
-  differ slightly: 502 of 612 found (82.0%) against 501 (81.8%), 934
-  detections against 933, precision 70.8% and false positives 5.85 per
-  1,000 words in both. One more detection, and it is a correct name.
+- **gave exactly the same names** on the i5-12450H under Linux (Debian 12
+  in a container, 4 logical CPUs against Windows' 12), and on a GitHub
+  runner's **AMD EPYC 7763**, a different vendor's CPU;
+- **differed slightly** on another runner's **Intel Xeon Platinum 8573C**,
+  running the same Linux as the EPYC: 502 of 612 found (82.0%) against 501
+  (81.8%), 934 detections against 933, precision 70.8% and false positives
+  5.85 per 1,000 words in both. One more detection, and it is a correct
+  name.
 
-The code, the model and every other pinned input were the same; the
-processor was not. The published figures stay the i5-12450H's, the Xeon's are reported beside
-them, and the held-out figure (41 of 45) is not re-run on any other CPU.
-Speed differs a great deal more than the names: 308–332 ms per KiB on the
-i5-12450H under Windows, 450.7 on it under Linux with 4 CPUs, 147.0 on the
-Xeon.
+The code, the model and every other pinned input were the same, and the
+operating system is ruled out (the EPYC and the Xeon ran the same one), so
+the difference comes with that CPU. The likely reason, not shown: the
+Xeon has wider vector instructions (AVX-512 and AMX) than the other two,
+and the runtime picks its compute kernels by what the CPU has. The
+published figures stay as measured, the Xeon's are reported beside them,
+and the held-out figure (41 of 45) is not re-run on any other CPU. Speed
+differs a great deal more than the names: 308–332 ms per KiB on the
+i5-12450H under Windows, 450.7 on it under Linux with 4 CPUs, 292.1 on the
+EPYC and 147.0 on the Xeon.
