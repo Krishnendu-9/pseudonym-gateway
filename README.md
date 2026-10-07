@@ -457,7 +457,8 @@ eval:names` sends the 1,998 measured messages through it and compares
   every span by SHA-256:
   - **reproduced them exactly** on the i5-12450H under Linux (Debian 12 in
     a container, 4 logical CPUs against Windows' 12), and on a GitHub
-    runner's **AMD EPYC 7763**, across a vendor boundary;
+    runner's **AMD EPYC 7763** (in two separate runs), across a vendor
+    boundary;
   - **differed slightly** on another runner's **Intel Xeon Platinum
     8573C**, on the same Linux as the EPYC run, so not because of the
     operating system. Its figures, beside the published ones, never in

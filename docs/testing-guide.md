@@ -3125,6 +3125,18 @@ checked on B's hash only; a new CPU failing the run; no baseline counted
 as identical; any file name accepted in the index; padded model names
 accepted: **9 of 9 caught**, each by a test in `gateway.test.ts`.
 
+**Every Names run prints its own install input (since 2026-10-07).** The
+first line of the workflow's Install step is `onnxruntime-install for this
+run: <skip|default> (started by: <workflow_dispatch|schedule>)`. Why: the
+inputs of runs #1, #2 and #3 could not be recovered from their logs
+afterwards (the input is shown on the run's page, not in the job log, and
+`eval:names` prints the variable only as its own process sees it, which
+is unset in every run). #1 and #2 were judged by their install output
+instead; #3's install output is the same as #1's, so it cannot say which
+input it had, and that took three exchanges to establish. Whether a run
+counts under ADR-036's stopping rule depends on its input, so a run must
+record it itself. To read it: the job log's Install step, first line.
+
 **Showing it can fail (negative controls, same day).** To repeat: copy
 the tree (`git ls-files -co --exclude-standard -z | tar --null -T - -cf - | tar -xf - -C <dir>`),
 link the repo's `node_modules` and `models/` into the copy (PowerShell

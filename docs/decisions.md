@@ -5694,9 +5694,30 @@ explanation, not in the code.
   detections, R 501/612, precision 661/933, 5.85 per 1,000 words; 293.0 ms
   per KiB (run #1: 292.1). Its install step printed the same as run #1:
   `onnxruntime-node` 301,068,136 bytes, `libonnxruntime.so.1` 45,828,512,
-  `onnxruntime_binding.node` 389,488. **Which install input it ran with is
-  not recorded yet** (the message giving it arrived unfilled), and with it
-  whether #3 is a counted run.
+  `onnxruntime_binding.node` 389,488. **Its install input is unknown, and
+  is recorded as unknown:** it is not in the job log and cannot be
+  recovered, and it is not guessed. From now on the workflow's Install step
+  prints the resolved input as its first line (testing guide). Whether #3
+  counts is **pending**, on the same question as #1 and #2 (the
+  pre-registered `default` run, in the stopping rule's section below).
+- **The NuGet download stays unmeasured** and the item stays open: run #3
+  cannot be the measurement, because its input is unknown. The next run
+  with `default` measures it and says so in its own log.
+- **The EPYC 7763: checked now, "confirmed" later (the user's decision,
+  option (b), the literal reading of the minting rule).** The two-run rule
+  is met by the hashes (#1 and #3, separate jobs, every field identical)
+  but not by its text: #1 ran before C3 existed, so it never passed a
+  second pass of its own, and it ran on an older tree, so it was a
+  different build as well as a different process. So the EPYC is **not
+  yet labelled confirmed**; it needs one more completed run with its own
+  second pass and a recorded install input. Reasons, the user's: the cost
+  is a few days and nothing blocks on it; and the first application of a
+  rule is exactly when it should not be read generously, since a rule whose
+  purpose is honoured instead of its text the first time it is used has a
+  soft precedent from then on. **What waits is the label, not the
+  checking:** the EPYC's entry stays in `eval/names-baselines.json` for the
+  reason already settled, so that a future EPYC run that disagrees fails
+  loudly (DIFFERENT, exit 1) instead of passing as an unknown CPU.
 
 ### The model in CI: a cache keyed by the pins, the pinned download behind it (Phase 6c, 2026-10-07; the user chose option M2)
 
@@ -5776,8 +5797,48 @@ pair of hashes every time**. Amended accordingly; everything else stands:
 - **Any two counted runs on the same CPU model disagree** (or a run fails
   its own second pass): that model is not deterministic, E1 is not
   adopted, and the question returns to the user.
-- The count does not restart: runs #1 and #2 count (both used `skip`),
-  one on each of two models, so 2 of 10 so far.
+- **The tally is provisional (2026-10-07, after run #3).** Runs #1, #2
+  and #3 all rest on **one unverified inference**: that "no CUDA library
+  on disk" means the input was `skip`. None of their inputs is in its log;
+  each install put the same two files on disk and no CUDA library. #1 and
+  #2 were counted on that inference; #3 has exactly the same install
+  output, so **#3 is pending on the same question, not separately
+  disqualified**. A provisional reading would be 2 of 10 (#1 on the EPYC
+  7763, #2 on the Xeon Platinum 8573C) with #3 pending, but no number is
+  settled until the run below.
+
+#### Pre-registered: the `default` run decides all three (the user, 2026-10-07; written and committed before that run)
+
+The next run with `onnxruntime-install: default` measures the NuGet
+download (still unmeasured), and its outcome decides #1, #2 and #3
+together:
+
+- **If the `default` run installs CUDA libraries** (any of the files the
+  installed package's `script/install-metadata.js` lists for
+  `linux/x64:cuda12` appears in `node_modules/onnxruntime-node/bin/napi-v6/linux/x64/`):
+  the inference holds. "No CUDA on disk" means `skip`, and **#1, #2 and #3
+  all count** on that basis. **Tally 3 of 10, on two models**: EPYC 7763 2
+  (#1, #3), Xeon Platinum 8573C 1 (#2).
+- **If the `default` run is byte-identical to a `skip` install** (the same
+  `onnxruntime-node` total, 301,068,136 bytes by `du -sb`, the same two
+  files at the same sizes, no provider library): the install output cannot
+  distinguish the inputs at all. Then #1's and #2's basis is void along
+  with #3's, **none of the three count**, and only runs from #4 onward,
+  which print their own input, are admissible. **Tally 0 of 10.**
+- **Anything else** (the install fails, the run does not complete, or the
+  contents are neither of the two above): nothing is decided, the result
+  is reported as it is, and the tally stays provisional until a `default`
+  run gives one of the two outcomes. (This case added by me, so that the
+  rule covers every outcome; the two above are the user's.)
+- The `default` run itself never counts, whatever it shows: only `skip`
+  runs count.
+
+**The rule was not amended to recover a run.** It counts runs by their
+input, as it did before #3; this section only fixes, in advance, what the
+measurement means for evidence about inputs that the logs did not keep.
+**Both outcomes were written before the measurement, including the one
+that costs every counted run so far** (0 of 10). Whichever it gives is
+applied as written.
 
 **Daily, and temporary (the user, 2026-10-07).** The workflow runs once a
 day as well as by hand (`schedule`, 04:23 UTC; a scheduled run installs

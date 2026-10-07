@@ -40,10 +40,15 @@ jobs:
 
       # A scheduled run has no inputs: it installs with skip, CI's setting, so
       # that it counts under the stopping rule.
+      # The resolved mode is printed first, so every run records its own
+      # input: three runs' inputs could not be recovered from their logs
+      # afterwards (testing guide, Phase 6c).
       - name: Install
         env:
           MODE: ${{ inputs.onnxruntime-install || 'skip' }}
+          EVENT: ${{ github.event_name }}
         run: |
+          echo "onnxruntime-install for this run: $MODE (started by: $EVENT)"
           if [ "$MODE" = skip ]; then ONNXRUNTIME_NODE_INSTALL=skip npm ci; else npm ci; fi
 
       # ADR-036's first check on Linux: the CPU runtime's two files are in the
