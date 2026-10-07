@@ -1,0 +1,76 @@
+{
+  "id": "s2",
+  "what": "streamed",
+  "recordedOn": "2026-10-07T14:28:17.012Z",
+  "model": "gemini-3.5-flash-lite",
+  "sentBody": {
+    "model": "gemini-3.5-flash-lite",
+    "messages": [
+      {
+        "role": "system",
+        "content": "Be brief."
+      },
+      {
+        "role": "user",
+        "content": "Please confirm the refund for card [CARD_1] was sent to [EMAIL_1]. Reply in one sentence."
+      }
+    ],
+    "stream": true
+  },
+  "status": 200,
+  "responseHeaders": {
+    "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+    "cache-control": "private",
+    "content-encoding": "gzip",
+    "content-type": "text/event-stream",
+    "date": "Wed, 07 Oct 2026 14:28:16 GMT",
+    "expires": "Wed, 07 Oct 2026 14:28:16 GMT",
+    "p3p": "CP=\"This is not a P3P policy! See g.co/p3phelp for more info.\"",
+    "server": "scaffolding on HTTPServer2",
+    "server-timing": "gfet4t7; dur=1364",
+    "transfer-encoding": "chunked",
+    "vary": "Origin, X-Origin, Referer",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "SAMEORIGIN",
+    "x-xss-protection": "0"
+  },
+  "headersMs": 2204,
+  "firstByteMs": 2206,
+  "totalMs": 2313,
+  "bytes": 1069,
+  "outcome": {
+    "adapter": "ok",
+    "contentEvents": 3,
+    "finishReason": "stop",
+    "usageEvents": 0
+  },
+  "shape": {
+    "dataEvents": 5,
+    "done": true,
+    "doneAnywhere": true,
+    "crlf": false,
+    "commentLines": 0,
+    "otherFieldLines": 0,
+    "chunkKeys": [
+      "choices",
+      "created",
+      "id",
+      "model",
+      "object"
+    ],
+    "ids": 1,
+    "finishReasonsRaw": [
+      "stop"
+    ],
+    "usageChunks": 0,
+    "usageNullChunks": 0,
+    "emptyChoicesChunks": 0,
+    "errorEvents": 0,
+    "contentLength": 93,
+    "placeholders": [
+      "CARD_1",
+      "EMAIL_1"
+    ],
+    "longDigitRuns": 0
+  }
+}

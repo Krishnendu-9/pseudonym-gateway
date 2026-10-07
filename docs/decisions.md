@@ -7464,3 +7464,186 @@ to use the Interactions API". Findings:
 Calls to `gemini-2.5-flash` today: 2, both 404. Whether a 404 counts
 against the 20-a-day allowance is not known; AI Studio's usage page would
 show it.
+
+### 11. Pre-registration: the fallback model chain and Phase 7b live run plan (2026-10-07)
+
+Recorded before any call to the chain, governing the live protocol run.
+
+1. **The fallback model chain:**
+   `gemini-3.5-flash-lite` → `gemini-3.1-flash-lite` → `gemini-3.8-flash`.
+
+2. **Why this chain and order:**
+   The lite models provide **15 RPM / 500 RPD**, compared to `gemini-3.8-flash`
+   at **5 RPM / 20 RPD** — twenty-five times the daily request allowance.
+   Attempting the lite models first preserves the limited daily quota and
+   reduces rate-limit pressure for subsequent probe runs.
+
+3. **Stopping condition for the chain:**
+   The chain stops at the first HTTP 200 response that **actually carries
+   assistant content**. An HTTP 200 response returning an empty body, an empty
+   `choices` array, or an explicit refusal (`message.content: null` with
+   `message.refusal` set) does not constitute a successful shape measurement.
+   Such a response must be recorded as an unsuccessful measurement rather than
+   treated as a stop for the chain.
+
+4. **Error handling rules (registered before the fact):**
+   - **HTTP 404**: advance to the next model in the fallback chain.
+   - **HTTP 403 or 429**: stop the run immediately; do not advance to the next
+     model.
+   - **Any other non-200 status**: stop the run immediately.
+
+5. **Why this 404 rule differs from Attempt 3's:**
+   Attempt 3 registered a rule that stopped on a 404 (after testing the two
+   name forms of one model), and that rule fired as planned. This section
+   registers a rule that advances on a 404.
+   The reason for the difference is structural:
+   - Attempt 3 governed two name-form representations of a **single model**
+     (`gemini-2.5-flash` vs `models/gemini-2.5-flash`). Once both forms returned
+     404, it was established that the model itself was unavailable to this
+     account; attempting further requests to that same model would have been a
+     blind retry.
+   - This rule governs a fallback chain across **distinct candidate models**,
+     where the explicit purpose of the chain is to identify an accessible
+     active model.
+     The earlier rule is **not** being relaxed because it was inconvenient; it
+     performed exactly as designed and still stands for its own scope. A reader
+     can distinguish them plainly: single-model name variants stop; distinct-model
+     fallback advances.
+
+6. **Model name form resolved by Attempt 3:**
+   Attempt 3's two-form 404 established that the chat endpoint accepts both the
+   bare identifier and the `models/` prefixed identifier (both resolved to
+   `models/gemini-2.5-flash` in the error response). The 404 was purely about
+   model availability for this account, not name formatting. Models in this
+   chain are sent in their standard bare form.
+
+7. **Unresolved oddity across Google surfaces (stated as unresolved):**
+   `models/gemini-3.8-flash` does not appear in the 62-model list returned by
+   `GET /v1beta/openai/models` for this key (Attempt 2). Yet the AI Studio
+   rate-limit page explicitly lists `gemini-3.8-flash`, and Google's own 404
+   response on Attempt 3 explicitly recommended `models/gemini-3.8-flash`.
+   Three Google surfaces directly disagree with one another. We record this
+   discrepancy as unresolved without picking a winner.
+
+8. **Execution order:**
+   The 3 shape calls (`s1` non-streaming, `s2` streamed, `s3` streamed with
+   `stream_options.include_usage`) are run first as their own isolated run.
+   The 11 one-parameter probes form a separate, subsequent run after shape
+   compatibility is confirmed.
+
+9. **Budget and quota confirmation:**
+   The active model's confirmed RPM and RPD must be verified on AI Studio
+   before execution. It remains unknown whether HTTP 404 responses consume
+   any of the daily request allowance; that will be checked against the
+   AI Studio usage dashboard.
+
+10. **Pre-registered Predictions (P1 and usage payload):**
+    - **Will a Gemini stream end with `data: [DONE]`?**
+      **Prediction: YES.**
+      _Reasoning_: Standard OpenAI client SDKs require the literal
+      `data: [DONE]` terminator to close streaming connections cleanly without
+      hanging or throwing socket termination errors; an OpenAI-compatible
+      endpoint omitting it would break drop-in client compatibility.
+    - **Where will usage statistics appear in the streaming payload?**
+      **Prediction: In a final separate chunk before `[DONE]` with `choices: []`.**
+      _Reasoning_: This follows OpenAI's streaming usage specification
+      (`stream_options.include_usage`) and matches Google's documented example
+      showing usage delivered at the tail of the stream.
+
+**Attempt 4 (2026-10-07, 14:28 UTC): `gemini-3.5-flash-lite`, the 3 shape calls.**
+The first model in the fallback chain was accepted (HTTP 200 on all 3 calls);
+the chain stopped here. Three calls made, 15 s apart:
+
+- **`s1` (not streamed): 200 OK, 540 B, 1,787 ms.**
+  - Outcome: adapter `ok`, `finishReason: "stop"`, `usage: true`.
+  - Body: choices length 1, `message.content` string of 84 characters.
+  - The model echoed both placeholders (`[CARD_1]`, `[EMAIL_1]`) as written;
+    0 raw digit runs.
+  - Extra field: `message.extra_content` was present (Google metadata).
+- **`s2` (streamed): 200 OK, 1,069 B, 2,313 ms.**
+  - Outcome: adapter `ok`, 3 content events, `finishReason: "stop"`.
+  - Stream shape: 5 data chunks, `finish_reason: "stop"` on chunk 4.
+  - Content length 93, both placeholders preserved.
+  - **Prediction P1 confirmed: stream ends with `data: [DONE]`.**
+- **`s3` (streamed with usage): 200 OK, 1,338 B, 2,777 ms.**
+  - Outcome: adapter `failed` (`bad_response`).
+  - Stream shape: 5 data chunks, ending with `data: [DONE]`.
+  - **Why the adapter failed:** Google sent `usage` on **all 4 chunks**
+    (incremental/cumulative tokens as chunks arrive), not in a single trailing
+    chunk after `finish_reason`. The adapter's `streamEvents` enforces that
+    `usage` arrives only after `finish` and only once; receiving `usage` on
+    chunk 1 tripped the out-of-order check (`bad_response`).
+  - Extra field: chunk 4 included `delta.extra_content.google.thought_signature`.
+
+Calls to Google in this attempt: 3.
+Budget consumed: 3 requests of the free-tier daily allowance.
+Cumulative calls today: 7 (attempt 1: 1; attempt 2: 1 list-models; attempt 3: 2; attempt 4: 3).
+
+#### PROCESS FAILURE: this section was not committed before Attempt 4 ran (recorded 2026-10-08)
+
+**Attempt 4 carries no pre-registration guarantee.** Read the rest of this
+section with that in mind.
+
+1. **What happened.** The text of this section, items 1 to 10 above, was
+   written and staged before Attempt 4. No live call had been made at that
+   point. **It was not committed before the run.** The commit planned for
+   it was never run:
+   `docs: pre-register Phase 7b fallback model chain and live run plan`.
+   The last commit before the run was `97a7bd6 ignore`. Attempt 4's three
+   calls were made while this section was still uncommitted. The commit that carries this section also carries Attempt
+   4's results and recordings (`test/fixtures/gemini-7b/attempt-4/`).
+2. **What that means.** The project's rule is that an ADR governing a
+   measurement is committed before that measurement runs (rule 6 of the
+   project brief). This one was not. **Attempt 4 therefore does not carry a
+   pre-registration guarantee.** The history cannot show that the chain,
+   the stopping and error rules, or the two predictions in item 10 were
+   fixed before the results were seen. Calling them "pre-registered" or
+   "registered before the fact" is not supported by the history. That
+   wording stays above as it was written and staged; this subsection
+   overrides it.
+3. **What evidence of order exists, and how weak it is.** Both pieces below
+   are **weaker than a commit**. They are evidence, not proof.
+   - **The session record.** The working session shows this section
+     written and staged before the first call of Attempt 4. A session
+     record is not in the repository, is not timestamped by git, and
+     cannot be checked by a reader of the history.
+   - **The predictions were half wrong.** Item 10 predicted `data: [DONE]`
+     at the end of a stream (**confirmed**: `s2` and `s3` both end with it)
+     and usage in one final separate chunk with `choices: []` (**refuted**:
+     `s3` carries `usage` on all four chunks and has no separate usage
+     chunk). A prediction written after seeing the result would not have
+     been wrong. This makes it likely that item 10 was written first, but it
+     does not prove it.
+   - **What the history does hold.** The only prediction committed before
+     any call to Gemini is section 7's P1, and it is conditional: it says
+     what follows _if_ Gemini omits `[DONE]`, not whether it will. The
+     directional predictions (`[DONE]` yes; usage in a trailing chunk) exist
+     only in this uncommitted section. "Prediction P1 confirmed" in Attempt
+     4's record above refers to item 10's directional form, not to anything
+     committed.
+4. **The mechanism that replaces the discipline.** Discipline failed here,
+   so a check replaces it. **Before any live measurement run**, run
+   `git log -1 --format="%H %s"` and confirm that the commit registering
+   that run's plan is already in history. **If it is not, stop and report.
+   Make no calls.** This applies to every remaining live run of Phase 7,
+   the probe run included, and to any later live measurement.
+
+**Observations from Attempt 4: Google-specific fields (no handling
+change).** Gemini returned a field that is not in OpenAI's specification,
+`extra_content.google.thought_signature` (an opaque base64 string):
+
+- `s1` (not streamed): on `choices[0].message.extra_content`;
+- `s2` (streamed): on chunk 4's `delta.extra_content`, the chunk that
+  carries `finish_reason: "stop"` (Attempt 4's record above leaves this one
+  out);
+- `s3` (streamed with usage): on chunk 4's `delta.extra_content`, also the
+  finish chunk.
+
+From reading the code (not
+tested against these recordings): the adapter's response and chunk schemas
+in `src/providers/openai-compatible.ts` are plain `z.object`, which drops
+unknown keys, so today the field is discarded without a trace. It is not
+passed to the client, not logged and not counted. **Whether the gateway
+should strip, pass through or record these fields is an open Phase 7c
+decision.** Options go to the user under rule 6. Nothing is decided here,
+and nothing in the code changed.

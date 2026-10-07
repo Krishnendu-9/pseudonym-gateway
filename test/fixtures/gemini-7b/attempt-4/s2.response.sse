@@ -1,0 +1,10 @@
+data: {"choices":[{"delta":{"content":"The","role":"assistant"},"index":0}],"created":1791383296,"id":"AFfGaqbaB8Hbg8UP_JWlgQQ","model":"gemini-3.5-flash-lite","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" refund for card ending in [CARD_1] has been successfully processed and sent to","role":"assistant"},"index":0}],"created":1791383296,"id":"AFfGaqbaB8Hbg8UP_JWlgQQ","model":"gemini-3.5-flash-lite","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":" [EMAIL_1].","role":"assistant"},"index":0}],"created":1791383297,"id":"AFfGaqbaB8Hbg8UP_JWlgQQ","model":"gemini-3.5-flash-lite","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"extra_content":{"google":{"thought_signature":"EmAKXgFpFH0Tn/6R1l1Rjy42vCQ2KyM4BgJ6ImofOVPSz6ptcPLBs5VAss7/+zybDuqG4WPGOhBfh9uCPSfSEIwzy3cY7jm+VW/nc+kPIB7oT6R/SMsIGDrtW8QW4citEmU="}},"role":"assistant"},"finish_reason":"stop","index":0}],"created":1791383297,"id":"AFfGaqbaB8Hbg8UP_JWlgQQ","model":"gemini-3.5-flash-lite","object":"chat.completion.chunk"}
+
+data: [DONE]
+
