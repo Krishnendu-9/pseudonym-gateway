@@ -7031,6 +7031,12 @@ happens; and Gemini's free tier may use what it receives to improve
 Google's products (to be quoted from Google's current terms in the reading,
 section 3), which is acceptable only because the data is synthetic.
 
+**What the calls disclose about the project itself** (added 2026-10-07,
+before the live run): every call is attributable to the Google account
+that owns the API key and to the public IP address of the machine that
+makes it. The request headers that leave the machine are measured, not
+assumed (section 10).
+
 ### 3. The dashboard: deferred, not dropped (decided in conversation on 2026-10-04, recorded now)
 
 The project brief's Phase 7 had two parts: a second provider and a small
@@ -7319,3 +7325,53 @@ events), so a gateway that broke on it would pass every Ollama test and
 fail on any provider that follows the specification. That is the kind of
 fault section 5 built it for. The others it catches a second time, through
 the whole gateway rather than the adapter alone.
+
+### 10. The live run (approved 2026-10-07, with the user's additions)
+
+**How it is run.** `scripts/measure-gemini.ts`: 18 calls (3 shape calls,
+15 one-parameter probes), each through the real pipeline
+(`parseChatRequest`, `redactRequest`, the adapter with a profile holding
+only `{ name: 'gemini' }`), 15 s apart, never retried; a 429 or any status
+other than 200 and 400 stops the run; a 400 is a probe's result; a stream
+the adapter rejects is a finding, recorded, and the run moves on (the
+adapter is not changed during a measurement). The request is refused
+before sending if a planted synthetic value (the published Visa test card,
+an `example.com` address) is in its bytes. `fetch` is wrapped to keep the
+**response bytes before the adapter reads them** (after HTTP content
+decoding, which `fetch` does itself), with the sent body and the response
+headers, in `test/fixtures/gemini-7b/`, so a rejected stream keeps its
+evidence. Answers are never printed, only counts and shapes. Every
+recording is scanned by `repo-hygiene.test.ts` before it is committed (a
+model may invent a plausible number); the scan now reads `.sse` files,
+shown to fail on a probe file holding a public address.
+
+**The headers that leave the machine, measured** (`--headers`: the same
+adapter and `fetch` against a server on 127.0.0.1; nothing sent to
+Google), in the order they arrived: `host`, `connection: keep-alive`,
+`content-type: application/json`, `authorization: Bearer <key>` (checked
+equal to the configured key, never printed), `accept: */*`,
+`accept-language: *`, `sec-fetch-mode: cors`, `user-agent: node`,
+`accept-encoding: gzip, deflate`, `content-length`. Ten, the same for a
+streamed request; no client header; `user-agent` carries no version.
+Node's `fetch` speaks HTTP/1.1, so the same list goes to Google.
+
+**Known limit of this measurement:** each probe is one call, so it shows
+whether a parameter is accepted or rejected, not whether it takes effect.
+**`seed` repeatability stays unmeasured** (it would need repeated calls
+with the same seed and a comparison); recorded as a limit, not built.
+
+**Attempt 1 (2026-10-07, 13:09 UTC): stopped after one call.** The model
+sent was `PSEUDONYM_MODEL` as configured, `qwen3:8b`: the local Ollama
+model, not a Gemini one. Google answered **404**
+(`NOT_FOUND`, "models/qwen3:8b is not found for API version v1main, or is
+not supported for generateContent"), and the run stopped by its own rule.
+What reached Google: the request above (placeholders only), from this
+machine, with the key. Nothing about P1 or `spii` was measured. One
+finding from it: **Gemini's error body on this endpoint is a JSON array,
+`[{"error": {"code", "message", "status"}}]`**, not the specification's
+object `{"error": {…}}`. The adapter never reads an error body, so nothing
+changes today; recorded because a client or a future adapter that parses
+error bodies would meet it. The response came gzip-encoded, with
+`server: scaffolding on HTTPServer2`. The script's `--headers` mode now
+prints the model name, so the next attempt shows it before anything is
+sent.

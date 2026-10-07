@@ -37,7 +37,9 @@ const ROOT = join(import.meta.dirname, '..', '..');
 // docs/ is public since 2026-10-03 (the decision record, bug log, testing
 // guide and user manual), so it is held to the same rules.
 const SCANNED = ['src', 'test', 'scripts', 'eval', 'docs', 'README.md'];
-const TEXT_FILE = /\.(ts|js|mjs|cjs|json|md|txt)$/;
+// .sse: recorded provider streams (test/fixtures), which hold a model's own
+// words; a model can invent a plausible number (ADR-041 section 10).
+const TEXT_FILE = /\.(ts|js|mjs|cjs|json|md|txt|sse)$/;
 
 function* files(path: string): Generator<string> {
   const entries = readdirSync(path, { withFileTypes: true });
