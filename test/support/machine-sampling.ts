@@ -8,6 +8,9 @@ import { join } from 'node:path';
 import { startSampling } from '../../scripts/machine-sampler.js';
 
 export default function sampleTheMachine(): () => Promise<void> {
+  // PSEUDONYM_MACHINE_SAMPLES=off: no sampling (to measure what the sampler
+  // itself costs, Phase 6c).
+  if (process.env.PSEUDONYM_MACHINE_SAMPLES === 'off') return () => Promise.resolve();
   const sampler = startSampling(join(import.meta.dirname, '..', '..'));
   return async () => {
     process.stdout.write(`\n${await sampler.stop()}\n`);

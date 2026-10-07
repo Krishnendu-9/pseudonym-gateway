@@ -61,3 +61,17 @@ jobs:
 
       - name: Evaluation
         run: npm run eval
+
+      # The machine samples every test run writes (scripts/machine-sampler.ts:
+      # free memory, CPU, processes, gaps), kept when a step failed, so that a
+      # slow or failing run comes with evidence (bug-log 57). Numbers only.
+      # The directory starts with a dot, which upload-artifact skips unless told.
+      - name: Keep the machine samples
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: machine-samples
+          path: .machine-samples/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 14

@@ -91,6 +91,37 @@ given a `comm` like the real one (until then it was skipped for having
 none, so the numeric filter was never tested). The sampler's own first
 full run found bug-log 69.
 
+**Does the sampler disturb the timing tests? Measured: not their ratios
+(2026-10-07, Phase 6c).** A green run would not show it, so the timing
+project was run six times on its own at one worker (as CI runs it),
+alternating sampler off and on, with every growth result logged
+(`PSEUDONYM_MACHINE_SAMPLES=off` switches the sampler off;
+`PSEUDONYM_TIMING_LOG=<file>` makes `test/support/linear-time.ts` append
+each result as a JSON line):
+
+| 273 results each (91 per run) | Sampler off        | Sampler on         |
+| ----------------------------- | ------------------ | ------------------ |
+| Ratio: median / 90th          | 4.14 / 4.64        | 4.13 / 4.67        |
+| Per-run medians               | 4.13, 4.18, 4.14   | 4.13, 4.13, 4.12   |
+| Largest, real code (267)      | 6.19               | 6.57               |
+| Re-measured, real code        | 0                  | 0                  |
+| The two quadratic self-checks | 15.7–17.5 (6)      | 13.9–16.7 (6)      |
+| Run time                      | 73.5, 78.1, 89.2 s | 85.8, 89.9, 95.8 s |
+
+Per test (91, median of three runs each), on minus off: median +0.004,
+higher in 46, lower in 45. The ratios held; the sampler stays on for the
+timing project. What it does cost is absolute time: the fastest run per
+character was 867 ns off and 932 ns on (about 7%), and each sampler-on
+run was 6.6–12.3 s slower than the sampler-off run just before it. A ratio
+cancels that out, because both inputs are timed alternately and slowed
+alike. This is Windows, where each sample runs `tasklist` at raised
+priority; on Linux the sampler reads `/proc` and spawns nothing. The
+largest ratio of real code rose from 6.19 to 6.57, within the 8 limit, and
+no real-code result needed a second measurement in either condition; the
+only results over 7 are the helper's two deliberately quadratic checks
+(`linear-time` tests that must fail quadratic work), six in each
+condition.
+
 **Why `npm test` and the coverage run report different counts.** On
 2026-10-03, `npm test` reported 2,754 tests in 98 files and
 `npm run test:coverage` 2,665 in 82. The difference, 89 tests in 16

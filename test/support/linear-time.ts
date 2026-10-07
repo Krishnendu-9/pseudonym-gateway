@@ -42,7 +42,14 @@
 // The last step, `n` against GROWTH * n, is always judged, as before.
 //
 // Pick `n` so that one run on it takes several milliseconds.
+//
+// With PSEUDONYM_TIMING_LOG set to a file path, every result is also
+// appended to that file as one JSON line (the test's name, the ratio, the
+// fastest run on each input, how many measurements it took), so that runs
+// can be compared when they pass, not only when one fails (Phase 6c, the
+// machine sampler's effect). Lengths and times only, never an input.
 
+import { appendFileSync } from 'node:fs';
 import { expect } from 'vitest';
 
 /** How many times larger the second input is. */
@@ -122,6 +129,31 @@ export function growthReport({ ratio, measurement, measurements }: Growth): stri
 }
 
 function measureGrowth(
+  make: (n: number) => string,
+  n: number,
+  work: (input: string) => unknown,
+  repeats: number,
+): Growth {
+  const growth = climb(make, n, work, repeats);
+  const log = process.env.PSEUDONYM_TIMING_LOG;
+  if (log) {
+    const { ratio, measurement, measurements } = growth;
+    appendFileSync(
+      log,
+      `${JSON.stringify({
+        test: expect.getState().currentTestName ?? '',
+        ratio,
+        smallChars: measurement.smallChars,
+        smallMs: Math.min(...measurement.smallMs),
+        largeMs: Math.min(...measurement.largeMs),
+        measurements,
+      })}\n`,
+    );
+  }
+  return growth;
+}
+
+function climb(
   make: (n: number) => string,
   n: number,
   work: (input: string) => unknown,

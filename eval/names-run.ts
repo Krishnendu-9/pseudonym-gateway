@@ -27,6 +27,7 @@
 
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
+import { arch, cpus, platform, release } from 'node:os';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { parseArgs } from 'node:util';
 import { leftoverMutation } from '../scripts/mutation-marker.js';
@@ -99,6 +100,15 @@ const detector = await startNameDetection(
 );
 const loadMs = performance.now() - loadStart;
 const loadedRss = process.memoryUsage.rss();
+// The machine, as ADR-036's pre-registered Linux comparison requires each
+// run to record it: operating system and CPU model. The install variable is
+// printed as this process sees it; what the install itself fetched is
+// recorded where the install runs.
+write(
+  `Machine: ${platform()} ${release()} ${arch()}, ${cpus().length} logical CPUs, ` +
+    `${cpus()[0]?.model.trim() ?? 'unknown CPU'}, Node ${process.version}, ` +
+    `ONNXRUNTIME_NODE_INSTALL in this run: ${process.env.ONNXRUNTIME_NODE_INSTALL ?? '(unset)'}.`,
+);
 write(`Model started in its worker in ${Math.round(loadMs)} ms (files hashed first).`);
 
 // 1. Speed.
