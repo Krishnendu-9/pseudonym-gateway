@@ -1,11 +1,15 @@
 # Person names on Linux with the real model (Phase 6c, ADR-036): the names
-# tests and the span comparison against the published figures. Manual only
-# for now (option E4): ADR-036's pre-registered stopping rule says when, if
-# ever, it runs on every push. Every run prints the runner's CPU model, and
-# each runner CPU is its own machine under the pre-registration.
+# tests and the span comparison against the baseline of the runner's CPU
+# model (eval/names-baselines.json). Manual (option E4), plus a daily run
+# that is temporary: it exists to collect counted runs on as many runner
+# CPUs as possible for ADR-036's stopping rule, which decides whether this
+# ever runs on every push (E1). Every run prints the runner's CPU model.
 name: Names
 
 on:
+  # Daily, temporary (ADR-036): counted runs for the stopping rule.
+  schedule:
+    - cron: '23 4 * * *'
   workflow_dispatch:
     inputs:
       onnxruntime-install:
@@ -34,9 +38,11 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
+      # A scheduled run has no inputs: it installs with skip, CI's setting, so
+      # that it counts under the stopping rule.
       - name: Install
         env:
-          MODE: ${{ inputs.onnxruntime-install }}
+          MODE: ${{ inputs.onnxruntime-install || 'skip' }}
         run: |
           if [ "$MODE" = skip ]; then ONNXRUNTIME_NODE_INSTALL=skip npm ci; else npm ci; fi
 
@@ -83,10 +89,24 @@ jobs:
       - name: Names tests on the real model
         run: npm run test:names
 
-      # The pre-registered comparison (ADR-036): exit 1 means DIFFERENT from
-      # the Windows baseline, which is a result to report, not to fix.
-      - name: Names through the gateway, against the published figures
+      # The pre-registered comparison (ADR-036), against the baseline of this
+      # runner's CPU model, the messages put through twice (C1 and C3). Exit 1:
+      # DIFFERENT from this CPU's baseline, or the two passes disagree, a
+      # result to report, not to fix. A CPU with no baseline passes with a
+      # warning; its baseline needs a human commit, from the result file.
+      - name: Names through the gateway, against this CPU's baseline
         run: npm run eval:names
+
+      # Hashes, counts and the machine only, never a text: the record for the
+      # stopping rule, and a new CPU's baseline once a human commits it.
+      - name: Keep the names result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: names-result
+          path: names-result.json
+          if-no-files-found: ignore
+          retention-days: 90
 
       - name: Keep the machine samples
         if: failure()

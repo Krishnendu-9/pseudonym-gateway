@@ -9,3 +9,4 @@ dev_docs/
 .git/
 models/
 .machine-samples/
+names-result.json

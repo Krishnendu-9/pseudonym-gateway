@@ -1,0 +1,10 @@
+{
+  "12th Gen Intel(R) Core(TM) i5-12450H": {
+    "file": "names-baseline.json",
+    "source": "Measured on Windows 11 x64 (Phase 6a, reproduced through the gateway in Phase 6b step 4b, 8 runs) and reproduced on Debian 12 on this CPU (ADR-036, machine 1, 2026-10-07)."
+  },
+  "AMD EPYC 7763 64-Core Processor": {
+    "file": "names-baseline.json",
+    "source": "GitHub runner, Names workflow run #1 (2026-10-07): identical to the i5-12450H baseline in every compared field, so the same file (ADR-036, \"Result, the GitHub runners\")."
+  }
+}

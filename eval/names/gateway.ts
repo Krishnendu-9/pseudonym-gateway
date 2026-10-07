@@ -15,6 +15,18 @@
 //    per span);
 //  - every metric of ADR-035's B+F row.
 // Speed and memory are reported, not compared: they belong to the machine.
+//
+// One baseline per CPU model (Phase 6c, option C1; ADR-036, "Result, the
+// GitHub runners"): the same code gives identical spans on some CPUs and
+// slightly different ones on another, so each run is compared with the
+// baseline of the CPU model it runs on, looked up by the exact model
+// string in eval/names-baselines.json. Keyed by CPU model, not by
+// instruction set, on purpose: that explanation is a hypothesis from three
+// CPUs, and a key built on it could pass a CPU nobody has measured. A CPU
+// with no baseline is a new machine: the run passes with a warning, writes
+// its result, and its baseline needs a human commit. And every run puts the
+// messages through twice (option C3): the two passes must give the same
+// hashes, or the run fails, whatever the baseline says.
 
 import { createHash } from 'node:crypto';
 import type { Span } from '../../src/detection/normalise.js';
@@ -90,4 +102,94 @@ export function differences(baseline: NamesBaseline, measured: NamesBaseline): s
   return fields
     .filter(([, read]) => canonical(read(baseline)) !== canonical(read(measured)))
     .map(([name]) => name);
+}
+
+/** A CPU model's baseline: the file holding it (in eval/) and where it came from. */
+export interface BaselineEntry {
+  readonly file: string;
+  readonly source: string;
+}
+
+/** eval/names-baselines.json: the exact CPU model string → its baseline. */
+export type BaselineIndex = Readonly<Record<string, BaselineEntry>>;
+
+const BASELINE_FILE = /^names-baseline[\w.-]*\.json$/u;
+
+/** Reads the index, refusing anything that is not CPU model → { file, source }, file a bare names-baseline*.json name. */
+export function parseIndex(value: unknown): BaselineIndex {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error('the baseline index is not an object of CPU models');
+  }
+  for (const [model, entry] of Object.entries(value)) {
+    const { file, source } = (entry ?? {}) as Partial<BaselineEntry>;
+    if (model.trim() !== model || model === '') {
+      throw new Error(`a CPU model in the baseline index is empty or padded: "${model}"`);
+    }
+    if (typeof file !== 'string' || !BASELINE_FILE.test(file) || typeof source !== 'string') {
+      throw new Error(
+        `the baseline index entry for "${model}" needs a names-baseline*.json file and a source`,
+      );
+    }
+  }
+  return value as BaselineIndex;
+}
+
+/**
+ * The baseline for the CPU this run is on: the exact model string, only
+ * its surrounding whitespace trimmed (no matching by family or instruction
+ * set). Undefined for a CPU model never measured.
+ */
+export const baselineFor = (index: BaselineIndex, cpuModel: string): BaselineEntry | undefined =>
+  Object.hasOwn(index, cpuModel.trim()) ? index[cpuModel.trim()] : undefined;
+
+/** What a run decides, and with what exit code. */
+export type Outcome =
+  | { readonly kind: 'identical' }
+  | { readonly kind: 'different'; readonly fields: readonly string[] }
+  | { readonly kind: 'new-cpu' }
+  | { readonly kind: 'not-repeatable' };
+
+/**
+ * The run's outcome: the second pass first (two passes that disagree on
+ * either hash make the run worthless, whatever the baseline says), then the
+ * CPU's baseline, if it has one.
+ */
+export function outcome(
+  measured: NamesBaseline,
+  repeat: NamesBaseline['spans'],
+  baseline: NamesBaseline | undefined,
+): Outcome {
+  if (repeat.model !== measured.spans.model || repeat.names !== measured.spans.names) {
+    return { kind: 'not-repeatable' };
+  }
+  if (!baseline) return { kind: 'new-cpu' };
+  const fields = differences(baseline, measured);
+  return fields.length === 0 ? { kind: 'identical' } : { kind: 'different', fields };
+}
+
+/** 0 for identical and for a new CPU (it passes with a warning); 1 otherwise. */
+export const exitCode = (o: Outcome): 0 | 1 =>
+  o.kind === 'identical' || o.kind === 'new-cpu' ? 0 : 1;
+
+/** The lines the run ends with. */
+export function outcomeLines(o: Outcome, cpuModel: string, entry?: BaselineEntry): string[] {
+  switch (o.kind) {
+    case 'identical':
+      return [
+        `Identical to the baseline for ${cpuModel} (eval/${entry!.file}): messages, B's spans, the names, every metric.`,
+      ];
+    case 'different':
+      return [
+        `DIFFERENT from the baseline for ${cpuModel} (eval/${entry!.file}): ${o.fields.join(', ')}`,
+      ];
+    case 'not-repeatable':
+      return [
+        'NOT REPEATABLE: the two passes over the messages gave different hashes on this CPU, so neither can be compared with a baseline.',
+      ];
+    case 'new-cpu':
+      return [
+        `NEW CPU: no baseline for "${cpuModel}". This run is that CPU model's first result (ADR-036): it passes, and its result is in names-result.json.`,
+        'Its baseline needs a human commit: copy "measured" from names-result.json into eval/names-baseline-<cpu>.json and add the CPU model to eval/names-baselines.json.',
+      ];
+  }
 }

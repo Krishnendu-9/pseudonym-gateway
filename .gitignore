@@ -28,3 +28,6 @@ dev_docs/
 CLAUDE.md
 # Machine samples taken during test runs (scripts/machine-sampler.ts)
 .machine-samples/
+# What the last `npm run eval:names` measured (eval/names-run.ts); committed
+# by hand, as a new CPU's baseline, only after review
+names-result.json
