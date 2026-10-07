@@ -5441,6 +5441,110 @@ before the run):**
 README and the user manual: the figures hold on both platforms tested
 (Windows 11 x64 and the Linux machine recorded), with the run's details.
 
+### Result, Linux machine 1 (L2): the spans are reproduced (2026-10-07, after the pre-registration was committed in 7862c1a and pushed)
+
+**The Linux run reproduced the Windows spans exactly.** The first
+completed `npm run eval:names` on this machine, so, by the rule above, the
+result for it:
+
+| Field                                    | Linux, machine 1                                                    | Windows (the baseline)         |
+| ---------------------------------------- | ------------------------------------------------------------------- | ------------------------------ |
+| B's span SHA-256                         | `96a5c3289a275cf91c4743ade7b5ec2f46c92a1974b9b1c5e5f8e82e453ed472`  | the same                       |
+| Names SHA-256                            | `ba1a6b82da7c951da9dda75862bdb7656db17f968294f80255b708be0570c7b3`  | the same                       |
+| Messages, detections, every metric       | identical (933; R 501/612; precision 661/933; 5.85 per 1,000 words) | the same                       |
+| Speed (256 KiB) / 1 KiB / 64 KiB latency | 450.7 ms per KiB / 247 ms / 28.2 s                                  | 308–332 / 141–148 ms / 20–23 s |
+| Peak memory (6a's measure) / model start | 443 MiB / 5.1 s (files hashed over a Windows bind mount)            | 366–369 MiB / 1.1–1.7 s        |
+
+**The machine:** a Docker container, `node:22.23.3-bookworm` (image digest
+`sha256:0e5f906573693feaa1e21057ebdcfdb5bd5021f050b2dc7c9deceb629c7da2a8`),
+Debian GNU/Linux 12, Microsoft's WSL2 kernel 6.6.87 (fourth part 2; the
+full string is dotted like an IP address, which this repo's hygiene test
+rightly refuses), under
+Docker Desktop 29.8.1 on the Windows machine itself: **the same CPU**
+(12th Gen Intel Core i5-12450H) but **4 logical CPUs** (Docker's VM; the
+Windows runs had 12), Node v22.23.3, npm 10.9.9 (11.11.0 on Windows). The
+source was the committed tree at `4496241` (`git archive`); the model
+files were the Windows ones, mounted read-only and checked by SHA-256 at
+start-up. Install: `ONNXRUNTIME_NODE_INSTALL=skip npm ci`, 219 packages.
+
+**So the figures hold on both platforms tested**: Windows 11 x64 and Linux
+x64 (Debian 12), on the i5-12450H, with 12 and with 4 logical CPUs. This
+machine held the CPU fixed, so OS and thread count did not change a single
+span here; whether **another CPU** does is the next question, answered on
+GitHub's runners (L1) under the rule below.
+
+**4a's install assumption, verified on Linux (this ADR, "The skip is an
+assumption").** Check 1: after `npm ci` with the skip, both files are in
+the package (`bin/napi-v6/linux/x64/libonnxruntime.so.1`, 45,828,512
+bytes; `onnxruntime_binding.node`, 389,488), no CUDA or TensorRT file
+exists, and `onnxruntime-node` is 301,125,480 bytes on disk by `du -b`:
+the registry's 301,068,136 plus 14 directory entries of 4,096 bytes, so the
+install script fetched nothing. Check 2: `npm run test:names`, which
+creates an inference session on B and runs it, passed 6 of 6. **The skip
+leaves a working CPU runtime**; the fallback is not needed. Not measured
+yet: the install without the skip (the NuGet download), which the names
+workflow's `default` input measures on a runner.
+
+### The model in CI: a cache keyed by the pins, the pinned download behind it (Phase 6c, 2026-10-07; the user chose option M2)
+
+> **A corrupt cache can fail the job; it cannot produce wrong spans.**
+> Every file the cache restores is hashed by `fetch:model` (size and
+> SHA-256 against the pins) before it is kept, and hashed again by the
+> gateway before the model is loaded (`checkModelFiles`), which refuses to
+> start on any mismatch. A wrong file therefore stops the job before any
+> span exists. That is what makes caching a 178.5 MB model safe rather
+> than a risk.
+
+How it is built (`.github/workflows/names.yml`): `actions/cache/restore`
+and `actions/cache/save` (v6.1.0, pinned to commit `55cc8345…`), path
+`models/`, key `name-model-<hash of src/gateway/name-model.ts>`: the file
+that holds the repository, the commit and each file's SHA-256, so a new
+pin is a new key (an edit elsewhere in that file is a harmless extra
+download). On a hit, `fetch:model` finds each file in place, checks it and
+keeps it; on a miss it downloads the four files from the pinned Hugging
+Face commit (option M1) and checks them; the save step then stores what
+was verified, before the comparison runs, so that a DIFFERENT result does
+not make the next run download again. Not measured yet: restore and
+download times on the runner (each run's log shows them). GitHub keeps a
+repository's caches up to 10 GB and evicts one unused for 7 days; a cache
+from a pull request is scoped to it and cannot replace `main`'s.
+
+### Pre-registered: when the names workflow may run on every push (Phase 6c, 2026-10-07; written and committed before the first manual run)
+
+The user chose option E4: the names workflow runs **manually** first
+(`workflow_dispatch`), and moves to every push and pull request (option
+E1) only by this rule, written before any manual run. It exists because
+GitHub's runners are not one machine: the same label lands on hosts with
+different CPUs, the runtime chooses kernels by CPU, and if hosts disagree
+an every-push check would fail by host, not by change.
+
+- **What counts:** a completed manual run of the workflow with the
+  default install setting (`skip`, CI's). A run with `default` is for the
+  install measurement only. A run that does not complete does not count
+  (as above). Each counted run is recorded here: date, CPU model and
+  count, B's span hash, the names hash, and whether each equals the
+  Windows baseline.
+- **E1 is adopted only when all of these hold:** at least **10** counted
+  runs; at least **2 distinct CPU models** among them; at least **3**
+  counted runs on each of at least two of those models; and **every
+  counted run gives the same two hashes as every other** (agreement among
+  the runner runs; whether they also equal Windows is the pre-registered
+  comparison above, a separate question).
+- **If any two counted runs disagree on either hash**, the hashes are not
+  stable across hosts: E1 is not adopted, the workflow stays manual and
+  gains a weekly schedule (E3) with each run's machine recorded, the
+  pre-registration's per-machine rule applies, and the question returns to
+  the user.
+- **If 20 counted runs pass without two CPU models with three runs each**,
+  nothing is concluded about hosts in general: E1 is not adopted, a weekly
+  schedule (E3) is added to keep meeting new hosts, and the question
+  returns to the user.
+- **Why these numbers:** one matching run on one host says nothing about
+  hosts; three on one CPU model show that model is deterministic; two
+  models are the least that "across hosts" can mean. They are a judgement,
+  fixed here so that the decision is not made by whichever run is in front
+  of us.
+
 <a id="adr-037"></a>
 
 ## ADR-037: Person names in the request path, against a fake model (Phase 6b step 3, 2026-10-03; amends ADR-003, ADR-013)

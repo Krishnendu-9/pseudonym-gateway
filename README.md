@@ -441,7 +441,7 @@ eval:names` sends the 1,998 measured messages through it and compares
   in a separate process (ADR-037, step 4b).
 - **Install:** the runtime (`onnxruntime-node` 1.30.0,
   `@huggingface/tokenizers` 0.2.0) is an exact optional dependency, about
-  302 MB on Windows (Linux not measured yet), never loaded with names off;
+  302 MB on Windows and 301 MB of it on Linux, never loaded with names off;
   the model comes from `npm run fetch:model` (178.5 MB), kept only if its
   SHA-256 matches, and checked again at start-up: with names on, the
   gateway refuses to start if the list, a file or the runtime is wrong or
@@ -449,8 +449,15 @@ eval:names` sends the 1,998 measured messages through it and compares
 - **Licence:** the model's repository states none; it is a conversion of
   Davlan's model (AFL-3.0), a fine-tune of Google's multilingual BERT
   (Apache-2.0); open points in ADR-036.
-- **Not yet:** CI does not run the model (Phase 6c), and nothing has been
-  measured on Linux.
+- **Linux: the figures hold.** Under a rule written and committed before
+  the run, `npm run eval:names` on Linux (Debian 12 in a container, on the
+  same Intel i5-12450H with 4 logical CPUs) reproduced the Windows run
+  exactly, every span by SHA-256 and every metric, so 81.8%, 41 of 45 and
+  5.85 false positives per 1,000 words hold on both platforms tested
+  ([ADR-036](docs/decisions.md#adr-036), Phase 6c). It was slower there:
+  450.7 ms per KiB on 4 CPUs. **Not yet:** a different CPU (GitHub's
+  runners, run by hand under a second pre-registered rule) and CI on every
+  push.
 
 ## Measured results
 

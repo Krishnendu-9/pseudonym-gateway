@@ -1401,4 +1401,17 @@ the request is sent; about 290 MiB more memory while idle and up to about
 fails, rather than skipping, without the model), and `npm run eval:names`
 sends the 1,998 generated messages the published figures were measured on
 through the gateway and checks that it finds exactly the same names. Both
-need the model; neither runs in CI yet (Phase 6c).
+need the model. On GitHub they run in the **Names** workflow, started by
+hand (Actions → Names → Run workflow); it fetches the model, or restores
+it from a cache that is checked file by file, so a broken cache fails the
+run and never changes what is found (ADR-036, Phase 6c).
+
+### Which platforms the figures hold on
+
+The figures above were measured on Windows 11 x64. Under a rule written
+and committed before the run, the same comparison on Linux (Debian 12 in a
+container on the same Intel i5-12450H, 4 logical CPUs) gave exactly the
+same names, span by span: **the figures hold on both platforms tested.**
+It was slower there (450.7 ms per KiB of text on 4 CPUs). Whether another
+CPU gives the same names is being checked on GitHub's runners, by a second
+rule written in advance (ADR-036).
