@@ -1,0 +1,99 @@
+# Person names on Linux with the real model (Phase 6c, ADR-036): the names
+# tests and the span comparison against the published figures. Manual only
+# for now (option E4): ADR-036's pre-registered stopping rule says when, if
+# ever, it runs on every push. Every run prints the runner's CPU model, and
+# each runner CPU is its own machine under the pre-registration.
+name: Names
+
+on:
+  workflow_dispatch:
+    inputs:
+      onnxruntime-install:
+        description: >-
+          ONNXRUNTIME_NODE_INSTALL at npm ci: "skip" is CI's setting; "default"
+          lets onnxruntime-node's install script fetch what it asks for, to
+          measure that download (ADR-036)
+        type: choice
+        options: [skip, default]
+        default: skip
+
+permissions:
+  contents: read
+
+jobs:
+  names:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        env:
+          MODE: ${{ inputs.onnxruntime-install }}
+        run: |
+          if [ "$MODE" = skip ]; then ONNXRUNTIME_NODE_INSTALL=skip npm ci; else npm ci; fi
+
+      # ADR-036's first check on Linux: the CPU runtime's two files are in the
+      # package, and what else the install put there (CUDA libraries only
+      # without the skip).
+      - name: What the install put on disk, and on which CPU
+        run: |
+          grep -m1 'model name' /proc/cpuinfo
+          nproc
+          du -sb node_modules/onnxruntime-node
+          ls -l node_modules/onnxruntime-node/bin/napi-v6/linux/x64/
+          find node_modules/onnxruntime-node \( -iname '*cuda*' -o -iname '*tensorrt*' \) -exec ls -l {} +
+
+      # The model (178.5 MB) by the cache, keyed by the file that pins it
+      # (src/gateway/name-model.ts: repository, commit, each file's SHA-256),
+      # with the pinned download as the fallback (options M2 and M1, ADR-036).
+      # A corrupt cache can fail this job but cannot produce wrong spans:
+      # fetch:model hashes every file it keeps, and the gateway hashes them
+      # again before it loads the model, refusing to start on any mismatch.
+      - name: Restore the model
+        id: restore
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: models
+          key: name-model-${{ hashFiles('src/gateway/name-model.ts') }}
+
+      # Keeps each file already in place and right (size and SHA-256 checked),
+      # downloads the rest from the pinned commit, refuses any mismatch.
+      - name: Fetch or check the model
+        run: npm run fetch:model
+
+      # Saved only once the files are verified, and before the comparison, so
+      # that a DIFFERENT result (a result, not a failure of the files) does
+      # not leave the next run downloading again.
+      - name: Save the model
+        if: steps.restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: models
+          key: name-model-${{ hashFiles('src/gateway/name-model.ts') }}
+
+      # ADR-036's second check: an inference session on B is created and runs.
+      - name: Names tests on the real model
+        run: npm run test:names
+
+      # The pre-registered comparison (ADR-036): exit 1 means DIFFERENT from
+      # the Windows baseline, which is a result to report, not to fix.
+      - name: Names through the gateway, against the published figures
+        run: npm run eval:names
+
+      - name: Keep the machine samples
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: machine-samples
+          path: .machine-samples/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 14
