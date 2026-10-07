@@ -7621,12 +7621,78 @@ section with that in mind.
      only in this uncommitted section. "Prediction P1 confirmed" in Attempt
      4's record above refers to item 10's directional form, not to anything
      committed.
-4. **The mechanism that replaces the discipline.** Discipline failed here,
-   so a check replaces it. **Before any live measurement run**, run
-   `git log -1 --format="%H %s"` and confirm that the commit registering
-   that run's plan is already in history. **If it is not, stop and report.
-   Make no calls.** This applies to every remaining live run of Phase 7,
-   the probe run included, and to any later live measurement.
+4. **The mechanism that replaces the discipline: a guard in code.**
+   Discipline failed here, so a check replaces it, and the check is in the
+   code, not in a list of things to remember.
+
+   **First recorded, then replaced (2026-10-08).** This item first recorded
+   a manual check: before any live run, run `git log -1 --format="%H %s"`
+   and confirm that the plan's commit is in history; if not, stop. It was
+   replaced the same day, before any further live call, for four reasons.
+   (a) It shows only the newest commit, so a plan commit with later commits
+   on top is not visible in it. (b) It cannot see the failure that actually
+   happened: with the plan staged but not committed, it shows an older
+   commit, and nothing in its output says that the plan on disk differs.
+   (c) It is still a step someone has to remember, which is what failed.
+   (d) Whether it could run depended on how it was typed: in the session
+   that recorded it, `git log` and `git status` written as `git -C <dir> …`
+   were denied by the project's permission settings (`Bash(git -C:*)`).
+   The check as written, without `-C`, matches no deny pattern, but a check
+   that the permission layer can block by spelling is not a check. The
+   guard runs inside the measuring script, under the user's own shell.
+
+   **The guard** (`scripts/live-run-guard.ts`, called by
+   `scripts/measure-gemini.ts`). The two modes that reach Google
+   (`--list-models` and the calls) refuse to start, exit 1 and send
+   nothing, unless:
+   - `git status --porcelain=v1 -z --untracked-files=all` reports **no
+     change anywhere in the working tree**: nothing staged, nothing
+     unstaged, nothing untracked, `docs/decisions.md` included (a staged
+     but uncommitted plan, Attempt 4's case, is refused and named as such).
+     Ignored files (`.env`, `models/`, `.machine-samples/`) do not count;
+   - HEAD names a commit (no unborn repository, not outside one, git
+     available; any failure refuses).
+
+   It prints `working tree clean at <commit>`, and the attempt's
+   `attempt.json` gains a `head` field with that commit, so every later
+   recording names the commit it ran from, and
+   `git show <head>:docs/decisions.md` shows exactly which plan existed.
+   `--headers` sends nothing to Google and is not guarded. **The request is
+   unchanged:** the guard runs before any request is built, and no line
+   that builds or sends one changed, so later recordings stay comparable
+   with Attempt 4's. `attempt.json` is local metadata and gains a field.
+
+   **Why the whole tree, and not only `docs/decisions.md`.** The bytes sent
+   are decided by `measure-gemini.ts` and `src/`; a run from uncommitted
+   code could not be reproduced from the history. An earlier attempt's
+   recordings left uncommitted would also go into one commit with the next
+   plan, the same mixing Attempt 4 produced. The cost: unrelated work in
+   progress has to be committed or set aside before a live run, and live
+   runs are rare.
+
+   **What it does not do.** It does not tie a run to a particular plan: a
+   clean tree shows that everything on disk is committed, not that this
+   run's plan was written. A required `--plan <heading>` matched against
+   the committed file was considered and not built, because any existing
+   heading would satisfy it. It also cannot stop the history being
+   rewritten after a run (a plan amended into an earlier commit). Evidence
+   a local rewrite cannot change would need the plan pushed before the run
+   and checked against the remote-tracking branch; that changes how live
+   runs are done and is left to the user.
+
+   **Shown to fire:** `test/unit/scripts/live-run-guard.test.ts`, 20
+   tests. With real git in throwaway repositories (no test makes a commit),
+   it refuses a staged `docs/decisions.md`, one staged and edited again, an
+   untracked one, a repository with no commit, and a directory outside any
+   repository; with git's answers fixed, the remaining forms (unstaged
+   only, ten paths listed and the rest counted, a HEAD that is not a commit
+   id). The script itself is run with no key, so no branch of the test can
+   reach the network: on a dirty tree it must print the refusal and never
+   reach the key check. 11 of 11 mutations caught (9 in the guard, 2
+   removing the script's call or its exit).
+
+   This applies to every remaining live run of Phase 7, the probe run
+   included, and to any later live measurement made with this script.
 
 **Observations from Attempt 4: Google-specific fields (no handling
 change).** Gemini returned a field that is not in OpenAI's specification,

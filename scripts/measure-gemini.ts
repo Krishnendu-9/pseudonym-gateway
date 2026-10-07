@@ -39,18 +39,26 @@
 //
 // The key comes from PSEUDONYM_PROVIDER_API_KEY and is never printed. Answers are never printed
 // either: only counts and shapes (a model may invent a value).
+//
+// The two modes that reach Google refuse to start unless the working tree is
+// clean (`live-run-guard.ts`, ADR-041 section 11): the plan governing a run
+// must be committed before it, and attempt.json records the commit it ran
+// from. `--headers` sends nothing to Google and is not guarded. The guard
+// changes nothing about what is sent.
 
 import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { redactRequest } from '../src/gateway/redact-request.js';
 import { parseChatRequest } from '../src/gateway/schema.js';
 import { createOpenAICompatibleProvider } from '../src/providers/openai-compatible.js';
 import { ProviderError, type ProviderChatRequest } from '../src/providers/provider.js';
 import { PlaceholderMapping } from '../src/redaction/mapping.js';
+import { checkTree, gitIn } from './live-run-guard.js';
 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
 const SPACING_MS = 15_000;
@@ -82,6 +90,18 @@ if (
   );
   process.exit(1);
 }
+// Before anything else that could lead to a call: a run whose plan is not
+// committed does not start (ADR-041 section 11).
+let head: string | null = null;
+if (mode !== 'headers') {
+  const tree = checkTree(gitIn(fileURLToPath(new URL('..', import.meta.url))));
+  if (!tree.ok) {
+    console.error(tree.reason);
+    process.exit(1);
+  }
+  head = tree.head;
+  console.log(`working tree clean at ${head}`);
+}
 const key = process.env.PSEUDONYM_PROVIDER_API_KEY;
 if (!key) {
   console.error('PSEUDONYM_PROVIDER_API_KEY must be set');
@@ -103,6 +123,8 @@ function newAttempt(out: string): string {
     model: args.model ?? null,
     calls: mode === 'calls' ? (args.calls ?? 'all') : null,
     startedAt: new Date().toISOString(),
+    // The commit the run started from, with a clean tree (live-run-guard.ts).
+    head,
   };
   writeFileSync(join(dir, 'attempt.json'), `${JSON.stringify(about, null, 2)}\n`);
   return dir;
