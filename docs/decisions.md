@@ -7640,6 +7640,7 @@ section with that in mind.
    The check as written, without `-C`, matches no deny pattern, but a check
    that the permission layer can block by spelling is not a check. The
    guard runs inside the measuring script, under the user's own shell.
+   ADR-042 records the deny list's limits and the exact commands refused.
 
    **The guard** (`scripts/live-run-guard.ts`, called by
    `scripts/measure-gemini.ts`). The two modes that reach Google
@@ -7686,10 +7687,17 @@ section with that in mind.
    untracked one, a repository with no commit, and a directory outside any
    repository; with git's answers fixed, the remaining forms (unstaged
    only, ten paths listed and the rest counted, a HEAD that is not a commit
-   id). The script itself is run with no key, so no branch of the test can
-   reach the network: on a dirty tree it must print the refusal and never
-   reach the key check. 11 of 11 mutations caught (9 in the guard, 2
-   removing the script's call or its exit).
+   id). The script itself is run with no key, so no outcome of the test
+   can reach the network, from a throwaway repository: the script and the
+   guard copied byte for byte at test time, `src` linked to the real one,
+   `docs/decisions.md` staged and not committed. It must print the refusal,
+   never reach the key check, and make no attempt folder. 11 of 11
+   mutations caught (9 in the guard, 2 removing the script's call or its
+   exit). **Corrected 2026-10-08:** the first version of that test ran the
+   script in this repository and took one branch on a dirty tree and the
+   other on a clean one, so on a clean checkout (CI) it could not fail. It
+   now runs in its own repository, and the 11 mutations were run again
+   against it: all caught, with W1 and W2 failing it alone.
 
    This applies to every remaining live run of Phase 7, the probe run
    included, and to any later live measurement made with this script.
@@ -7713,3 +7721,148 @@ passed to the client, not logged and not counted. **Whether the gateway
 should strip, pass through or record these fields is an open Phase 7c
 decision.** Options go to the user under rule 6. Nothing is decided here,
 and nothing in the code changed.
+
+### 12. The probe run: what a failed probe can mean (recorded 2026-10-10, before any probe)
+
+Written before any probe is sent; the guard (section 11 item 4) refuses
+the probe run until this is committed. Established in the session of
+2026-10-08 and not written down then; checked again on 2026-10-10 by
+reading the code and by running every probe body through the request path
+on this machine. No call to Google was made for it.
+
+1. **The gateway's schema accepts every probe parameter and passes it on.**
+   The probe bodies in `scripts/measure-gemini.ts` (`p01`–`p15`:
+   `temperature` 0, `top_p` 0.5, `seed` 42, `frequency_penalty` 0.5,
+   `presence_penalty` 0.5, `stop` with one newline, `max_tokens` 16,
+   `response_format` `json_object`, and `reasoning_effort` `none`,
+   `minimal`, `low`, `medium`, `high`, `xhigh`, `max`) were each run
+   through `parseChatRequest` and `redactRequest`, as the script does: 15
+   of 15 accepted, and each parameter is in the request handed to the
+   adapter (in `options`, or `stop`). So `src/gateway/schema.ts` refuses
+   no probe before it is sent. Section 10 trims `reasoning_effort` to three
+   values (11 probes); the script still lists all 15. The finding covers
+   both lists.
+2. **No probe streams.** No probe sets `stream`, so every probe goes
+   through the adapter's `complete()`, never `stream()`. The check that
+   failed `s3` (usage at most once and only after the finish, in
+   `streamEvents`, `src/providers/openai-compatible.ts`) is reached only by
+   `stream()`. No probe can fail on it, so Gemini's usage on every chunk
+   cannot show up again as a probe result.
+3. **What a failed probe means: narrower than "the upstream rejected the
+   parameter".** That statement, as first made, is true of one kind of
+   failure only:
+   - **HTTP 400:** Google refused the request. Each probe is `s1`'s
+     request with one parameter added, and `s1` was accepted on this model
+     (Attempt 4), so a 400 is read as Google rejecting that parameter or
+     its value. The response body is kept, so the reading is checked
+     against what Google wrote, not assumed.
+   - **HTTP 200 and the adapter `failed` (`bad_response`):** Google
+     accepted the parameter and the adapter rejected the answer.
+     `complete()` requires exactly one choice, `message.content` a string,
+     and `finish_reason` one of `stop`, `length`, `content_filter`. A probe
+     can change exactly these: for example, if thinking uses up
+     `max_tokens` 16, the answer may have no text (a possibility, not
+     measured). Such a result is a finding about the adapter, recorded as
+     one, and never counted as a rejected parameter.
+   - **No answer, or an answer not finished within 120 s** (the adapter
+     `failed` with `timeout` or `unavailable`; the recorded HTTP status is
+     200 or missing):
+     neither a rejection nor a finding about the answer's shape. A long
+     `reasoning_effort` (`xhigh`, `max`) could plausibly cause it. The
+     script records it and goes on to the next probe.
+   - **Any other status, or a 429:** the run stops (sections 10 and 11).
+
+   The recording tells these apart: each call's HTTP status is written
+   separately from the adapter's outcome (`ok`, or `failed` with its
+   failure kind and status).
+
+4. Section 10's limit stands: one call per probe shows whether a parameter
+   is accepted, not whether it takes effect.
+
+<a id="adr-042"></a>
+
+## ADR-042: Rule 1 is kept by compliance; the permission deny list is a partial backstop (2026-10-08)
+
+**Status.** Accepted (the user, 2026-10-08). The assistant's permission
+settings are not changed; this ADR records what they do and do not do, so
+that no document claims more.
+
+**Why an ADR and not the bug log.** The bug log records bugs: a symptom, a
+root cause, a fix and the test that now guards it. Nothing here is a bug in
+the code, there is no fix, and no test can guard it. It is a standing
+decision about how a project rule is enforced and what may be said about
+that, which is what this record is for.
+
+**Context.** Rule 1 of the project brief: the assistant never commits,
+pushes, tags, merges, rebases or resets, and never runs `gh`; reading git
+state is allowed. The assistant's permission settings
+(`.claude/settings.json`, gitignored, so the entries are quoted here) deny
+these shell commands:
+
+```
+"Bash(git commit:*)", "Bash(git push:*)", "Bash(git tag:*)",
+"Bash(git merge:*)", "Bash(git rebase:*)", "Bash(git reset:*)",
+"Bash(git -C:*)", "Bash(gh:*)"
+```
+
+Each entry matches by how the command text begins.
+
+**What happened, and a correction.** On 2026-10-08 the assistant reported
+that `git log --oneline -6` and `git status --short` had been denied. That
+wording shortened the commands. The commands actually run were
+`git -C "<repository root>" log --oneline -6` and
+`git -C "<repository root>" status --short` (the argument was the
+repository's absolute path), and both were refused by the deny entry
+`Bash(git -C:*)`. They were not approval prompts left unanswered. The same
+reads typed without `-C`, after changing into the repository, ran later
+the same day.
+
+**Why `git -C` is denied, and the problem it causes.** The reason was not
+recorded when the entry was added; the likely one: `git -C <dir> commit`
+does not begin with `git commit`, so without this entry every other git
+entry could be passed by adding `-C <dir>`. The entry closes that gap for
+every `git -C` command, reads included. It cannot be narrowed to the
+writes: a deny entry wins over an allow entry, so read-only `git -C`
+forms cannot be allowed back while the rest stay denied. The cost is that
+git reads must be typed without `-C`.
+
+**The list is partial.** Each of these begins with `git` and a global
+option, so it matches none of the entries. They were found by reading git's
+option syntax and **were not tried**: trying one would be the action
+rule 1 forbids.
+
+1. `git -c <key>=<value> commit` (lower-case `-c`: set a configuration
+   value for one command);
+2. `git --git-dir=<dir> commit`;
+3. `git --work-tree=<dir> commit`;
+4. `git --no-pager commit`.
+
+The same holds for `push` and the rest. Beyond git's own options, the
+list governs only the command text the assistant types into its shell
+tool. A program the assistant writes or runs can start git itself (this
+project's own `scripts/live-run-guard.ts` runs git through
+`execFileSync`), and so can a shell started inside a command, an npm
+script or a git alias. Whether a compound command such as
+`cd <dir> && git commit` is checked part by part was not verified. **The
+list cannot be made complete.** Git's global
+options and the ways of starting a process are open-ended; adding the four
+entries above would narrow the gaps without closing them.
+
+**Decision.**
+
+- **Rule 1 is enforced by the assistant complying with it. The deny list
+  is a backstop that catches the common spellings, not the other way
+  round.** No document may say that the permission settings prevent the
+  assistant from committing or pushing.
+- `.claude/settings.json` is not changed (the user's decision). Adding the
+  four entries above is possible and was not done.
+- The assistant types git reads without `-C`:
+  `cd <repository> && git status --short`.
+- A check that must run is not written as a command for someone to type.
+  It goes into code that runs under the user's own shell, as the live-run
+  guard does (ADR-041 section 11, where the `git -C` refusal is reason (d)
+  for replacing the typed `git log -1` check).
+
+**Consequences.** Rule 1 rests on compliance. A lapse would not be stopped
+by the settings in every spelling; the user, who makes every commit by
+hand, would see an unexpected commit or push in the history and on GitHub.

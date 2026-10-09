@@ -2,10 +2,20 @@
 // refuses unless the working tree is clean, docs/decisions.md included,
 // staged or not. Attempt 4 ran with its plan staged but not committed; these
 // tests show the guard fires on exactly that, with real git, and that the
-// measuring script calls it before it could send anything.
+// measuring script calls it before it could send anything, in a throwaway
+// repository, so the result never depends on this repository's state.
 
 import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -170,37 +180,61 @@ describe('checkTree, with real git (no commit is ever made)', () => {
 });
 
 describe('measure-gemini.ts', () => {
-  it('checks the tree before anything else; with no key nothing can be sent either way', async () => {
-    const root = join(import.meta.dirname, '..', '..', '..');
-    const out = mkdtempSync(join(tmpdir(), 'live-run-guard-out-'));
-    try {
-      // No key: if the guard lets the run start, the script stops at the key
-      // check. No branch of this test can reach the network.
-      const child = spawn(
-        process.execPath,
-        ['--import', 'tsx', 'scripts/measure-gemini.ts', '--list-models', '--out', out],
-        { cwd: root, env: { ...process.env, PSEUDONYM_PROVIDER_API_KEY: '' } },
-      );
-      let stdout = '';
-      let stderr = '';
-      child.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString()));
-      child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString()));
-      const code = await new Promise<number | null>((done) => child.on('close', done));
-      expect(code).toBe(1);
-      // The repository's own state decides the branch. While a change is
-      // being written or a mutation is in place, the tree is dirty and the
-      // guard must refuse; on a clean checkout (CI) it lets the run go on to
-      // the key check.
-      const tree = checkTree(gitIn(root));
-      if (tree.ok) {
-        expect(stdout).toContain(`working tree clean at ${tree.head}`);
-        expect(stderr).toContain('PSEUDONYM_PROVIDER_API_KEY must be set');
-      } else {
-        expect(stderr).toContain(tree.reason.split('\n')[0]);
-        expect(stderr).not.toContain('PSEUDONYM_PROVIDER_API_KEY');
-      }
-    } finally {
-      rmSync(out, { recursive: true, force: true });
+  // The script checks the repository it sits in, so it is run from a
+  // throwaway repository: the script and the guard copied byte for byte at
+  // test time (a change to either reaches this test), `src` linked to the
+  // real one, and docs/decisions.md staged but not committed, Attempt 4's
+  // case. The outcome no longer depends on the state of this repository.
+  const root = join(import.meta.dirname, '..', '..', '..');
+  let repo: string;
+  let out: string;
+  beforeEach(() => {
+    repo = mkdtempSync(join(tmpdir(), 'live-run-guard-repo-'));
+    out = mkdtempSync(join(tmpdir(), 'live-run-guard-out-'));
+    const git = gitIn(repo);
+    git(['init', '--quiet']);
+    mkdirSync(join(repo, 'scripts'));
+    for (const name of ['measure-gemini.ts', 'live-run-guard.ts']) {
+      copyFileSync(join(root, 'scripts', name), join(repo, 'scripts', name));
     }
+    symlinkSync(join(root, 'src'), join(repo, 'src'), 'junction');
+    writeFileSync(join(repo, 'package.json'), '{ "type": "module" }\n');
+    mkdirSync(join(repo, 'docs'));
+    writeFileSync(join(repo, PLAN_FILE), '### 12. A plan\n');
+    git(['add', '--', PLAN_FILE]);
+  });
+  afterEach(() => {
+    // The link first, so removing the repository can never reach the real src.
+    unlinkSync(join(repo, 'src'));
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(out, { recursive: true, force: true });
+  });
+
+  it('refuses a staged plan before anything else; with no key nothing could be sent anyway', async () => {
+    // No key: if the guard did not stop the run, the script would stop at
+    // the key check, so no outcome of this test can reach the network.
+    const child = spawn(
+      process.execPath,
+      [
+        '--import',
+        'tsx',
+        join(repo, 'scripts', 'measure-gemini.ts'),
+        '--list-models',
+        '--out',
+        out,
+      ],
+      { cwd: root, env: { ...process.env, PSEUDONYM_PROVIDER_API_KEY: '' } },
+    );
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString()));
+    child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString()));
+    const code = await new Promise<number | null>((done) => child.on('close', done));
+    expect(code).toBe(1);
+    expect(stderr).toContain('refusing to make a live call');
+    expect(stderr).toContain(`${PLAN_FILE} among them`);
+    expect(stderr).not.toContain('PSEUDONYM_PROVIDER_API_KEY');
+    expect(stdout).not.toContain('working tree clean');
+    expect(readdirSync(out)).toEqual([]); // no attempt folder was made
   });
 });
