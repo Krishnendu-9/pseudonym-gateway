@@ -3468,3 +3468,91 @@ full runs passed 3,138 of 3,138. Most likely bug-log 69's `tasklist`
 starvation under load; not shown. The new tests add a few dozen git
 processes and one more `tsx` child to the main suite, so they may have
 added to the load.
+
+### The machine-sampler flake, measured (2026-10-10)
+
+**Question.** Did the guard tests (the real-git tests and the script-level
+runs in `test/unit/scripts/live-run-guard.test.ts`) raise the rate at which
+`machine-sampler.test.ts` "a real run …" times out?
+
+**Design, fixed before the first run.** 20 full runs per arm, 40 in all,
+alternating (with, without, with, …) so that drift in the machine's state
+falls on both arms. _With:_ `vitest run --project main --project timing`
+(what `npm test` runs). _Without:_ the same command naming every test file
+except the guard file, since the `main` project's own `exclude` overrides
+`--exclude` (checked: `--exclude` changed nothing); config and projects
+unchanged, and the first pair confirmed 121 files and 3,106 tests against
+122 and 3,138. Primary outcome: a `machine-sampler.test.ts` failure; any
+failure reported too. Decision rule: "raised" only if the with-arm has more
+sampler failures and a one-sided Fisher exact test gives p < 0.05. Same
+machine, nothing else started during the runs; lowest free memory over all
+40 runs 4,273 MB.
+
+**Why the file and test counts are recorded.** If the exclusion had
+silently done nothing, as `--exclude` did, both arms would have run the
+same tests, and the result would have been 0 of 20 and 0 of 20: the same
+output a real comparison gives. The counts are the only thing that tells a
+real manipulation from a vacuous one: 121 files and 3,106 tests in every
+without-run, against 122 and 3,138 in every with-run (the 32 tests of the
+guard file), checked in the first pair and present in every run's line of
+`results.tsv`.
+
+**Result.** **With: 0 of 20 runs failed** (0 sampler failures; 3,138 of
+3,138 each time; mean 90.4 s, 83–112). **Without: 0 of 20 runs failed** (0
+sampler failures; 3,106 of 3,106; mean 87.7 s, 79–112). By the rule: **not
+raised**. No failure of any kind in 40 runs; the 2026-10-10 failure was not
+reproduced.
+
+**What this sample can and cannot say.** Three runs could not have told a
+5% flake from a 30% one: at least one failure in three runs has a 14%
+chance at a 5% rate and a 66% chance at 30%, so the single failure seen
+fitted both. This comparison can: at a 30% rate, 0 failures in 20 runs has
+a chance of 0.08%, so a rate that high is ruled out for either arm. It
+cannot go further: 0 of 20 has a 36% chance at a 5% rate, so a few-percent
+flake, in either arm, or a difference of a few percent between them, is
+still consistent with these counts. The 95% upper bound on the per-run
+failure rate is 13.9% per arm (0 of 20) and 7.2% for both arms together (0
+of 40).
+
+**Seen, not pre-registered (exploratory).** The sampler's longest gap
+between samples was longer in the with-arm: 10 s or more in 12 of 20
+with-runs against 7 of 20 without (one-sided Fisher p = 0.10), and 15 s or
+more in 2 against 0 (p = 0.24): run 1 (15 s) and run 16 (20 s, the length
+of the gap in the 2026-10-10 failure), both of which passed. Neither
+difference meets the rule, and the measure was chosen after the data were
+seen, so it is a pattern to watch, not a finding: the guard tests may add
+enough load to hold the sampler up more often, without making anything
+fail at this sample size. The peak process counts the sampler saw did not
+differ (mean 331.4 with, 330.4 without); the guard tests' git processes are
+short-lived, and the sampler looks every 5 s.
+
+**A limitation on conditions.** The comparison bounds the flake rate under
+the load these 40 runs met, not necessarily under the load that caused the
+2026-10-10 failure. **Free memory does not separate them:** the failing
+run's lowest was 4,308 MB (its own summary line, kept in that session's log;
+its sample file has since been pruned, as the sampler keeps the newest 20),
+and these runs went as low as 4,273 MB and passed. What the failing run had
+and none of these did: it took 139 s against 79 to 112 s here, and the
+sampler was held up twice in one run, for 20 s and then 15 s, with the CPU
+at 100% for about its first 65 s. The longest hold-up here was a single
+20 s gap (with-run 16), which passed. Together with the exploratory signal
+above (longer gaps more often with the guard tests), a heavier or longer
+stall than either arm reached is consistent with everything observed. That
+is a limitation of this comparison, not a finding about the cause.
+
+**Re-running it.** The harness is tracked, per ADR-043 (a harness kept only
+in a scratchpad is lost with it): `scripts/flake-compare.sh`, with the
+output folder outside the repository and the runs per arm (20 as run):
+
+```powershell
+bash scripts/flake-compare.sh <dir outside the repo> 20
+```
+
+Check the first pair's file and test counts before trusting the rest. As
+run on 2026-10-10 its two paths were written in; the tracked copy finds the
+repository from its own place and takes the output folder as an argument,
+otherwise unchanged, and one pair through it gave the same counts (121 /
+3,106 against 122 / 3,138). **The 40 logs are not tracked:** they are
+outputs (40 full test-run transcripts), every number used here is in this
+section, and the inputs that produce them (the harness, the commit, the
+rule) are what make the comparison repeatable.
