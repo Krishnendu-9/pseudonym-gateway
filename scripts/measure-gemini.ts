@@ -26,7 +26,9 @@
 // what leaves this machine is measured, not remembered. Nothing goes to
 // Google.
 //
-// Without it, the 18 calls of ADR-041 section 10 go to Google, one at a
+// Without it, the calls named by `--calls` (all 21 when it is left out: the
+// shape calls of ADR-041 section 10, its 15 probes, and section 14's three
+// zero-value probes) go to Google, one at a
 // time, spaced, never retried. Every request goes through the real
 // pipeline (parseChatRequest, redactRequest, the adapter) and is refused
 // before sending if a planted synthetic value is in its bytes. `fetch` is
@@ -167,6 +169,12 @@ const CALLS: Call[] = [
     what: `reasoning_effort ${effort}`,
     extra: { reasoning_effort: effort },
   })),
+  // The zero-value probes (ADR-041 section 14): the three refused fields at
+  // the value an SDK sends by default, which the gateway forwards (it drops
+  // only null).
+  { id: 'p16', what: 'seed 0', extra: { seed: 0 } },
+  { id: 'p17', what: 'frequency_penalty 0', extra: { frequency_penalty: 0 } },
+  { id: 'p18', what: 'presence_penalty 0', extra: { presence_penalty: 0 } },
 ];
 
 function providerRequest(call: Call): ProviderChatRequest {

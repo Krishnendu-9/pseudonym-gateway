@@ -8141,6 +8141,127 @@ went to the user on 2026-10-10. Not measured: whether the same fields fail
 at other values (a client SDK sending `frequency_penalty: 0`, which the
 gateway forwards, while it drops `null`), and on any other Gemini model.
 
+**Decision (the user, 2026-10-10): option 3 for the measured refusals, with
+4b as the global fallback.** The options as put:
+
+1. leave the 502 and document it (global);
+2. strip the refused parameters before sending (per provider, in fact per
+   model: `presence_penalty` is "not enabled for this model");
+3. reject them at the gateway with a clear 4xx naming the field in `param`,
+   before anything is sent (per provider and model);
+4. pass them through and turn Google's 400 into an informative error by
+   reading its body (the mechanism global, the parsing per provider);
+   4b: map any provider 400 to a 4xx without reading the body (global);
+5. remove them from the allowlist for every provider (global).
+
+The user's reasoning:
+
+- **Options 2 and 3 both go stale if Google changes what it accepts, but
+  they fail in opposite directions.** A stale reject fails loudly: a client
+  gets a 400 for something that now works, and tells us. A stale strip
+  fails silently: the client gets a 200 and believes a parameter took
+  effect. Silent wrongness is the one failure this project exists to avoid,
+  so **option 2 is ruled out on principle, not on cost.**
+- **Option 4 is ruled out** because the adapter deliberately never reads
+  provider error bodies, since they can echo the prompt. Parsing them would
+  route possibly-user-containing text through new code in a privacy
+  gateway. That is a design violation, not a maintenance cost. 4b reads
+  nothing.
+- **Option 5 is ruled out** because it breaks Ollama, where these
+  parameters are forwarded on the strength of Ollama's own source.
+
+**Option 1's cost, as put to the user, now checked.** The cost argument
+assumed that the official OpenAI SDKs retry a 5xx twice by default; when
+put to the user it was marked "as far as I know". **Verified 2026-10-10**
+against the README of `openai-node` (branch `master`) and of
+`openai-python` (branch `main`): "Certain errors are automatically retried
+2 times by default, with a short exponential backoff. Connection errors …,
+408 Request Timeout, 409 Conflict, 429 Rate Limit, and >=500 Internal
+errors are all retried by default" (Python's wording; Node's is the same in
+substance), configurable with `maxRetries` / `max_retries`. So with default
+settings, the gateway's 502 for a refused parameter is retried twice: up to
+three provider calls for one refused request. A 400 is not in the list, so
+options 3 and 4b also stop those retries. Limits of the check: the pages
+were read through a fetch tool that passes them through a summarising model
+(the quoted text came back marked verbatim); READMEs can change; no other
+SDK or client library was checked.
+
+**What it means, before any code.** For a field or value measured as
+refused by the configured provider and model, the gateway answers a 400 in
+OpenAI's error shape, naming the field in `param`, and sends nothing. For
+any 400 from a provider, measured or not, the gateway answers a 4xx with a
+fixed message and never reads the body (4b), instead of today's 502. The
+exact codes, messages and how profiles are keyed (provider or model) are
+settled when it is built. **Nothing is built until section 14's
+measurement has run**: option 3 must not reject a value Google accepts.
+
+### 14. Registration: the zero-value measurement (2026-10-10, before any call)
+
+Written on 2026-10-10. **None of the three calls below has been made.** This
+is committed and pushed before the run; the live-run guard refuses to
+start otherwise (section 11 item 4), and the commit is the record.
+
+**Why.** Option 3 (section 13's decision) will reject a refused field
+before sending. Attempt 5 refused `seed` at 42 and both penalties at 0.5,
+but the gateway forwards `0` (it drops only `null`), and a client or
+library may send a field explicitly at its neutral value. **Option 3 must
+not reject a value Google would have accepted.** So each of the three
+refused fields is sent once at 0.
+
+**The calls.** Model `gemini-3.5-flash-lite`. Each is Attempt 4's `s1`
+request (placeholders only, `stream: false`) with exactly one parameter
+added, through the real pipeline; checked locally on 2026-10-10 that the
+gateway accepts all three and forwards the 0 unchanged. Added to
+`scripts/measure-gemini.ts` as `p16` to `p18`:
+
+```powershell
+npx tsx --env-file=.env scripts/measure-gemini.ts --model gemini-3.5-flash-lite --out test/fixtures/gemini-7b --calls p16,p17,p18
+```
+
+**Predictions, written before the run (the assistant's, reviewed by the
+user).**
+
+| Probe | Sent                   | Prediction                        | Confidence | Why                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ----- | ---------------------- | --------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| p16   | `seed: 0`              | **rejected (400), unknown field** | high       | Attempt 5 failed on the **field name** (`Unknown name "seed": Cannot find field.`): the request parser does not know the key, so a different value should not help.                                                                                                                                                                                                                                                            |
+| p17   | `frequency_penalty: 0` | **rejected (400), unknown field** | high       | The same: failed on the field name, not the value.                                                                                                                                                                                                                                                                                                                                                                             |
+| p18   | `presence_penalty: 0`  | accepted (200, adapter `ok`)      | low        | Attempt 5 failed on the **feature being disabled** (`Penalty is not enabled for this model`), not on the field; the field is known, and 0 is the neutral value, which a check on the value would let through. Against: a check on whether the field is present refuses it at any value. Noted for the reader: all three misses in Attempt 5 were "accepted" predictions on an uncertain field, the same direction as this one. |
+
+**What each outcome means for option 3** (registered now, so the result
+cannot choose it):
+
+- `seed` or `frequency_penalty` refused at 0: option 3 refuses that field
+  at any value, for this provider and model.
+- `presence_penalty` accepted at 0: option 3 refuses it only at a value
+  other than 0 and forwards 0 unchanged (passed through, not stripped).
+  Refused at 0: refused at any value.
+- Any field accepted at 0 where predicted otherwise: as for
+  `presence_penalty`, refused only away from 0.
+- A 200 that `complete()` rejects, or no answer within 120 s (section 12):
+  recorded; no conclusion for that field, and option 3 for it waits.
+
+**Outcomes, stop rules and spacing** are section 12's and section 10's
+amendment (items 4 to 6), unchanged: a 400 is the probe's result and the
+run goes on; a 403, 404, 429 or any other status stops it at once; 15 s
+between calls (the run takes at least 30 s).
+
+**Budget, per model.** `gemini-3.5-flash-lite`: 18 calls so far (section
+13, item 8); this run at most 3, so at most 21. Allowance 15 RPM, 250K TPM,
+500 RPD, as confirmed by the user on 2026-10-10 (section 13, item 8).
+
+**Before the run** (section 11 item 9's step was skipped twice in this
+phase, so it is written out here):
+
+1. The user confirms the allowance on AI Studio before the run, and the
+   report says when.
+2. **Not on the same Pacific day as Attempt 5.** Attempt 5 ran on
+   2026-10-09, Pacific time, and section 13's observation (b) depends on
+   that day's settled counter. Three more calls that day would add to it
+   and leave (b) unresolvable from it. So the run starts no earlier than
+   2026-10-10 00:00 Pacific (07:00 UTC, 12:30 IST), after the user has
+   re-read the 2026-10-09 figure on AI Studio, which also settles (b) or
+   narrows it.
+
 <a id="adr-042"></a>
 
 ## ADR-042: Rule 1 is kept by compliance; the permission deny list is a partial backstop (2026-10-08)
