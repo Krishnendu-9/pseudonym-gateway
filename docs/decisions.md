@@ -8000,3 +8000,86 @@ on its written record, as rule 1 rests on compliance (ADR-042). Any
 document that cites an earlier mutation count is citing an attested
 result. A list is now part of the change it checks, so changing a guarded
 line means updating its list in the same commit.
+
+<a id="adr-044"></a>
+
+## ADR-044: Rule 1 governs this repository's history and remote; a test may commit inside a throwaway repository (2026-10-10)
+
+**Status.** Accepted (the user, 2026-10-10). The user amended rule 1 of the
+project brief; the assistant did not amend it on its own. The brief is
+gitignored, so this ADR is the public record of the amendment and its
+reasoning. It is committed before any test that relies on it is written.
+
+**Context.** Rule 1, as written: the assistant never commits or pushes on
+the user's behalf, with no exceptions, and this covers `git commit`,
+`git push`, `git tag`, `git merge`, `git rebase`, `git reset`, `gh`, "and
+any other command, script or tool that creates commits or changes remote
+state". The live-run guard's push requirement (ADR-041 section 11,
+amendment of 2026-10-10) is tested only against a fake git: a throwaway
+repository can reach the ancestry check only with a commit in it, and the
+literal wording of rule 1 covers a test that makes one. That amendment
+recorded the gap and left it open.
+
+**What rule 1 protects.** Every commit in this repository's history, and
+everything on its remote, was made by the user. The history is the user's
+own record: who committed what, and when. That matters beyond authorship
+here, because this project uses its history as evidence (an ADR that
+governs a measurement is committed before the measurement, rule 6, and the
+commit that does so is the user's act). Rule 1 keeps the assistant from
+writing into that record, by any route.
+
+**Why a throwaway repository falls outside it.** A repository that a test
+creates in a temporary directory and deletes when it ends shares nothing
+with this one: its commits are never in this repository's object store or
+refs, never reach this repository's remote or any other, and are gone when
+the test ends. Nothing the user reads as the project's record (the local
+history, GitHub) can contain them, and no one could take them for the
+user's commits. What rule 1 guarantees, that every commit in this history
+and on its remote was made by the user, is exactly as true with such tests
+as without them. The literal wording ("any … script … that creates
+commits") catches them; the purpose does not.
+
+**Decision.** Rule 1 is amended (the brief's text, in substance):
+
+- It governs the Pseudonym repository's own history (its working tree,
+  `.git` and refs) and its remote.
+- A test may create commits inside a throwaway repository that the test
+  itself makes in a temporary directory and deletes when it ends, provided
+  that repository never reaches this one or any remote: nothing fetched
+  from it into this repository, nothing pushed from it, no configured
+  remote pointing anywhere real (a remote-tracking ref may be set directly,
+  without a remote), and a synthetic author identity given to that
+  repository's commands only, never written to the global git config or to
+  this repository's config (so no real name or address is recorded, rules
+  4 and 5).
+- **Everything else is unchanged.** The assistant never commits, pushes,
+  tags, merges, rebases or resets in this repository, and never runs those
+  commands for the user. A test that made a commit in this repository
+  would still break rule 1.
+
+ADR-042 is unchanged too: rule 1 is still kept by compliance, the
+permission deny list is still a partial backstop, and a program can still
+start git where the deny list does not look. This amendment changes what
+is allowed in a throwaway repository, not how the rule is enforced in this
+one.
+
+**Why it was made, and why that does not decide it.** The amendment was
+made to allow a real-git test of the guard's push check, so that the
+ancestry check meets real `git merge-base --is-ancestor`. **The reasoning
+above does not depend on what that test finds.** If the test shows the
+check works, the argument stands; if it shows the check is wrong, or finds
+a bug elsewhere, the argument stands just the same, and the amendment is
+not revisited because of the result. Changing a rule that is in the way is
+legitimate only when the argument for the change would hold whatever the
+result it unblocks turns out to be; this one is about what the rule
+protects, not about the test. It is committed before the test is written,
+so the history shows the order.
+
+**Consequences.** Tests may build throwaway repositories with real
+commits, and the guard's push check can be tested against real git. The
+cost is a new duty on every such test: create the repository under the
+system's temporary directory, give its commits a synthetic identity, set
+no real remote, and delete it at the end without following a link out of
+its directory (the guard test's cleanup already removes its `src` junction
+first, for that reason). A test that breaks any of these is outside the
+amendment and breaks rule 1.
