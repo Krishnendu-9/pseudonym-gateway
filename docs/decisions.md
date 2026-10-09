@@ -7969,6 +7969,149 @@ on this machine. No call to Google was made for it.
 4. Section 10's limit stands: one call per probe shows whether a parameter
    is accepted, not whether it takes effect.
 
+### 13. Attempt 5: the probe run (2026-10-09, 21:18 UTC)
+
+Run exactly as registered in section 10's amendment of 2026-10-10 (the
+command there, `--calls p01` to `p15`), from commit `4097862`, which was
+also the local origin/main (`attempt.json` records both). Model
+`gemini-3.5-flash-lite`. The date is UTC: on this machine's clock it was
+2026-10-10. Recordings: `test/fixtures/gemini-7b/attempt-5/` (31 files).
+15 calls, 15 s apart; all 15 answered; no stop rule fired; nothing retried.
+
+**Results.** Latency is the whole call, request sent to body read.
+
+| Probe | Sent                                       | HTTP    | Latency  | Outcome (section 12, item 3)                               |
+| ----- | ------------------------------------------ | ------- | -------- | ---------------------------------------------------------- |
+| p01   | `temperature: 0`                           | 200     | 1,582 ms | accepted, adapter `ok`                                     |
+| p02   | `top_p: 0.5`                               | 200     | 887 ms   | accepted, adapter `ok`                                     |
+| p03   | `seed: 42`                                 | **400** | 522 ms   | Google rejected the parameter                              |
+| p04   | `frequency_penalty: 0.5`                   | **400** | 566 ms   | Google rejected the parameter                              |
+| p05   | `presence_penalty: 0.5`                    | **400** | 857 ms   | Google rejected the parameter                              |
+| p06   | `stop: ["\n"]`                             | 200     | 1,046 ms | accepted, adapter `ok`                                     |
+| p07   | `max_tokens: 16`                           | 200     | 970 ms   | accepted, adapter `ok`, `finish_reason` `length`           |
+| p08   | `response_format: {"type": "json_object"}` | 200     | 975 ms   | accepted, adapter `ok` (the answer is valid JSON)          |
+| p09   | `reasoning_effort: "none"`                 | **400** | 623 ms   | Google rejected the request (attributed by elimination, 7) |
+| p10   | `reasoning_effort: "minimal"`              | 200     | 1,106 ms | accepted, adapter `ok`                                     |
+| p11   | `reasoning_effort: "low"`                  | 200     | 1,076 ms | accepted, adapter `ok`                                     |
+| p12   | `reasoning_effort: "medium"`               | 200     | 1,379 ms | accepted, adapter `ok`                                     |
+| p13   | `reasoning_effort: "high"`                 | 200     | 1,583 ms | accepted, adapter `ok`                                     |
+| p14   | `reasoning_effort: "xhigh"`                | **400** | 354 ms   | Google rejected the parameter                              |
+| p15   | `reasoning_effort: "max"`                  | **400** | 350 ms   | Google rejected the parameter                              |
+
+Of section 12's three outcomes: **6 rejected by Google, 0 answered with a
+200 that `complete()` rejected, 0 timed out.** The second and third
+outcomes did not occur in this run. Every 200 kept both placeholders
+except p07 (below); none carried a long run of digits; no `spii` or other
+block finish appeared. Google's error bodies:
+
+- p03: `Invalid JSON payload received. Unknown name "seed": Cannot find field.`
+- p04: `Invalid JSON payload received. Unknown name "frequency_penalty": Cannot find field.`
+- p05: `Penalty is not enabled for this model`
+- p09: `Request contains an invalid argument.`
+- p14: `Invalid reasoning_effort: xhigh. Valid values are: high, low, medium, minimal, none`
+- p15: `Invalid reasoning_effort: max. Valid values are: high, low, medium, minimal, none`
+
+Each is again a JSON array (as in Attempt 1), all `INVALID_ARGUMENT`.
+
+**1. The prediction scorecard. 12 of 15 overall, but 2 of 5 on p02–p06,
+the five fields Gemini does not document, which is what the run was for.**
+All three misses went the same way: **predicted accepted for a field Gemini
+does not document, and it was rejected.** Every high-confidence prediction
+was on a documented field or value; those hits were the easy part.
+
+| Probe   | Predicted (confidence)                      | Happened                             | Result                          |
+| ------- | ------------------------------------------- | ------------------------------------ | ------------------------------- |
+| p01     | accepted (high)                             | accepted                             | hit                             |
+| p02     | accepted (medium)                           | accepted                             | hit                             |
+| p03     | accepted (medium)                           | rejected: unknown field              | **miss**                        |
+| p04     | accepted (low)                              | rejected: unknown field              | **miss**                        |
+| p05     | accepted (low)                              | rejected: not enabled for this model | **miss**                        |
+| p06     | accepted, `stop` (medium)                   | accepted, `stop`                     | hit                             |
+| p07     | accepted, `length`, cut-short text (medium) | exactly that                         | hit                             |
+| p08     | accepted (high)                             | accepted                             | hit                             |
+| p09     | rejected (low)                              | rejected                             | hit                             |
+| p10     | accepted (medium)                           | accepted                             | hit                             |
+| p11     | accepted (high)                             | accepted                             | hit                             |
+| p12     | accepted (high)                             | accepted                             | hit                             |
+| p13     | accepted within 120 s (medium)              | accepted in 1.6 s                    | hit                             |
+| p14     | rejected (medium)                           | rejected                             | hit                             |
+| p15     | rejected (medium)                           | rejected                             | hit                             |
+| **sum** | 12 accepted, 3 rejected                     | **9 accepted, 6 rejected**           | **12 of 15; 2 of 5 on p02–p06** |
+
+The three predicted rejections (p09, p14, p15) were all right.
+
+**2. The penalties, in full.** The plan recorded a memory, marked as not
+checked, that some Gemini models answer penalties with a 400 saying they
+are not enabled for the model. The prediction went against that memory
+(accepted, low confidence). **The memory was right and the prediction was
+wrong, for both penalties.** For `presence_penalty` the memory was right
+word for word: `Penalty is not enabled for this model`. For
+`frequency_penalty` it was right about the failure and wrong about the
+layer: the compatibility layer does not know the field at all
+(`Unknown name "frequency_penalty"`), before any model is involved.
+
+**3. Hidden thinking tokens at `medium` and `high`.** In `usage`,
+`total_tokens` equals `prompt_tokens + completion_tokens` on every
+accepted answer except two: p12 (`medium`) 238 against 29 + 21 = 50,
+**+188**; p13 (`high`) 243 against 29 + 19 = 48, **+195**. `usage` has no
+field that counts reasoning tokens (no `completion_tokens_details`); the
+difference shows only in the total. **Consequence:** a client that costs a
+call from `completion_tokens` undercounts these calls, by about 190 tokens
+each here. Nothing in the gateway reads or changes `usage` for this.
+
+**4. Hypothesis, not a finding (n = 2): `thought_signature` length and hidden
+thinking.** `extra_content.google.thought_signature` was present on all 9
+accepted answers. It is 132 characters on 7 of them and longer on two:
+p12 `medium` (952) and p13 `high` (1,004), the same two calls with hidden
+thinking tokens. **Two calls. No cause is asserted**, and nothing here
+shows the signature's length depends on thinking. Recorded as an
+observation; how the gateway treats the field is still the open 7c
+decision (Attempt 4 observations above). Nothing in the code changed.
+
+**5. Open and unexplained: p07.** `max_tokens: 16`, `finish_reason`
+`length`, **12** completion tokens, and **no hidden tokens on that call**
+(41 = 29 + 12). The answer is 50 characters, keeps `[CARD_1]`, and ends
+before the email placeholder (not inside one). Why a 16-token limit ended
+at 12 completion tokens is **not explained**, and this record leaves it so.
+
+**6. Accepted is not the same as working.** p02's `top_p` and p06's `stop`
+string were accepted, but nothing measured whether either took effect:
+p06's answer contained no line feed, so the stop string was never reached,
+and one call cannot show a sampling change (section 10's limit). **"Accepted"
+here means "not refused", never "works".** The same holds for every
+accepted probe. The only evidence of an effect: p07 ended with `length`;
+p08's answer was valid JSON although the prompt asked for a sentence; and
+p12 and p13 (`medium`, `high`) carried hidden thinking tokens where p10 and
+p11 (`minimal`, `low`) did not. None of these was a controlled comparison.
+
+**7. `none`: Google's messages contradict each other.** p09 was refused
+with `Request contains an invalid argument.`, which names nothing. p14 and
+p15's messages list the valid values as `high, low, medium, minimal, none`,
+including `none`. Attributing p09's failure to `reasoning_effort: "none"`
+rests on **elimination**: the request was p01's apart from that one field,
+minutes apart, and p01 was accepted. It fits Gemini's documentation
+("cannot be turned off for … 3 models", section 4), but Google's message
+does not confirm it.
+
+**8. Budget, per model, not summed across models.**
+
+- **`gemini-3.5-flash-lite`: 18 calls in all**: 3 in Attempt 4
+  (2026-10-07) and 15 in this run, all 15 on one Pacific day (2026-10-09).
+- Other models, unchanged and not added in: `qwen3:8b` 1 (404, Attempt 1),
+  `gemini-2.5-flash` 2 (404, Attempt 3), and 1 model-list call (Attempt 2),
+  which names no model.
+- Whether a 404 consumes allowance is still unknown.
+
+**Open decision (rule 6, nothing decided here).** Six of the fifteen
+parameters or values the gateway accepts and forwards are refused by this
+model, and a client sending any of them gets an opaque 502
+`provider_error` today. They fail at three layers: unknown field (`seed`,
+`frequency_penalty`), not enabled for this model (`presence_penalty`),
+invalid value (`xhigh`, `max`, and `none` without an explanation). Options
+went to the user on 2026-10-10. Not measured: whether the same fields fail
+at other values (a client SDK sending `frequency_penalty: 0`, which the
+gateway forwards, while it drops `null`), and on any other Gemini model.
+
 <a id="adr-042"></a>
 
 ## ADR-042: Rule 1 is kept by compliance; the permission deny list is a partial backstop (2026-10-08)
