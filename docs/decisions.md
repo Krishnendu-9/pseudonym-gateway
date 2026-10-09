@@ -5846,7 +5846,9 @@ an every-push check would fail by host, not by change.
 - **What counts:** a completed manual run of the workflow with the
   default install setting (`skip`, CI's). A run with `default` is for the
   install measurement only. A run that does not complete does not count
-  (as above). Each counted run is recorded here: date, CPU model and
+  (as above). **(Amended 2026-10-10: a scheduled run counts too; see
+  "Amendment 2026-10-10: scheduled runs count" at the end of this ADR.)**
+  Each counted run is recorded here: date, CPU model and
   count, B's span hash, the names hash, and whether each equals the
   Windows baseline.
 - **E1 is adopted only when all of these hold:** at least **10** counted
@@ -5964,7 +5966,10 @@ they may share one file, as the i5 and the EPYC do).
 
 **Daily, and temporary (the user, 2026-10-07).** The workflow runs once a
 day as well as by hand (`schedule`, 04:23 UTC; a scheduled run installs
-with `skip`, so it counts). Daily, not weekly: at one run a week, about six
+with `skip`, so it counts). **Corrected 2026-10-10:** when this was
+written, "so it counts" disagreed with "What counts", which required a
+manual run; it held only from the amendment of 2026-10-10 ("Amendment
+2026-10-10: scheduled runs count", at the end of this ADR). Daily, not weekly: at one run a week, about six
 weeks to reach 10 runs, and this project finishes first. It exists only to
 accumulate counted runs on as many runner CPUs as possible; it is removed,
 or replaced by E1, when the rule is closed out (below). GitHub does not
@@ -5976,7 +5981,9 @@ is outside the project's control.
 
 1. Record here **every run, not only the counted ones**: the total, then
    how many were counted (by the rule's own definition, "What counts"
-   above: a completed run with the `skip` input) on how many models, and
+   above, as amended on 2026-10-10: a completed run with the `skip` input,
+   dispatched by hand or by the schedule; before that amendment this
+   parenthesis dropped "manual" and disagreed with the rule) on how many models, and
    how many **checked nothing** because their CPU model had no baseline
    (the NEW CPU outcome, which exits 0), by model, and any that did not
    complete. For example: "17 runs: 11 counted on two models, 6 on an
@@ -6024,6 +6031,93 @@ summarises, and where they differ, the summary is the one that changes.
 
 The three "by inference" inputs rest on the pre-registered conditional,
 settled by #4 (branch 1). From run #5 on, each run prints its input.
+
+### Amendment 2026-10-10: scheduled runs count (the user's ruling)
+
+**The conflict.** The record said two things. "What counts" requires **a
+completed manual run** with the `skip` input. The daily-schedule decision
+of 2026-10-07 says "a scheduled run installs with `skip`, so it counts".
+And close-out step 1, as corrected after run #4, restated the definition
+as "a completed run with the `skip` input", dropping "manual" too. Runs #1
+to #4 were all dispatched by hand, so the disagreement never mattered and
+never surfaced. It surfaced on 2026-10-10, when two scheduled runs (#5 on
+2026-10-08, #6 on 2026-10-09, both reported green) raised the question of
+whether they count. Read by this ADR's own principle (the rule wins over a
+later summary), they would not have.
+
+**The ruling.** A completed run with the `skip` install input counts,
+**whether it was dispatched by hand or by the schedule.** Everything else
+in the rule (S2 included) stands.
+
+**The reasoning, which is about the rule's purpose.** "Manual" was a proxy
+for knowing which install input a run used: a run dispatched by hand had
+its input chosen by a person, and the rule wanted only `skip` runs. The
+proxy was imperfect even for manual runs, which is why #1 to #3's inputs
+had to be reconstructed by inference, from the size of the install and
+the absence of CUDA libraries (settled by run #4's pre-registered
+comparison). Since `dc4c66b` (2026-10-07), the workflow prints the input
+itself as the Install step's first line: `onnxruntime-install for this
+run: <MODE> (started by: <EVENT>)`. The quantity the proxy stood for is now
+observed in the run itself. **A proxy is obsolete once the real thing is
+measured.** A run counts by its printed input, `skip`, whatever started it.
+
+**That consequence is prospective.** It applies to runs of a workflow that
+prints its input, from `dc4c66b` (2026-10-07) onward: for those, a run
+whose Install step does not print `skip` does not count. It does **not**
+apply to runs #1 to #3, which ran before the input was printed and could
+not print it. **They keep their counted status**, on the route already
+settled: the pre-registered CUDA conditional ("Pre-registered: the
+`default` run decides all three"), resolved by run #4 (branch 1). Read
+retroactively, the sentence would take the tally from 3 to 0; it is not to
+be read that way. Both routes are legitimate, for different reasons. The
+inference was pre-registered before the evidence arrived, with both
+outcomes written down (including the one that would have cost all three
+runs), and it was resolved by a run designed to resolve it. Direct
+printing does not overturn that; it only makes inference unnecessary from
+now on.
+
+**Two disclosures.**
+
+- **Timing.** This amendment is made at a moment when it happens to halve
+  the remaining work: it can turn two runs that would not count into runs
+  that do, and makes every later daily run eligible. The reasoning above
+  does not depend on that, and would stand if the ruling slowed the
+  project down (if, say, it disqualified runs instead).
+- **Scheduled runs may not be exchangeable with manual ones for which
+  runner GitHub assigns.** The schedule's cron expression says 04:23 UTC,
+  but that is not when the runs started: the two scheduled runs so far
+  started at about **11:29 UTC (#5, 2026-10-08)** and **11:25 UTC (#6,
+  2026-10-09)**, some seven hours later (start times given by the user
+  from the workflow's list of runs). So the schedule does not sample 04:23;
+  it samples whenever GitHub actually starts a delayed scheduled job,
+  which on both days so far was within a few minutes of the same time. That
+  is still a narrow slot, and one this project neither chose nor controls,
+  where manual runs fell at different times.
+  This does not affect the hash-agreement condition: a CPU model either
+  gives the same two hashes every time or it does not, whenever it is met.
+  It may affect **which CPU models accumulate**, and model coverage (two
+  models with three counted runs each, each with its baseline) is already
+  the binding constraint. If the schedule keeps landing on the same one or
+  two models, that is a property of the slot, not evidence about the
+  fleet.
+
+**Order, and what protects the ruling.** This amendment is committed
+**before** the logs of #5 and #6 are read. **One counting-relevant fact was
+known when it was written: both runs completed** (they were reported
+green), and completion is one of the rule's own conditions. Still unknown
+and unread: their install input, their CPU model, their outcome line and
+their hashes. Also known, and not counting-relevant: their dates and start
+times (above), which the user gave to correct the timing disclosure after
+the ruling was written.
+
+What protects the ruling from being shaped by these runs is therefore not
+ignorance of their status. It is that **the intention to count scheduled
+runs is dated 2026-10-07**, in the daily-schedule decision ("a scheduled
+run installs with `skip`, so it counts"), **before Names #5 and #6
+existed**. This amendment restores a stated intention that predates both
+runs; it does not invent one after seeing that they passed. Whether each
+counts is decided afterwards, under the rule as amended, from its printed
+input and its completion.
 
 <a id="adr-037"></a>
 
