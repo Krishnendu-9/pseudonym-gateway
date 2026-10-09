@@ -4,6 +4,11 @@
 // tests show the guard fires on exactly that, with real git, and that the
 // measuring script calls it before it could send anything, in a throwaway
 // repository, so the result never depends on this repository's state.
+//
+// The push requirement (HEAD an ancestor of the last known origin/main) is
+// tested with git's answers fixed only. A real repository that gets that
+// far needs commits, and no test here makes one (rule 1 of the project
+// brief: no script that creates commits); ADR-041 section 11.
 
 import { spawn } from 'node:child_process';
 import {
@@ -29,12 +34,34 @@ import {
 } from '../../../scripts/live-run-guard.js';
 
 const HEAD = 'a'.repeat(40);
+const REMOTE = 'c'.repeat(40);
 
-/** A git that answers status and rev-parse from fixed text. */
+/** An error as execFileSync throws one for a non-zero exit. */
+const exited = (status: number): Error => Object.assign(new Error(`exit ${status}`), { status });
+
+const text = (answer: string | Error): string => (answer instanceof Error ? '' : answer.trim());
+
+/**
+ * A git that answers from fixed text: status, HEAD, origin/main and whether
+ * one is an ancestor of the other (`ancestor` is the exit status). The last
+ * two are answered only for the exact question (the ref spelled out here,
+ * HEAD first), so a wrong ref or a swapped pair gets an error, never a pass.
+ */
 const fakeGit =
-  (status: string | Error, head: string | Error = `${HEAD}\n`): Git =>
+  (
+    status: string | Error,
+    head: string | Error = `${HEAD}\n`,
+    remote: string | Error = `${REMOTE}\n`,
+    ancestor: 0 | 1 | 128 = 0,
+  ): Git =>
   (args) => {
-    const answer = args[0] === 'status' ? status : head;
+    let answer: string | Error;
+    if (args[0] === 'status') answer = status;
+    else if (args[0] === 'merge-base') {
+      const asked = args.join(' ') === `merge-base --is-ancestor ${text(head)} ${text(remote)}`;
+      answer = !asked ? new Error('a different question') : ancestor ? exited(ancestor) : '';
+    } else if (args.includes('refs/remotes/origin/main^{commit}')) answer = remote;
+    else answer = head;
     if (answer instanceof Error) throw answer;
     return answer;
   };
@@ -72,8 +99,8 @@ describe('changedPaths', () => {
 });
 
 describe('checkTree, with git answers fixed', () => {
-  it('lets a run start on a clean tree and names the commit', () => {
-    expect(checkTree(fakeGit(''))).toEqual({ ok: true, head: HEAD });
+  it('lets a run start on a clean, pushed tree and names both commits', () => {
+    expect(checkTree(fakeGit(''))).toEqual({ ok: true, head: HEAD, remote: REMOTE });
   });
 
   it.each([
@@ -120,7 +147,41 @@ describe('checkTree, with git answers fixed', () => {
 
   it('accepts a SHA-256 repository id', () => {
     const long = 'b'.repeat(64);
-    expect(checkTree(fakeGit('', long))).toEqual({ ok: true, head: long });
+    expect(checkTree(fakeGit('', long))).toEqual({ ok: true, head: long, remote: REMOTE });
+  });
+});
+
+describe('checkTree, the push requirement, with git answers fixed', () => {
+  it('REFUSES a clean tree whose HEAD is not an ancestor of the last known origin/main', () => {
+    const reason = reasonOf(checkTree(fakeGit('', `${HEAD}\n`, `${REMOTE}\n`, 1)));
+    expect(reason).toContain('refusing to make a live call');
+    expect(reason).toContain(`HEAD ${HEAD} is not an ancestor of the last known origin/main`);
+    expect(reason).toContain(REMOTE);
+    expect(reason).toContain('git fetch origin');
+    expect(reason).toContain("GitHub's record of the push is the evidence");
+  });
+
+  it('refuses when there is no origin/main ref', () => {
+    const reason = reasonOf(checkTree(fakeGit('', `${HEAD}\n`, exited(1))));
+    expect(reason).toContain('there is no refs/remotes/origin/main here');
+    expect(reason).toContain('cannot be checked');
+  });
+
+  it('refuses when origin/main is not a commit id', () => {
+    const reason = reasonOf(checkTree(fakeGit('', `${HEAD}\n`, 'main\n')));
+    expect(reason).toContain('did not name a commit for refs/remotes/origin/main');
+  });
+
+  it('refuses, without calling it unpushed, when git cannot compare the two', () => {
+    const reason = reasonOf(checkTree(fakeGit('', `${HEAD}\n`, `${REMOTE}\n`, 128)));
+    expect(reason).toContain('could not compare');
+    expect(reason).not.toContain('not an ancestor');
+  });
+
+  it('reports an uncommitted change first, before the push', () => {
+    const reason = reasonOf(checkTree(fakeGit(`M  ${PLAN_FILE}\0`, `${HEAD}\n`, `${REMOTE}\n`, 1)));
+    expect(reason).toContain(`${PLAN_FILE} among them`);
+    expect(reason).not.toContain('not an ancestor');
   });
 });
 

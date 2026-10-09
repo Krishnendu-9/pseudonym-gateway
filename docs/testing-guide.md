@@ -3335,3 +3335,41 @@ that reason). Run 2026-10-10, against
 11 of 11 caught. The script-level test (`measure-gemini.ts > refuses a
 staged plan …`, run in its own throwaway repository) is the only test that
 catches S1 and S2. No marker was left; the tree was unchanged afterwards.
+
+### The push requirement (2026-10-10, ADR-041 section 11 amendment)
+
+The guard also refuses unless HEAD is an ancestor of the last known
+origin/main (the local `refs/remotes/origin/main`). Five tests with git's
+answers fixed; the fake answers the ancestry question only when asked about
+that exact ref, HEAD first. Real git is not exercised for this condition:
+getting a throwaway repository past the first two conditions needs a
+commit, and no test makes one (rule 1). The whole list, run again
+2026-10-10 against the 25 tests:
+
+| Id  | Mutation                                                 | Failed   | Script-level test |
+| --- | -------------------------------------------------------- | -------- | ----------------- |
+| T1  | a dirty tree never refuses                               | 12 of 25 | fails             |
+| T2  | untracked files are not reported                         | 1 of 25  |                   |
+| T3  | the plan file is never named                             | 9 of 25  | fails             |
+| T4  | a rename source is not skipped                           | 1 of 25  |                   |
+| T5  | paths keep the status separator                          | 11 of 25 | fails             |
+| T6  | a git status failure is read as a clean tree             | 2 of 25  |                   |
+| T7  | a repository with no commit lets the run start           | 2 of 25  |                   |
+| T8  | HEAD is not checked to be a commit id                    | 1 of 25  |                   |
+| T9  | no uncommitted path is listed                            | 2 of 25  |                   |
+| S1  | the script never calls the guard                         | 1 of 25  | fails, alone      |
+| S2  | the script does not exit on a refusal                    | 1 of 25  | fails, alone      |
+| P1  | the ancestry question is never asked                     | 2 of 25  |                   |
+| P2  | the ancestry question is asked the wrong way round       | 3 of 25  |                   |
+| P3  | the local main branch is read instead of origin/main     | 5 of 25  |                   |
+| P4  | a missing origin/main is read as HEAD itself             | 1 of 25  |                   |
+| P5  | the two ancestry failures swap their reasons             | 2 of 25  |                   |
+| P6  | origin/main is not checked to be a commit id             | 1 of 25  |                   |
+| P7  | the result names HEAD as the origin/main compared with   | 2 of 25  |                   |
+| P8  | the script does not record the origin/main compared with | 0 of 25  | **survives**      |
+
+18 of 19 caught. P8 was predicted to survive in the list itself, before the
+run: the script records `originMain` only on its success path, which needs
+a clean, pushed repository, and no test builds one. T8's `find` changed
+with the guard (the HEAD check now calls `isCommitId`); the list test would
+have failed otherwise. No marker was left afterwards.

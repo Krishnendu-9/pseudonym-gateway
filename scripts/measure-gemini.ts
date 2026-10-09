@@ -41,10 +41,12 @@
 // either: only counts and shapes (a model may invent a value).
 //
 // The two modes that reach Google refuse to start unless the working tree is
-// clean (`live-run-guard.ts`, ADR-041 section 11): the plan governing a run
-// must be committed before it, and attempt.json records the commit it ran
-// from. `--headers` sends nothing to Google and is not guarded. The guard
-// changes nothing about what is sent.
+// clean and HEAD is an ancestor of the last known origin/main
+// (`live-run-guard.ts`, ADR-041 section 11): the plan governing a run must
+// be committed and pushed before it, and attempt.json records the commit it
+// ran from and the origin/main it was compared with. `--headers` sends
+// nothing to Google and is not guarded. The guard changes nothing about
+// what is sent.
 
 import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage } from 'node:http';
@@ -91,8 +93,9 @@ if (
   process.exit(1);
 }
 // Before anything else that could lead to a call: a run whose plan is not
-// committed does not start (ADR-041 section 11).
+// committed and pushed does not start (ADR-041 section 11).
 let head: string | null = null;
+let originMain: string | null = null;
 if (mode !== 'headers') {
   const tree = checkTree(gitIn(fileURLToPath(new URL('..', import.meta.url))));
   if (!tree.ok) {
@@ -100,7 +103,10 @@ if (mode !== 'headers') {
     process.exit(1);
   }
   head = tree.head;
-  console.log(`working tree clean at ${head}`);
+  originMain = tree.remote;
+  console.log(
+    `working tree clean at ${head}, an ancestor of the last known origin/main (${originMain})`,
+  );
 }
 const key = process.env.PSEUDONYM_PROVIDER_API_KEY;
 if (!key) {
@@ -125,6 +131,9 @@ function newAttempt(out: string): string {
     startedAt: new Date().toISOString(),
     // The commit the run started from, with a clean tree (live-run-guard.ts).
     head,
+    // The local origin/main it was found in: a tripwire's input, not
+    // evidence of the push (GitHub's record is).
+    originMain,
   };
   writeFileSync(join(dir, 'attempt.json'), `${JSON.stringify(about, null, 2)}\n`);
   return dir;

@@ -13,6 +13,13 @@
 // Attempt 4 produced. Ignored files (.env, models/, .machine-samples/) do
 // not count: git does not report them.
 //
+// It also requires HEAD to be an ancestor of the last known origin/main
+// (amendment 2026-10-10): a local commit can be amended or rebased after a
+// run, a pushed one is on GitHub's record. The check reads only the local
+// ref `refs/remotes/origin/main`, which `git push` and `git fetch` update and
+// which is otherwise stale, and which anyone can set by hand. It is a
+// tripwire, not evidence: the evidence is GitHub's record of the push.
+//
 // What it cannot do: stop the history being rewritten after a run (a plan
 // amended into an earlier commit). It proves the tree was clean when the run
 // started and names the commit; the recording carries that name.
@@ -20,6 +27,8 @@
 import { execFileSync } from 'node:child_process';
 
 export const PLAN_FILE = 'docs/decisions.md';
+/** The last known state of GitHub's main, as this repository last saw it. */
+export const REMOTE_REF = 'refs/remotes/origin/main';
 const MAX_LISTED = 10;
 
 /** Runs git with these arguments; returns its standard output, throws on failure. */
@@ -31,7 +40,8 @@ export const gitIn =
     execFileSync('git', args, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 
 export type TreeCheck =
-  { readonly ok: true; readonly head: string } | { readonly ok: false; readonly reason: string };
+  | { readonly ok: true; readonly head: string; readonly remote: string }
+  | { readonly ok: false; readonly reason: string };
 
 /** The paths in `git status --porcelain=v1 -z` output; a rename's old path is skipped. */
 export function changedPaths(porcelain: string): string[] {
@@ -51,7 +61,16 @@ const refused = (why: string): TreeCheck => ({
   reason: `refusing to make a live call: ${why}`,
 });
 
-/** Whether a live run may start: a clean working tree on a commit. */
+const isCommitId = (id: string): boolean => /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(id);
+
+/** The exit status of a failed git call, if it got that far. */
+const exitStatus = (error: unknown): unknown =>
+  typeof error === 'object' && error !== null && 'status' in error ? error.status : undefined;
+
+/**
+ * Whether a live run may start: a clean working tree on a commit that is an
+ * ancestor of the last known origin/main (the local ref, not GitHub itself).
+ */
 export function checkTree(git: Git): TreeCheck {
   let porcelain: string;
   try {
@@ -80,8 +99,33 @@ export function checkTree(git: Git): TreeCheck {
   } catch {
     return refused('there is no commit to run from.');
   }
-  if (!/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(head)) {
+  if (!isCommitId(head)) {
     return refused('git did not name a commit for HEAD.');
   }
-  return { ok: true, head };
+  let remote: string;
+  try {
+    remote = git(['rev-parse', '--verify', '--quiet', `${REMOTE_REF}^{commit}`]).trim();
+  } catch {
+    return refused(
+      `there is no ${REMOTE_REF} here, so whether ${head} was pushed cannot be checked. ` +
+        `Push the plan's commit (that sets the ref), then run again.`,
+    );
+  }
+  if (!isCommitId(remote)) {
+    return refused(`git did not name a commit for ${REMOTE_REF}.`);
+  }
+  try {
+    // Exit 0: an ancestor (HEAD itself counts); 1: not one; anything else: no answer.
+    git(['merge-base', '--is-ancestor', head, remote]);
+  } catch (error) {
+    return refused(
+      exitStatus(error) === 1
+        ? `HEAD ${head} is not an ancestor of the last known origin/main (${remote}). ` +
+            `Push the plan's commit first; if it is already pushed, \`git fetch origin\` ` +
+            `updates the local ref. This compares with the local ref only; GitHub's ` +
+            `record of the push is the evidence, not this check.`
+        : `git could not compare HEAD ${head} with the last known origin/main (${remote}).`,
+    );
+  }
+  return { ok: true, head, remote };
 }

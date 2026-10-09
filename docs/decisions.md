@@ -7679,7 +7679,8 @@ section with that in mind.
    rewritten after a run (a plan amended into an earlier commit). Evidence
    a local rewrite cannot change would need the plan pushed before the run
    and checked against the remote-tracking branch; that changes how live
-   runs are done and is left to the user.
+   runs are done and is left to the user. (The user asked for it on
+   2026-10-10: see the amendment below, and what it does not prove.)
 
    **Shown to fire:** `test/unit/scripts/live-run-guard.test.ts`, 20
    tests. With real git in throwaway repositories (no test makes a commit),
@@ -7706,6 +7707,62 @@ section with that in mind.
 
    This applies to every remaining live run of Phase 7, the probe run
    included, and to any later live measurement made with this script.
+
+   **Amendment 2026-10-10: the push requirement.** A clean tree shows that
+   the plan was committed before the run, but only by a local commit, and a
+   local commit can be amended or rebased afterwards: the plan's precedence
+   was still self-attested. A commit already on GitHub has a record outside
+   this machine. So the guard now has a third condition, checked after the
+   first two:
+   - **HEAD is an ancestor of the last known origin/main.** That is
+     exactly what is checked, and no more: `git rev-parse` reads
+     `refs/remotes/origin/main` **in the local repository**, and
+     `git merge-base --is-ancestor <HEAD> <that commit>` must exit 0
+     (HEAD equal to it counts). Exit 1 refuses as "not an ancestor",
+     naming both commits and saying to push, or to run `git fetch origin`
+     if the commit is already pushed. A missing ref, a value that is not a
+     commit id, or any other exit status refuses with its own reason.
+     Exit statuses measured on this repository, read-only, on 2026-10-10:
+     0 for a parent, 1 for a child, 0 for the same commit, 128 for a ref
+     that does not resolve; `rev-parse --verify --quiet` exits 1 for a
+     missing ref.
+
+   **What the check proves, and what it does not.** It compares HEAD with
+   a local ref, not with GitHub. That ref changes only when this repository
+   pushes or fetches; between those it is stale, and it can be set by hand
+   (`git update-ref`) without anything reaching GitHub. A stale ref mostly
+   errs towards refusing (a pushed commit not yet fetched), but a ref set
+   by hand, or one last fetched before a force-push removed the commit from
+   GitHub, would let a commit through that GitHub does not hold. So **the check is a tripwire
+   against forgetting to push, not evidence that the push happened. The
+   evidence is GitHub's record**: the commit on GitHub, and a push time
+   GitHub itself recorded before the run's `startedAt` (the repository's
+   activity view, or the CI run that push started). A commit's own date is
+   not evidence: it is set on this machine. `attempt.json` gains
+   `originMain`, the commit the check compared with, so a reader can find
+   the push on GitHub; it is the check's input, not proof.
+
+   **What it costs.** Every live run needs a push first, made by the user
+   (rule 1). At the time of writing, the local origin/main is `e9efceb`,
+   behind HEAD: a live run from this tree would be refused.
+
+   **How it is tested, and the gap.** With git's answers fixed (5 tests):
+   refused when HEAD is not an ancestor, when there is no origin/main ref,
+   when the ref is not a commit id, and when git cannot compare (without
+   being called unpushed); an uncommitted change is reported first. The
+   fake answers the ancestry question only when asked about exactly
+   `refs/remotes/origin/main`, HEAD first, so a wrong ref or a swapped pair
+   fails the passing test. These tests depend on nothing in this
+   repository. **Real git is not exercised for this condition, and neither
+   is the script's success path:** a throwaway repository only gets past
+   the first two conditions with a commit in it, and no test makes one,
+   since rule 1 forbids any script that creates commits. The existing
+   real-git and script-level tests refuse before the push check. Mutations
+   (`scripts/mutations/live-run-guard.ts`, P1–P8): 7 of 8 caught; **P8
+   survives**, as predicted in the list before the run: dropping the
+   `originMain` record is reached only on that success path. A fixture
+   repository made by the user, which tests could clone without
+   committing, would close the gap; not built.
 
 **Observations from Attempt 4: Google-specific fields (no handling
 change).** Gemini returned a field that is not in OpenAI's specification,
