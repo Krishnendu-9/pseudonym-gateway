@@ -8254,13 +8254,48 @@ phase, so it is written out here):
 
 1. The user confirms the allowance on AI Studio before the run, and the
    report says when.
-2. **Not on the same Pacific day as Attempt 5.** Attempt 5 ran on
+2. **Not on the same day as Attempt 5, by any likely boundary.** Attempt 5 ran on
    2026-10-09, Pacific time, and section 13's observation (b) depends on
    that day's settled counter. Three more calls that day would add to it
-   and leave (b) unresolvable from it. So the run starts no earlier than
-   2026-10-10 00:00 Pacific (07:00 UTC, 12:30 IST), after the user has
+   and leave (b) unresolvable from it. So the run starts **no earlier than
+   2026-10-10 18:30 UTC (2026-10-11 00:00 IST)**, after the user has
    re-read the 2026-10-09 figure on AI Studio, which also settles (b) or
-   narrows it.
+   narrows it. That start is on a later day than Attempt 5's
+   (2026-10-09 21:18 UTC) whichever boundary the counter uses: Pacific
+   (midnight is 07:00 UTC, or 08:00 under standard time), UTC, or this
+   machine's zone, IST, in which Attempt 5 fell on 2026-10-10 at 02:48. The
+   account's own time zone on AI Studio is not known; IST is assumed from
+   this machine.
+
+   **Amended 2026-10-10, before any of the three calls.** The version
+   committed and pushed in `f0e6693` said "no earlier than 2026-10-10 00:00
+   Pacific (07:00 UTC, 12:30 IST)". Checking the Pacific reset (below)
+   showed that start would share Attempt 5's day if the counter groups by
+   IST. The new start is later, so the amendment only narrows when the run
+   may happen; no time it now allows was excluded before.
+
+   **The Pacific day, checked.** This rule depends on Google's daily
+   counter resetting at midnight Pacific. **Verified 2026-10-10** against
+   Gemini's rate-limits page (`ai.google.dev/gemini-api/docs/rate-limits`,
+   "Last updated 2026-10-09 UTC"): "Requests per day (RPD) quotas reset at
+   midnight Pacific time." It names no other daily reset. Section 4 had
+   recorded the same from the version read on 2026-10-07. Limits of the
+   check:
+   - The page was read through a fetch tool that passes it through a
+     summarising model; the sentence came back marked verbatim.
+   - **The page speaks of the quota, not of AI Studio's usage display.**
+     Observation (b) reads the peak-RPD figure on AI Studio, and nothing
+     read here says that display groups requests into the same Pacific
+     day. A midnight-Pacific start alone would not separate the two days if
+     the display groups by the account's time zone and that zone is IST;
+     the start above is chosen to hold under Pacific, UTC and IST, but a
+     display grouped by some other zone is not covered.
+   - The page does not say whether "Pacific time" follows daylight saving.
+     Pacific Daylight Time (UTC−7) is in force on 2026-10-10 under the US
+     rule (it ends on the first Sunday of November); that rule is general
+     knowledge, not from Google's page. Under either reading, midnight
+     Pacific (07:00 or 08:00 UTC) is before the 18:30 UTC start.
+   - Pages change; this is what it said on 2026-10-10.
 
 <a id="adr-042"></a>
 
