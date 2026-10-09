@@ -161,13 +161,33 @@ export const MUTATIONS: readonly Mutation[] = [
     replace: 'return { ok: true, head, remote: head };',
   },
   {
-    // Expected to survive: the script only reaches this line in a clean,
-    // pushed repository, which no test builds (no test makes a commit).
+    // Survived its first run (2026-10-10): only the script's success path
+    // reaches this line, and no test reached it then. A real-git script test
+    // now does (ADR-044); results in the testing guide.
     id: 'P8',
     what: 'the script does not record the origin/main it was compared with',
     file: SCRIPT,
     tests: TESTS,
     find: '  originMain = tree.remote;',
+    replace: '',
+  },
+  // Added with the real-git tests (2026-10-10, ADR-044).
+  {
+    // The fake git puts the exit code in `status`; real execFileSync must too.
+    id: 'P9',
+    what: 'the exit code is read from the wrong field of the error',
+    file: GUARD,
+    tests: TESTS,
+    find: "'status' in error ? error.status : undefined",
+    replace: "'code' in error ? error.code : undefined",
+  },
+  {
+    // P8's companion: the same success path, recording HEAD.
+    id: 'S3',
+    what: 'the script does not record the commit it ran from',
+    file: SCRIPT,
+    tests: TESTS,
+    find: '  head = tree.head;',
     replace: '',
   },
 ];

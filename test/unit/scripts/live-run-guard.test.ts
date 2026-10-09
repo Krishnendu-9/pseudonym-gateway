@@ -6,16 +6,19 @@
 // repository, so the result never depends on this repository's state.
 //
 // The push requirement (HEAD an ancestor of the last known origin/main) is
-// tested with git's answers fixed only. A real repository that gets that
-// far needs commits, and no test here makes one (rule 1 of the project
-// brief: no script that creates commits); ADR-041 section 11.
+// tested with git's answers fixed, and with real git in throwaway
+// repositories that hold real commits. Those commits are allowed by ADR-044
+// (rule 1 governs this repository's history and remote) and only under its
+// conditions; `throwaway` below is how every one of them is met.
 
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import {
   copyFileSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   unlinkSync,
@@ -35,6 +38,50 @@ import {
 
 const HEAD = 'a'.repeat(40);
 const REMOTE = 'c'.repeat(40);
+// Spelled out, not imported: a wrong ref in the guard must not move the tests too.
+const ORIGIN_MAIN = 'refs/remotes/origin/main';
+
+/** The environment without any GIT_* variable, so none can point git elsewhere. */
+const withoutGitVariables = (env: NodeJS.ProcessEnv): NodeJS.ProcessEnv =>
+  Object.fromEntries(
+    Object.entries(env).filter(([name]) => !name.toUpperCase().startsWith('GIT_')),
+  );
+
+// A synthetic identity (rules 4 and 5; example.com is reserved).
+const AUTHOR = { name: 'Throwaway Test', email: 'throwaway@example.com' };
+
+/**
+ * Runs git to build a throwaway repository in `dir` (ADR-044). Inherited
+ * GIT_* variables are dropped; no system or global config is read, so this
+ * machine's hooks, signing or identity never apply; and the identity comes
+ * from GIT_AUTHOR_* and GIT_COMMITTER_* variables, which git never writes to
+ * any config. No command here adds a remote, fetches or pushes.
+ */
+const throwaway =
+  (dir: string) =>
+  (args: readonly string[]): string =>
+    execFileSync('git', args, {
+      cwd: dir,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: {
+        ...withoutGitVariables(process.env),
+        GIT_CONFIG_NOSYSTEM: '1',
+        // A file that never exists (git reads a missing one as empty);
+        // Git for Windows refuses the null device here.
+        GIT_CONFIG_GLOBAL: join(dir, '.git', 'no-global-config'),
+        GIT_AUTHOR_NAME: AUTHOR.name,
+        GIT_AUTHOR_EMAIL: AUTHOR.email,
+        GIT_COMMITTER_NAME: AUTHOR.name,
+        GIT_COMMITTER_EMAIL: AUTHOR.email,
+      },
+    }).trim();
+
+/** Makes an empty commit in a throwaway repository and returns its id. */
+const commitIn = (build: ReturnType<typeof throwaway>, message: string): string => {
+  build(['commit', '--quiet', '--allow-empty', '-m', message]);
+  return build(['rev-parse', 'HEAD']);
+};
 
 /** An error as execFileSync throws one for a non-zero exit. */
 const exited = (status: number): Error => Object.assign(new Error(`exit ${status}`), { status });
@@ -240,40 +287,105 @@ describe('checkTree, with real git (no commit is ever made)', () => {
   });
 });
 
+describe('checkTree, the push requirement, with real git (commits only in a throwaway repository, ADR-044)', () => {
+  // The guard runs with its own runner, gitIn, as it does in the script;
+  // only the setup uses `throwaway`. origin/main is set as a ref, with no
+  // remote configured, as `git push` and `git fetch` would leave it.
+  let dir: string;
+  let build: ReturnType<typeof throwaway>;
+  let plan: string;
+  const setOriginMain = (id: string): void => void build(['update-ref', ORIGIN_MAIN, id]);
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'live-run-guard-push-'));
+    build = throwaway(dir);
+    build(['init', '--quiet']);
+    // Its own top level: git found no other repository around it.
+    expect(realpathSync(build(['rev-parse', '--show-toplevel']))).toBe(realpathSync(dir));
+    plan = commitIn(build, 'the plan');
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('REFUSES a commit made after the last push: HEAD one ahead of origin/main', () => {
+    setOriginMain(plan);
+    const after = commitIn(build, 'made after the push');
+    const reason = reasonOf(checkTree(gitIn(dir)));
+    expect(reason).toContain(
+      `HEAD ${after} is not an ancestor of the last known origin/main (${plan})`,
+    );
+  });
+
+  it('REFUSES a pushed commit amended afterwards', () => {
+    setOriginMain(plan);
+    build(['commit', '--quiet', '--amend', '--allow-empty', '-m', 'the plan, amended']);
+    const amended = build(['rev-parse', 'HEAD']);
+    expect(amended).not.toBe(plan);
+    expect(reasonOf(checkTree(gitIn(dir)))).toContain(`HEAD ${amended} is not an ancestor`);
+  });
+
+  it('allows HEAD equal to origin/main', () => {
+    setOriginMain(plan);
+    expect(checkTree(gitIn(dir))).toEqual({ ok: true, head: plan, remote: plan });
+  });
+
+  it('allows HEAD behind origin/main (pushed, and main has moved on)', () => {
+    const next = commitIn(build, 'the next commit');
+    setOriginMain(next);
+    build(['checkout', '--quiet', '--detach', plan]);
+    expect(checkTree(gitIn(dir))).toEqual({ ok: true, head: plan, remote: next });
+  });
+
+  it('refuses when nothing set origin/main', () => {
+    expect(reasonOf(checkTree(gitIn(dir)))).toContain(`there is no ${ORIGIN_MAIN} here`);
+  });
+
+  it("meets ADR-044's conditions: no remote, no identity in any config, a synthetic author", () => {
+    setOriginMain(plan);
+    expect(build(['remote'])).toBe('');
+    expect(() => build(['config', '--local', '--get', 'user.email'])).toThrow();
+    expect(readFileSync(join(dir, '.git', 'config'), 'utf8')).not.toContain(AUTHOR.email);
+    expect(build(['log', '-1', '--format=%an <%ae> / %cn <%ce>'])).toBe(
+      `${AUTHOR.name} <${AUTHOR.email}> / ${AUTHOR.name} <${AUTHOR.email}>`,
+    );
+  });
+});
+
 describe('measure-gemini.ts', () => {
   // The script checks the repository it sits in, so it is run from a
   // throwaway repository: the script and the guard copied byte for byte at
   // test time (a change to either reaches this test), `src` linked to the
   // real one, and docs/decisions.md staged but not committed, Attempt 4's
   // case. The outcome no longer depends on the state of this repository.
+  // The child starts in this repository only so that `--import tsx`
+  // resolves; git never runs there (the guard checks the script's own
+  // folder), and the child gets no GIT_* variable that could point it back.
   const root = join(import.meta.dirname, '..', '..', '..');
   let repo: string;
   let out: string;
+  let build: ReturnType<typeof throwaway>;
+  let linked: boolean;
   beforeEach(() => {
+    linked = false;
     repo = mkdtempSync(join(tmpdir(), 'live-run-guard-repo-'));
     out = mkdtempSync(join(tmpdir(), 'live-run-guard-out-'));
-    const git = gitIn(repo);
-    git(['init', '--quiet']);
+    build = throwaway(repo);
+    build(['init', '--quiet']);
     mkdirSync(join(repo, 'scripts'));
     for (const name of ['measure-gemini.ts', 'live-run-guard.ts']) {
       copyFileSync(join(root, 'scripts', name), join(repo, 'scripts', name));
     }
     symlinkSync(join(root, 'src'), join(repo, 'src'), 'junction');
+    linked = true;
     writeFileSync(join(repo, 'package.json'), '{ "type": "module" }\n');
-    mkdirSync(join(repo, 'docs'));
-    writeFileSync(join(repo, PLAN_FILE), '### 12. A plan\n');
-    git(['add', '--', PLAN_FILE]);
   });
   afterEach(() => {
     // The link first, so removing the repository can never reach the real src.
-    unlinkSync(join(repo, 'src'));
+    if (linked) unlinkSync(join(repo, 'src'));
     rmSync(repo, { recursive: true, force: true });
     rmSync(out, { recursive: true, force: true });
   });
 
-  it('refuses a staged plan before anything else; with no key nothing could be sent anyway', async () => {
-    // No key: if the guard did not stop the run, the script would stop at
-    // the key check, so no outcome of this test can reach the network.
+  /** Runs the copied script with no key: it can never get past the key check. */
+  const runScript = async (): Promise<{ code: number | null; stdout: string; stderr: string }> => {
     const child = spawn(
       process.execPath,
       [
@@ -284,18 +396,43 @@ describe('measure-gemini.ts', () => {
         '--out',
         out,
       ],
-      { cwd: root, env: { ...process.env, PSEUDONYM_PROVIDER_API_KEY: '' } },
+      { cwd: root, env: { ...withoutGitVariables(process.env), PSEUDONYM_PROVIDER_API_KEY: '' } },
     );
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString()));
     child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString()));
     const code = await new Promise<number | null>((done) => child.on('close', done));
+    return { code, stdout, stderr };
+  };
+
+  it('refuses a staged plan before anything else; with no key nothing could be sent anyway', async () => {
+    mkdirSync(join(repo, 'docs'));
+    writeFileSync(join(repo, PLAN_FILE), '### 12. A plan\n');
+    build(['add', '--', PLAN_FILE]);
+    const { code, stdout, stderr } = await runScript();
     expect(code).toBe(1);
     expect(stderr).toContain('refusing to make a live call');
     expect(stderr).toContain(`${PLAN_FILE} among them`);
     expect(stderr).not.toContain('PSEUDONYM_PROVIDER_API_KEY');
     expect(stdout).not.toContain('working tree clean');
     expect(readdirSync(out)).toEqual([]); // no attempt folder was made
+  });
+
+  it('lets a clean, pushed tree through, names both commits, then stops at the key check', async () => {
+    // The copies and the link are ignored, never committed: the commit is
+    // empty, and git does not count ignored files.
+    mkdirSync(join(repo, '.git', 'info'), { recursive: true });
+    writeFileSync(join(repo, '.git', 'info', 'exclude'), '/scripts/\n/src\n/package.json\n');
+    const plan = commitIn(build, 'the plan');
+    build(['update-ref', ORIGIN_MAIN, plan]);
+    const { code, stdout, stderr } = await runScript();
+    expect(code).toBe(1);
+    // The throwaway repository's commit, so the guard read that repository.
+    expect(stdout).toContain(
+      `working tree clean at ${plan}, an ancestor of the last known origin/main (${plan})`,
+    );
+    expect(stderr).toContain('PSEUDONYM_PROVIDER_API_KEY must be set');
+    expect(readdirSync(out)).toEqual([]); // stopped before any attempt folder
   });
 });

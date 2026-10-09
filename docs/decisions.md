@@ -7764,6 +7764,24 @@ section with that in mind.
    repository made by the user, which tests could clone without
    committing, would close the gap; not built.
 
+   **Gap closed, 2026-10-10 (after ADR-044 was committed and pushed).**
+   Real git now meets the push check, in throwaway repositories under the
+   system's temporary directory that hold real, empty commits (ADR-044's
+   conditions; how each is met is in the testing guide). Six tests: refused
+   when HEAD is one commit ahead of origin/main, and when a pushed commit
+   was amended afterwards (the case the requirement exists for); allowed
+   when HEAD equals origin/main and when it is behind it; refused with no
+   origin/main ref; and the conditions themselves checked (no remote, no
+   identity in any config, the synthetic author on the commit). A second
+   script-level test runs `measure-gemini.ts` from a clean, pushed throwaway
+   repository: the guard lets it through, it prints both commits, and it
+   stops at the key check (no key is given), so no outcome reaches the
+   network. **P8 no longer survives:** that test reaches the success path,
+   and P8 fails it (1 of 32). The whole tracked list, 21 mutations with two
+   new ones (P9: the exit code read from the error's `code` instead of
+   `status`, the assumption the fake made and real git now checks; S3: the
+   script not recording HEAD), was run again: **21 of 21 caught**.
+
 **Observations from Attempt 4: Google-specific fields (no handling
 change).** Gemini returned a field that is not in OpenAI's specification,
 `extra_content.google.thought_signature` (an opaque base64 string):

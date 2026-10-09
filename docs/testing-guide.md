@@ -3373,3 +3373,98 @@ run: the script records `originMain` only on its success path, which needs
 a clean, pushed repository, and no test builds one. T8's `find` changed
 with the guard (the HEAD check now calls `isCommitId`); the list test would
 have failed otherwise. No marker was left afterwards.
+
+### The push requirement against real git (2026-10-10, ADR-044)
+
+ADR-044 (committed and pushed first) lets a test make commits inside a
+throwaway repository it creates and deletes. Every such repository in
+`live-run-guard.test.ts` is built through one helper, `throwaway`, and
+meets the four conditions like this:
+
+1. **Nothing fetched into this repository.** Every git command runs with
+   its working folder set to the throwaway repository, under the system's
+   temporary directory, never this repository's folder; no command fetches.
+   Inherited `GIT_*` variables are dropped, so none (`GIT_DIR`, for one)
+   can point git elsewhere, and a test checks `rev-parse --show-toplevel`
+   is the throwaway folder itself.
+2. **Nothing pushed.** No command pushes; there is nothing to push to.
+3. **No real remote.** None is configured: `refs/remotes/origin/main` is
+   set with `git update-ref`, as a push or fetch would leave it. A test
+   checks `git remote` prints nothing.
+4. **A synthetic identity in no config.** `GIT_AUTHOR_NAME`,
+   `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME` and `GIT_COMMITTER_EMAIL`
+   (`throwaway@example.com`) in the command's environment, never `git -c`;
+   git never writes environment variables to any config. No system or
+   global config is
+   read (`GIT_CONFIG_NOSYSTEM`, and `GIT_CONFIG_GLOBAL` pointing at a file
+   that never exists, since Git for Windows refuses the null device there),
+   so this machine's identity, hooks or commit signing never apply. A test
+   checks `config --local` has no `user.email`, `.git/config` does not
+   contain the address, and the commit's author and committer are the
+   synthetic ones.
+
+**Cleanup.** Each repository is removed with `rmSync` at the end of its
+test. The script-level block links `src` into its repository as a junction
+and unlinks it first, only if it was made (the first version of this test
+crashed in `afterEach` when setup failed before the link, leaving four empty
+folders, which were checked and removed). Checked again 2026-10-10, in temp
+folders only: Node's `lstat` reports a junction as a link, and a sentinel
+file in the junction's target survived both unlinking the junction and
+`rmSync` of a folder that still held it. No `live-run-guard-*` folder was
+left after the test runs or the 21 mutation runs.
+
+The tests (six with real git, one script-level):
+
+- refused: HEAD one commit ahead of origin/main; a pushed commit amended
+  afterwards; no origin/main ref;
+- allowed: HEAD equal to origin/main; HEAD behind it (`checkout --detach`
+  to the older commit);
+- ADR-044's conditions, as above;
+- `measure-gemini.ts` from a clean, pushed throwaway repository (the copies
+  and the link listed in `.git/info/exclude`, the commit empty): the guard
+  lets it through, it prints both commits, and it stops at the key check,
+  since the child gets an empty key and no `--env-file`; no attempt folder
+  is made.
+
+Mutation checks, the whole list run again against the 32 tests (2026-10-10):
+
+| Id  | Mutation                                                 | Failed   | Caught by the new tests                        |
+| --- | -------------------------------------------------------- | -------- | ---------------------------------------------- |
+| T1  | a dirty tree never refuses                               | 12 of 32 |                                                |
+| T2  | untracked files are not reported                         | 1 of 32  |                                                |
+| T3  | the plan file is never named                             | 9 of 32  |                                                |
+| T4  | a rename source is not skipped                           | 1 of 32  |                                                |
+| T5  | paths keep the status separator                          | 11 of 32 |                                                |
+| T6  | a git status failure is read as a clean tree             | 2 of 32  |                                                |
+| T7  | a repository with no commit lets the run start           | 2 of 32  |                                                |
+| T8  | HEAD is not checked to be a commit id                    | 1 of 32  |                                                |
+| T9  | no uncommitted path is listed                            | 2 of 32  |                                                |
+| S1  | the script never calls the guard                         | 2 of 32  | script, pushed                                 |
+| S2  | the script does not exit on a refusal                    | 1 of 32  |                                                |
+| P1  | the ancestry question is never asked                     | 4 of 32  | real git: ahead, amended                       |
+| P2  | the ancestry question is asked the wrong way round       | 5 of 32  | real git: ahead, behind                        |
+| P3  | the local main branch is read instead of origin/main     | 11 of 32 | real git: all five; script, pushed             |
+| P4  | a missing origin/main is read as HEAD itself             | 2 of 32  | real git: no ref                               |
+| P5  | the two ancestry failures swap their reasons             | 4 of 32  | real git: ahead, amended                       |
+| P6  | origin/main is not checked to be a commit id             | 1 of 32  | (fake only: real git never names a non-commit) |
+| P7  | the result names HEAD as the origin/main compared with   | 3 of 32  | real git: behind                               |
+| P8  | the script does not record the origin/main compared with | 1 of 32  | **script, pushed (only)**                      |
+| P9  | the exit code is read from the error's `code`            | 3 of 32  | real git: ahead, amended                       |
+| S3  | the script does not record the commit it ran from        | 1 of 32  | **script, pushed (only)**                      |
+
+21 of 21 caught. **P8 no longer survives**: it survived the previous run
+because no test reached the script's success path; the pushed-tree script
+test reaches it and fails on P8, and is the only test that does. P9 is new:
+the fake git puts the exit code in `status`, and the real-git tests show
+that real `execFileSync` errors do too (reading `code` instead fails them).
+S3 is new: the line recording HEAD sits on the same path as P8's.
+
+**Gate, and one failure not explained.** Three full `npm test` runs after
+these tests were added: the first failed 1 of 3,138, `machine-sampler.test.ts`
+"a real run …" timing out at 30 s, while its own samples showed the CPU at
+100% and the sampler held up for 20 s and then 15 s (free memory never below
+4,308 MB); that file alone then passed 12 of 12 in 3.3 s, and the next two
+full runs passed 3,138 of 3,138. Most likely bug-log 69's `tasklist`
+starvation under load; not shown. The new tests add a few dozen git
+processes and one more `tsx` child to the main suite, so they may have
+added to the load.
