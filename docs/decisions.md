@@ -5868,6 +5868,10 @@ an every-push check would fail by host, not by change.
   nothing is concluded about hosts in general: E1 is not adopted, a weekly
   schedule (E3) is added to keep meeting new hosts, and the question
   returns to the user.
+- **A second exit, added 2026-10-10 (an addition; S2's adoption condition
+  is untouched): if 20 counted runs pass while any counted CPU model still
+  lacks a committed baseline, E1 is NOT adopted.** See "Ruling
+  (2026-10-10): the second exit" at the end of this ADR.
 - **Why these numbers:** one matching run on one host says nothing about
   hosts; three on one CPU model show that model is deterministic; two
   models are the least that "across hosts" can mean. They are a judgement,
@@ -6003,7 +6007,9 @@ is outside the project's control.
 2. State whether the threshold above was reached.
 3. If it was reached, E1 is adopted as the rule says. **If it was not, say
    that E1 was not adopted and that the rule remains open**, with what is
-   missing (runs, models, or runs per model).
+   missing (runs, models, or runs per model). **If the second exit (added
+   2026-10-10) has fired, say so instead: E1 was not adopted, and that
+   outcome is final, not open.**
 4. **The rule is not loosened to fit whatever was collected, and it is not
    dropped.** Fewer runs than required is recorded as fewer runs than
    required, not as a smaller threshold.
@@ -6307,7 +6313,7 @@ recovered; the prediction above stands as written, with its "not checked"
 row. The 9V74 needs at least one more counted run anyway for its baseline,
 and that run will print them.
 
-### Open, put to the user under rule 6 (2026-10-10): the stopping rule has no exit for a counted model that never recurs
+### Put to the user under rule 6 (2026-10-10): the stopping rule had no exit for a counted model that never recurs (ruled the same day: option 2, below)
 
 **The hole.** S2's adoption condition includes "every CPU model counted
 has its baseline committed", and a baseline needs two agreeing counted
@@ -6340,7 +6346,9 @@ being shaped by it.
    For example: "If 20 counted runs pass and any counted CPU model still
    has no committed baseline, E1 is not adopted, the schedule stops or
    becomes weekly, and the question returns to the user", reusing the
-   existing 20 so that no new number is chosen now. (Folding the same
+   existing 20 so that no new number is chosen now. **(That example's
+   wording was not adopted: the ruling below states the outcome alone and
+   leaves what follows to a separate decision.)** (Folding the same
    condition into the existing 20-run exit instead would be an
    **amendment** to the original rule's exit, which S2 did not change.) A
    variant counts per model ("a counted model with no second run within N
@@ -6365,6 +6373,47 @@ being shaped by it.
 
 **Not available:** steering runs to a missing model. GitHub does not choose
 a runner's CPU on request (recorded above).
+
+### Ruling (2026-10-10): the second exit (the user's decision: option 2, reusing the 20)
+
+**This is an addition to the stopping rule, not an amendment to S2.** S2's
+adoption condition is untouched: E1 is still adopted only when every one of
+its conditions holds, every counted CPU model's committed baseline
+included. The original 20-run exit stands beside it unchanged. Added:
+
+> **If 20 counted runs pass while any counted CPU model still lacks a
+> committed baseline, E1 is NOT adopted.**
+
+That is the whole exit, and it is pre-registered. **It states an outcome;
+it does not defer one.** What happens afterwards (whether the runs
+continue, whether a narrower claim is written for the models that
+qualified, or whether the question is abandoned) is a **separate project
+decision, taken at that point**, and it cannot reopen this outcome. In
+particular, this exit does **not** mean "the question returns to the
+user" in the sense of "the user decides at 20 whether to adopt": if it
+were read that way, the pre-registration would be worth nothing, since
+the decision it fixes in advance would be made after the result, by
+whoever is looking at it. At 20 counted runs with a counted model still
+unbaselined, the answer to "is E1 adopted?" is already given: **no**.
+
+**The timing, as reasoned before the ruling.** This was settled while
+neither unbaselined counted model (the Xeon Platinum 8573C, last seen four
+runs earlier; the EPYC 9V74, the day before) had visibly gone missing,
+because once one has, any fix reads as motivated, however sensible.
+
+### Open question, recorded and not acted on (2026-10-10): a run that verified nothing shows as a pass
+
+Names #6 passed green in CI while verifying nothing: its CPU model has no
+baseline, so the comparison had nothing to compare against, and its
+results were withheld from the log (NEW CPU, exit 0, a warning annotation).
+The condition "every counted CPU model has its baseline committed" exists
+to keep the project from adopting a check that can pass vacuously, but
+that behaviour is already live in the Names workflow today: a green tick
+in the Actions list does not say whether anything was checked. **Whether a
+run that verified nothing should look like a pass in the Actions list is a
+separate question from the ruling above**, with its own costs (a failing
+run on every new CPU would also be a failure by host). It is recorded
+here; nothing was changed for it.
 
 <a id="adr-037"></a>
 
