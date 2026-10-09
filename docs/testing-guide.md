@@ -9,7 +9,10 @@ Where this guide mentions the **session scratchpad** (or a scratchpad), it
 means a working folder outside the repository used while the work was
 done: probe scripts, mutation lists and full test logs were kept there and
 are not published. The results used to decide anything are written here or
-in the decision record.
+in the decision record. **Mutation lists are tracked in the repository
+from 2026-10-10** (`scripts/mutations/`); every list used before then was
+kept only in a scratchpad and none survives, so the mutation counts in this
+guide's earlier sections are attested, not reproducible (ADR-043).
 
 ## Running the suite
 
@@ -23,6 +26,10 @@ in the decision record.
   `PSEUDONYM_TIMING_WORKERS=1` makes it one (what CI does, ADR-032
   amendment).
 - `npm run eval` — the evaluation against `eval/baseline.json`.
+- Mutation checks, by hand (not in CI):
+  `npx tsx scripts/mutate.ts --out <dir> scripts/mutations/<list>.ts`, with
+  `<dir>` outside the repository; see "Tracked mutation lists" at the end of
+  this guide.
 - CI (`.github/workflows/ci.yml`) runs all of these on Linux, one step
   after another; see "Phase 5d part 7" at the end of this guide.
 
@@ -3277,3 +3284,54 @@ stream or a tool-call finish), and F7 is caught. F9 is the strict fake's
 own catch: the recorded Ollama stream has no `"usage": null`, so no
 existing test sends one. After each run, no marker was left and every
 `find` text was back in the file exactly once.
+
+## Tracked mutation lists (2026-10-10, ADR-043)
+
+Mutation lists live in `scripts/mutations/`, one TypeScript module per
+list, each exporting `MUTATIONS` typed by the runner's own `Mutation`. A
+list is committed with the change it checks. Re-run one with:
+
+```powershell
+npx tsx scripts/mutate.ts --out <dir> scripts/mutations/live-run-guard.ts
+npx tsx scripts/mutate.ts --out <dir> scripts/mutations/live-run-guard.ts T3 S1
+```
+
+`<dir>` is outside the repository (results are outputs, not inputs); add
+ids to run only those. The usual rules apply: one mutation at a time, the
+15-minute limit, the marker (see "The mutation marker").
+`test/unit/scripts/mutation-lists.test.ts` keeps every tracked list
+runnable: each `find` must occur exactly once in its file, ids must be
+unique, each named test file must exist. An edit that breaks a `find`
+fails `npm test` rather than turning into a SKIPPED line in a later run;
+it was shown to fail with one `find` changed by one character.
+
+**Earlier lists are not in the repository.** No mutation list was ever
+committed before this section (ADR-043): every count in the sections above
+was recorded when its run was made, and the definitions that produced it
+are gone. They are attested, not reproducible from the history. They are
+not reconstructed here.
+
+### The live-run guard (`scripts/mutations/live-run-guard.ts`)
+
+Rebuilt from ADR-041 section 11's description on 2026-10-10; the 2026-10-08
+list it replaces was not kept, and this is not the same list (new ids for
+that reason). Run 2026-10-10, against
+`test/unit/scripts/live-run-guard.test.ts` (20 tests):
+
+| Id  | Mutation                                       | Failed   | Script-level test |
+| --- | ---------------------------------------------- | -------- | ----------------- |
+| T1  | a dirty tree never refuses                     | 11 of 20 | fails             |
+| T2  | untracked files are not reported               | 1 of 20  |                   |
+| T3  | the plan file is never named                   | 8 of 20  | fails             |
+| T4  | a rename source is not skipped                 | 1 of 20  |                   |
+| T5  | paths keep the status separator                | 10 of 20 | fails             |
+| T6  | a git status failure is read as a clean tree   | 2 of 20  |                   |
+| T7  | a repository with no commit lets the run start | 2 of 20  |                   |
+| T8  | HEAD is not checked to be a commit id          | 1 of 20  |                   |
+| T9  | no uncommitted path is listed                  | 2 of 20  |                   |
+| S1  | the script never calls the guard               | 1 of 20  | fails, alone      |
+| S2  | the script does not exit on a refusal          | 1 of 20  | fails, alone      |
+
+11 of 11 caught. The script-level test (`measure-gemini.ts > refuses a
+staged plan …`, run in its own throwaway repository) is the only test that
+catches S1 and S2. No marker was left; the tree was unchanged afterwards.

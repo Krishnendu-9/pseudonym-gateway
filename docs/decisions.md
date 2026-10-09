@@ -7697,7 +7697,12 @@ section with that in mind.
    script in this repository and took one branch on a dirty tree and the
    other on a clean one, so on a clean checkout (CI) it could not fail. It
    now runs in its own repository, and the 11 mutations were run again
-   against it: all caught, with W1 and W2 failing it alone.
+   against it: all caught, with W1 and W2 failing it alone. **Note
+   2026-10-10:** that list was not kept (ADR-043), so the counts above are
+   attested, not reproducible. A rebuilt list, not the same one, is tracked
+   as `scripts/mutations/live-run-guard.ts` (T1–T9, S1, S2): 11 of 11
+   caught; the script-level test catches T1, T3, T5, S1 and S2, and is the
+   only one to catch S1 and S2 (testing guide, "Tracked mutation lists").
 
    This applies to every remaining live run of Phase 7, the probe run
    included, and to any later live measurement made with this script.
@@ -7866,3 +7871,75 @@ entries above would narrow the gaps without closing them.
 **Consequences.** Rule 1 rests on compliance. A lapse would not be stopped
 by the settings in every spelling; the user, who makes every commit by
 hand, would see an unexpected commit or push in the history and on GitHub.
+
+<a id="adr-043"></a>
+
+## ADR-043: Mutation lists were never tracked; every earlier mutation count is attested, not reproducible (2026-10-10)
+
+**Status.** Accepted (the user, 2026-10-10). Lists are tracked from this
+date. Nothing earlier is reconstructed.
+
+**Context.** Mutation checks are this project's main evidence that its
+tests can fail: nearly every phase, part and bug fix in this record, the
+bug log and the testing guide reports "N of N mutations caught". The
+runner, `scripts/mutate.ts`, has been in the repository since 2026-10-01
+(bug-log 24). The lists it runs, which say what was changed, where, and
+which tests were run, were kept in each session's scratchpad. Its own
+header said so ("Lists and results live outside the repo"), as did the
+bug log and the testing guide. No reason for keeping them out was ever
+recorded.
+
+On 2026-10-10 the list for the live-run guard (ADR-041 section 11, run on
+2026-10-08) was needed again and was gone with its scratchpad. A list
+rebuilt from the ADR's description caught 11 of 11, but it is not the
+same list: comparing it with the 2026-10-08 session's record, the user
+found that two of its mutations, under the same labels, change different
+things, and that the script-level test catches a different subset.
+
+**What the history holds, read from the repository on 2026-10-10.**
+
+- Every path ever committed, on every ref, filtered for "mutat": only
+  `scripts/mutate.ts`, `scripts/mutation-marker.ts`,
+  `scripts/mutation-reporter.ts`, `test/support/mutation-guard.ts`,
+  `test/unit/scripts/mutation-marker.test.ts`. That is the runner, its
+  reporter and its marker, not a list.
+- No commit on any ref adds or removes the text `export const MUTATIONS`
+  (`git log --all -S`), the form every list takes.
+- No commit's diff contains a `find:` entry followed by a quoted string
+  (`git log --all -G`), the form of a mutation in any list.
+- No `.mjs` file, the format the lists were written in, was ever
+  committed.
+
+**Finding.** **No mutation list has ever been tracked in this project.**
+Every mutation count recorded before 2026-10-10, in this record, the bug
+log, the testing guide and the project's status notes, was recorded when
+its run was made, and the definitions that produced it are not in any
+commit. Those runs happened and their counts were written down at the
+time; but a reader cannot re-run any of them, cannot check a count against
+what was mutated, and cannot tell whether two runs under the same label
+mutated the same thing. **They are attested, not reproducible from the
+history.** The same applies to statements built on them: a mutant called
+"equivalent", or a test said to be the only one that catches a mutation.
+
+**Decision.**
+
+- From 2026-10-10 every mutation list is tracked in `scripts/mutations/`,
+  one TypeScript module per list, typed by the runner's exported
+  `Mutation`, and committed with the change it checks. Results stay
+  outside the repository (they are outputs; the counts go into the
+  documents).
+- `test/unit/scripts/mutation-lists.test.ts` keeps every tracked list
+  runnable (each `find` exactly once in its file, unique ids, existing test
+  files), so a tracked list cannot quietly rot into one that no longer
+  runs.
+- **No earlier list is reconstructed.** A rebuilt list would be a new list
+  carrying an old count; it could only be presented as what it is, a new
+  run. The one rebuilt list, the live-run guard's, is tracked under new ids
+  (T1–T9, S1, S2) and labelled as a reconstruction, not as the 2026-10-08
+  list.
+
+**Consequences.** The project's mutation evidence before 2026-10-10 rests
+on its written record, as rule 1 rests on compliance (ADR-042). Any
+document that cites an earlier mutation count is citing an attested
+result. A list is now part of the change it checks, so changing a guarded
+line means updating its list in the same commit.

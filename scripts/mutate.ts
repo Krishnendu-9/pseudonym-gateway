@@ -2,12 +2,14 @@
 // file, run the given tests with a time limit, count what fails, put the
 // file back.
 //
-//   npx tsx scripts/mutate.ts --out <dir> <mutations.mjs> [id …]
+//   npx tsx scripts/mutate.ts --out <dir> scripts/mutations/<list>.ts [id …]
 //   npx tsx scripts/mutate.ts --restore
 //
 // A mutation list is a module exporting MUTATIONS, each
 // { id, what, file, tests, find, replace }: `find` must occur exactly once
-// in `file` (repo-relative). Lists and results live outside the repo.
+// in `file` (repo-relative). Lists are tracked in scripts/mutations/, from
+// 2026-10-10 (ADR-043; none before was kept); results go to `--out`,
+// outside the repo.
 // `tests` are file paths; Vitest runs each in its own project, so a
 // `*.timing.test.ts` file runs in the timing project. List it whenever a
 // mutation could make code slower without changing an answer: only the
@@ -42,7 +44,7 @@ import {
   writeMarker,
 } from './mutation-marker.js';
 
-interface Mutation {
+export interface Mutation {
   readonly id: string;
   readonly what: string;
   readonly file: string;

@@ -982,7 +982,10 @@ Not covered by CI:
   Ollama too; CI replays the recorded fixture.
 - **No real provider is called.** Every test talks to a mock or a recording.
 - **Mutation checks** (`scripts/mutate.ts`), which show that the tests can
-  fail, are run by hand.
+  fail, are run by hand. Their lists are in the repository only from
+  2026-10-10 (`scripts/mutations/`); every earlier mutation count is
+  recorded but cannot be re-run from the history
+  ([ADR-043](docs/decisions.md#adr-043)).
 - **One platform and one Node version**: Linux with Node 22.23.3, not
   Windows or macOS, and not the oldest version `engines` allows (22.20).
 - **Docker** does not exist yet (Phase 8).
