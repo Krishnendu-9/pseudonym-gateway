@@ -5809,6 +5809,8 @@ group is still no baseline until two counted runs on that model agree.
   checking:** the EPYC's entry stays in `eval/names-baselines.json` for the
   reason already settled, so that a future EPYC run that disagrees fails
   loudly (DIFFERENT, exit 1) instead of passing as an unknown CPU.
+  **Confirmed 2026-10-10, by run #5** (see "Runs #5 and #6" at the end of
+  this ADR).
 
 ### The model in CI: a cache keyed by the pins, the pinned download behind it (Phase 6c, 2026-10-07; the user chose option M2)
 
@@ -5959,6 +5961,9 @@ second pass, identical):
 | Intel Xeon Platinum 8573C | 1 (#2)       | 0 (#2 predates C3)         | none                                   | two counted runs with their own second pass   |
 | Intel Xeon 6973P-C        | 0            | 0 (#4 had one, uncounted)  | none                                   | two counted runs with their own second pass   |
 
+(This table is as of run #4; superseded by the one under "Runs #5 and #6"
+at the end of this ADR.)
+
 #4's result cannot mint the 6973P-C's baseline, because a `default` run
 never counts. If the 8573C and the 6973P-C are minted with identical
 results, each still gets its own entry in the index (C1 keys by model;
@@ -6022,12 +6027,14 @@ summarises, and where they differ, the summary is the one that changes.
 
 **Counted runs so far, and what each was checked against:**
 
-| Run | CPU model                 | Input                   | Counted | Checked against its own model's baseline                                               |
-| --- | ------------------------- | ----------------------- | ------- | -------------------------------------------------------------------------------------- |
-| #1  | AMD EPYC 7763             | `skip` (by inference)   | yes     | no: compared with the i5-12450H's baseline, before C1 gave the EPYC an entry           |
-| #2  | Intel Xeon Platinum 8573C | `skip` (by inference)   | yes     | no: compared with the i5-12450H's baseline, before C1; the 8573C still has no baseline |
-| #3  | AMD EPYC 7763             | `skip` (by inference)   | yes     | yes: the EPYC's entry in the index (C1), which points to the i5's file                 |
-| #4  | Intel Xeon 6973P-C        | `default` (measurement) | no      | no: no baseline for its model (NEW CPU)                                                |
+| Run | CPU model                 | Input                      | Counted | Checked against its own model's baseline                                                         |
+| --- | ------------------------- | -------------------------- | ------- | ------------------------------------------------------------------------------------------------ |
+| #1  | AMD EPYC 7763             | `skip` (by inference)      | yes     | no: compared with the i5-12450H's baseline, before C1 gave the EPYC an entry                     |
+| #2  | Intel Xeon Platinum 8573C | `skip` (by inference)      | yes     | no: compared with the i5-12450H's baseline, before C1; the 8573C still has no baseline           |
+| #3  | AMD EPYC 7763             | `skip` (by inference)      | yes     | yes: the EPYC's entry in the index (C1), which points to the i5's file                           |
+| #4  | Intel Xeon 6973P-C        | `default` (measurement)    | no      | no: no baseline for its model (NEW CPU)                                                          |
+| #5  | AMD EPYC 7763             | `skip` (printed; schedule) | yes     | yes: the EPYC's entry (C1); identical, second pass equal                                         |
+| #6  | AMD EPYC 9V74             | `skip` (printed; schedule) | yes     | no: no baseline for its model (NEW CPU); hashes withheld until the prediction below is committed |
 
 The three "by inference" inputs rest on the pre-registered conditional,
 settled by #4 (branch 1). From run #5 on, each run prints its input.
@@ -6118,6 +6125,145 @@ existed**. This amendment restores a stated intention that predates both
 runs; it does not invent one after seeing that they passed. Whether each
 counts is decided afterwards, under the rule as amended, from its printed
 input and its completion.
+
+### Runs #5 and #6 (2026-10-08 and 2026-10-09, scheduled; assessed 2026-10-10)
+
+Values as reported by the user from each run's log; the assistant cannot
+reach GitHub. #6's `names-result.json` has **not** been opened.
+
+- **#5, counts.** Install printed
+  `onnxruntime-install for this run: skip (started by: schedule)`: the
+  input is printed, so the amended rule applies directly. Completed: every step green, `test:names` 6 passed.
+  The install agrees (`onnxruntime-node` 301,068,136 bytes, no CUDA or
+  TensorRT file). CPU `AMD EPYC 7763 64-Core Processor`, 4 logical CPUs,
+  Linux `6.17.0-1022-azure`, Node v22.23.3. B's spans `96a5c328…`, names
+  `ba1a6b82…`, second pass equal to the first; 933 detections, R 501/612,
+  main 145/153, precision 661/933, 5.85 per 1,000 words; 294.5 ms per KiB.
+  Outcome: identical to the EPYC 7763's baseline, which is the i5-12450H's
+  file, so also equal to the Windows baseline. (`eval:names` shows
+  `ONNXRUNTIME_NODE_INSTALL (unset)`: the variable is set only inside the
+  Install step, as noted above; not a contradiction.)
+- **#6, counts, and checked nothing.** Install printed
+  `skip (started by: schedule)`; completed (green; `test:names` 6 passed; install as #5's).
+  CPU `AMD EPYC 9V74 80-Core Processor`, 4 logical CPUs. Outcome NEW CPU
+  (exit 0): no baseline for that model, results withheld. **Its second
+  pass agreed with its first**, known without opening the file: `outcome`
+  (`eval/names/gateway.ts`) returns NOT REPEATABLE before it looks for a
+  baseline, so a NEW CPU outcome implies the two passes matched. A counted
+  run on a model with no baseline counts and checked nothing (close-out,
+  step 1).
+
+**The EPYC 7763 is now labelled confirmed.** The condition, in this ADR's
+words: "it needs one more completed run with its own second pass and a
+recorded install input". #5 is all three. The minting rule's two runs are
+#3 and #5: separate jobs, each with its own second pass, the same two
+hashes and every measured field identical (both "identical … every
+metric"). Speed (293.0 against 294.5 ms per KiB) is a machine figure
+outside the compared fields.
+
+**Tally: 5 of 10 counted, on three CPU models.** AMD EPYC 7763 3 (#1, #3,
+#5); Intel Xeon Platinum 8573C 1 (#2); AMD EPYC 9V74 1 (#6). Not counted:
+#4 (`default`). In the close-out's terms: 6 runs; 5 counted on three
+models; 2 checked nothing because their model has no baseline (#4,
+uncounted, on the Xeon 6973P-C; #6, counted, on the EPYC 9V74); 0
+incomplete.
+
+**Adoption conditions (S2), now:**
+
+| Condition                                                   | Now                                                       | Met?   |
+| ----------------------------------------------------------- | --------------------------------------------------------- | ------ |
+| at least 10 counted runs                                    | 5                                                         | no     |
+| at least 2 distinct CPU models                              | 3                                                         | yes    |
+| at least 3 counted runs on each of at least two models      | EPYC 7763 3; no second model                              | no     |
+| every counted run on a model gives that model's same hashes | EPYC 7763: #1, #3, #5 agree; the others have one run each | so far |
+| every counted CPU model has its baseline committed          | EPYC 7763 yes; Xeon Platinum 8573C no; EPYC 9V74 no       | no     |
+
+**What each CPU model still needs** (supersedes the table after run #4):
+
+| CPU model                 | Counted runs   | Own second pass    | Baseline                     | Needs                                                         |
+| ------------------------- | -------------- | ------------------ | ---------------------------- | ------------------------------------------------------------- |
+| AMD EPYC 7763             | 3 (#1, #3, #5) | 2 (#3, #5)         | the i5's file, **confirmed** | nothing                                                       |
+| Intel Xeon Platinum 8573C | 1 (#2)         | 0 (#2 predates C3) | none                         | two counted runs with their own second pass that agree        |
+| AMD EPYC 9V74             | 1 (#6)         | 1 (#6)             | none                         | one more counted run that agrees with #6                      |
+| Intel Xeon 6973P-C        | 0              | 0 (#4 uncounted)   | none                         | nothing unless a counted run lands there; then two that agree |
+
+**What #6 does to adoption, stated plainly.** A counted run cannot be
+uncounted, so the EPYC 9V74 is now a model that must have a committed
+baseline before E1 can be adopted, and that needs **at least one more
+counted run on that exact model**, which GitHub may never assign again.
+The minimum now outstanding is **5 more counted runs**: two on the Xeon
+Platinum 8573C (which also gives a second model three runs), one on the
+EPYC 9V74, and two more on any model with a baseline. Every counted run on
+a further new model adds at least one more required run on that model.
+Six runs have met four CPU models, three of them once each. **The
+20-counted-run exit has become somewhat more likely**, because runs
+spread over more models reach three per model more slowly, though the EPYC
+7763 already fills one of the two places. **The larger effect is one the
+rule has no exit for:** a counted model that never recurs leaves "every
+counted CPU model has its baseline committed" unmet indefinitely. The
+20-run exit tests only the run counts, not the baselines, so in that case
+the rule neither adopts E1 nor reaches its inconclusive exit; the
+close-out would record E1 as not adopted and the rule as open. That is
+recorded, not changed.
+
+### Standing step: the predicted group for the AMD EPYC 9V74 (written 2026-10-10, committed before `names-result.json` is opened)
+
+**The CPU facts, with sources and how far each was checked** (read
+2026-10-10, through web search and a fetch tool that passes pages through
+a summarising model):
+
+- **EPYC 9V74: Zen 4 ("Genoa"), with AVX-512. Verified.** A specification
+  aggregator (chaynikam.info, "EPYC 9V74") gives codename "Genoa", socket
+  SP5, 5 nm, released 2022, and lists AVX-512. An XMRig benchmark record
+  of a machine reporting `AMD EPYC 9V74 80-Core Processor`
+  (xmrig.com/benchmark/DxxCW) lists `avx512f` among its CPU flags, with
+  CPUID `A10F11`: family 19h, model 11h, which is in Genoa's model range
+  (that mapping is general knowledge, not from those pages). Neither is
+  AMD's own documentation: the 9V74 is a custom part with no public AMD
+  page found.
+- **EPYC 7763: Zen 3 ("Milan"), no AVX-512. Verified, more weakly.**
+  WikiChip's EPYC 7763 page, as summarised by a search (the page itself
+  refused the connection), lists AVX2, FMA3 and SHA and no AVX-512;
+  OpenBenchmarking.org calls it a Zen 3 part. AMD's first AVX-512 parts are
+  Zen 4. This ADR already recorded it as having none (the GitHub runners
+  result above).
+- **Zen 4 has no AMX. Not verified from a source; inferred.** No page read
+  states it outright. AMX is Intel's extension, introduced with Sapphire
+  Rapids; the Zen 4 instruction lists found (AVX-512 F, VL, BW, CD, IFMA,
+  DQ, VPOPCNTDQ, BITALG, VNNI, VBMI, VBMI2, BF16, as summarised by a web
+  search over sources including Phoronix's Genoa launch review and AMD's
+  Hot Chips 2023 slides; which source listed what was not checked) do not
+  include it; AMD has announced a matrix engine only for a later
+  generation.
+- **Not checked, and the largest gap: what the runner itself exposes.**
+  The workflow prints the CPU's model name, not its flags, so whether the
+  Azure VM behind run #6 passed AVX-512 through to the guest is not
+  observed.
+
+**Why this CPU matters.** The hypothesis as recorded names "AVX-512 and
+AMX" together, because every CPU so far had both (the two Xeons) or
+neither (the i5-12450H, the EPYC 7763). The EPYC 9V74 has AVX-512 without
+AMX: it is the first CPU that separates the two.
+
+**Prediction: the Xeon group**, B's spans `d1f611f0…` and names
+`46dd8ff3…` (the Xeon Platinum 8573C's and Xeon 6973P-C's). **Confidence:
+medium.** Reasoning: the quantised model's integer matrix products are
+exact whichever kernel computes them, so differences in spans are more
+likely to come from the floating-point kernels, which the runtime can run
+with AVX-512 on any CPU that reports it, AMD included; AMX would only
+change the integer path.
+
+**What would refute it:**
+
+- **The i5-12450H / EPYC 7763 group** (`96a5c328…`, `ba1a6b82…`) refutes
+  "AVX-512 decides". It would fit "AMX decides" (or something else only the
+  Intel parts have), or a VM that hides AVX-512 from the guest; this
+  record could not tell those apart.
+- **A third pair of hashes** refutes the two-group picture itself: the
+  instruction-set hypothesis as recorded allows only the two groups.
+- Either way, as the standing step says, a failed prediction changes
+  nothing about the keying (C1 keys by CPU model), and the EPYC 9V74 still
+  needs a second counted run that agrees with #6 before it has a baseline.
 
 <a id="adr-037"></a>
 
