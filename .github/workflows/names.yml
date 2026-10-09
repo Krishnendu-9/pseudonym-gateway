@@ -54,10 +54,23 @@ jobs:
       # ADR-036's first check on Linux: the CPU runtime's two files are in the
       # package, and what else the install put there (CUDA libraries only
       # without the skip).
+      # The CPU flags the guest actually sees (ADR-036, 2026-10-10): the
+      # instruction-set hypothesis turns on AVX-512 and AMX, and a VM can
+      # hide flags its host CPU has. Printed only; `|| true` so that a
+      # missing flags line can never fail the step and uncount the run.
       - name: What the install put on disk, and on which CPU
         run: |
           grep -m1 'model name' /proc/cpuinfo
           nproc
+          flags=$(grep -m1 '^flags' /proc/cpuinfo || true)
+          if [ -z "$flags" ]; then
+            echo "no flags line in /proc/cpuinfo: CPU flags not observed"
+          else
+            echo "$flags"
+            for f in avx2 avx512f avx512bw avx512vl avx512_vnni avx512_bf16 avx_vnni amx_tile amx_int8 amx_bf16; do
+              case " ${flags#*:} " in *" $f "*) echo "$f: yes" ;; *) echo "$f: no" ;; esac
+            done
+          fi
           du -sb node_modules/onnxruntime-node
           ls -l node_modules/onnxruntime-node/bin/napi-v6/linux/x64/
           find node_modules/onnxruntime-node \( -iname '*cuda*' -o -iname '*tensorrt*' \) -exec ls -l {} +

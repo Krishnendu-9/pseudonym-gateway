@@ -6265,6 +6265,107 @@ change the integer path.
   nothing about the keying (C1 keys by CPU model), and the EPYC 9V74 still
   needs a second counted run that agrees with #6 before it has a baseline.
 
+### Every run now prints the CPU flags the guest sees (2026-10-10, before #6's `names-result.json` is opened)
+
+**The change.** The workflow step "What the install put on disk, and on
+which CPU" (name unchanged) now also prints the `flags` line of
+`/proc/cpuinfo` and one line per flag that bears on the hypothesis:
+`avx2`, `avx512f`, `avx512bw`, `avx512vl`, `avx512_vnni`, `avx512_bf16`,
+`avx_vnni`, `amx_tile`, `amx_int8`, `amx_bf16`, each `yes` or `no`. If the
+file has no flags line, it prints "CPU flags not observed" instead of a
+column of `no`s, which would be a false observation.
+
+**Why.** The prediction above has a "not checked" row: whether the runner
+VM exposes AVX-512 to the guest. Its own refutation analysis says an
+i5-12450H / EPYC 7763 result on the 9V74 would be ambiguous between "AMX
+decides" and "the VM hid AVX-512". With the guest's flags in every log,
+the second becomes observable rather than assumed. (What the kernel lists
+is what the guest's CPUID reports, after the kernel's own masking; the
+runtime reads CPUID itself. Close evidence for what the runtime sees, not
+the same observation.)
+
+**Order, and why it matters.** This change is made and committed **before**
+#6's `names-result.json` is opened. Added afterwards, it would read as a
+response to the result, for instance as a way to explain a failed
+prediction away.
+
+**It cannot affect what the evaluation computes.** It is an extra echo, and
+nothing more: it runs in its own step, before the comparison, in its own
+shell; it reads `/proc/cpuinfo`, writes only to the log, sets no variable
+that outlives the step and writes no file; it changes no input to
+`npm ci`, `fetch:model`, `test:names` or `eval:names`. It cannot fail the
+step either: the read ends in `|| true`, and an empty result is reported,
+not acted on, so it cannot turn a completed run into an incomplete one.
+Checked on this machine with `bash --noprofile --norc -eo pipefail`, as
+GitHub runs a step: on the i5-12450H's own `/proc/cpuinfo` it printed
+`avx2: yes`, `avx_vnni: yes`, `avx512f: no` and `amx_*: no`, as expected
+for that part; on a file with no flags line it printed "CPU flags not
+observed" and exited 0. The workflow file still parses (Prettier).
+
+**It does not help #6.** #6's flags were never printed and cannot be
+recovered; the prediction above stands as written, with its "not checked"
+row. The 9V74 needs at least one more counted run anyway for its baseline,
+and that run will print them.
+
+### Open, put to the user under rule 6 (2026-10-10): the stopping rule has no exit for a counted model that never recurs
+
+**The hole.** S2's adoption condition includes "every CPU model counted
+has its baseline committed", and a baseline needs two agreeing counted
+runs on that model. The 20-counted-run exit (the original rule, which S2
+left standing) tests only run counts: "If 20 counted runs pass without two
+CPU models with three runs each". So if a counted CPU model never appears
+again, the rule neither adopts E1 nor reaches its inconclusive exit. This
+is live, not hypothetical: six runs have met four CPU models, three of them
+once each, and two of those three (the Xeon Platinum 8573C, the EPYC 9V74)
+are counted and have no baseline.
+
+**Why now.** It is settled now, while nobody knows whether it will bite.
+Neither unbaselined model has visibly gone missing yet: the 8573C was last
+seen four runs ago, the 9V74 the day before this was written. Once a model
+has visibly gone missing, any fix would read as motivated, however
+sensible. Deciding the exit before that is known is what keeps it from
+being shaped by it.
+
+**The options** (nothing decided here):
+
+1. **Leave the rule as it is.** Neither an amendment nor an addition. The
+   close-out (step 3) records E1 as not adopted and the condition as open,
+   naming each counted model without a baseline. _Strength of claim:_
+   unchanged; nothing is claimed that was not met. _Cost:_ the rule may
+   never close; there is no designed end to the schedule except the
+   project's end, and "open" is the permanent answer for every model seen
+   once.
+2. **A second exit for counted runs without progress.** An **addition**: a
+   new exit beside the existing one; S2's adoption condition is untouched.
+   For example: "If 20 counted runs pass and any counted CPU model still
+   has no committed baseline, E1 is not adopted, the schedule stops or
+   becomes weekly, and the question returns to the user", reusing the
+   existing 20 so that no new number is chosen now. (Folding the same
+   condition into the existing 20-run exit instead would be an
+   **amendment** to the original rule's exit, which S2 did not change.) A
+   variant counts per model ("a counted model with no second run within N
+   counted runs"), which needs a new number fixed now. _Strength of claim:_
+   unchanged for adoption, which still requires everything; it adds a
+   defined inconclusive outcome. _Cost:_ it may close the rule
+   inconclusive where waiting longer would have succeeded.
+3. **Scope the claim to the models that qualified.** An **amendment to
+   S2**: "every counted CPU model has its baseline" is replaced by
+   adoption for the models with baselines, the claim naming each counted
+   model that did not qualify and what was and was not observed for it
+   (its runs, whether its own second pass agreed, its hashes and which
+   group they match; not whether it is deterministic across processes,
+   and nothing checked against a baseline). _Strength of claim:_ weaker,
+   and in a specific way. E1 runs the comparison on every push; on a
+   model with no baseline it passes with a warning and checks nothing (the
+   known unknown-CPU window). Adopting E1 under this option means an
+   every-push check that is sometimes green without having verified
+   anything: silent, in the sense the user used to rule out stripping
+   (section 13 of ADR-041). Making such runs fail instead would make the
+   check fail by host, which is what the rule exists to prevent.
+
+**Not available:** steering runs to a missing model. GitHub does not choose
+a runner's CPU on request (recorded above).
+
 <a id="adr-037"></a>
 
 ## ADR-037: Person names in the request path, against a fake model (Phase 6b step 3, 2026-10-03; amends ADR-003, ADR-013)
