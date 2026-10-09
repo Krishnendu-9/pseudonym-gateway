@@ -6033,14 +6033,14 @@ summarises, and where they differ, the summary is the one that changes.
 
 **Counted runs so far, and what each was checked against:**
 
-| Run | CPU model                 | Input                      | Counted | Checked against its own model's baseline                                                         |
-| --- | ------------------------- | -------------------------- | ------- | ------------------------------------------------------------------------------------------------ |
-| #1  | AMD EPYC 7763             | `skip` (by inference)      | yes     | no: compared with the i5-12450H's baseline, before C1 gave the EPYC an entry                     |
-| #2  | Intel Xeon Platinum 8573C | `skip` (by inference)      | yes     | no: compared with the i5-12450H's baseline, before C1; the 8573C still has no baseline           |
-| #3  | AMD EPYC 7763             | `skip` (by inference)      | yes     | yes: the EPYC's entry in the index (C1), which points to the i5's file                           |
-| #4  | Intel Xeon 6973P-C        | `default` (measurement)    | no      | no: no baseline for its model (NEW CPU)                                                          |
-| #5  | AMD EPYC 7763             | `skip` (printed; schedule) | yes     | yes: the EPYC's entry (C1); identical, second pass equal                                         |
-| #6  | AMD EPYC 9V74             | `skip` (printed; schedule) | yes     | no: no baseline for its model (NEW CPU); hashes withheld until the prediction below is committed |
+| Run | CPU model                 | Input                      | Counted | Checked against its own model's baseline                                                                                           |
+| --- | ------------------------- | -------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| #1  | AMD EPYC 7763             | `skip` (by inference)      | yes     | no: compared with the i5-12450H's baseline, before C1 gave the EPYC an entry                                                       |
+| #2  | Intel Xeon Platinum 8573C | `skip` (by inference)      | yes     | no: compared with the i5-12450H's baseline, before C1; the 8573C still has no baseline                                             |
+| #3  | AMD EPYC 7763             | `skip` (by inference)      | yes     | yes: the EPYC's entry in the index (C1), which points to the i5's file                                                             |
+| #4  | Intel Xeon 6973P-C        | `default` (measurement)    | no      | no: no baseline for its model (NEW CPU)                                                                                            |
+| #5  | AMD EPYC 7763             | `skip` (printed; schedule) | yes     | yes: the EPYC's entry (C1); identical, second pass equal                                                                           |
+| #6  | AMD EPYC 9V74             | `skip` (printed; schedule) | yes     | no: no baseline for its model (NEW CPU); hashes, opened after the prediction was committed: the Xeon group (see "Run #6's result") |
 
 The three "by inference" inputs rest on the pre-registered conditional,
 settled by #4 (branch 1). From run #5 on, each run prints its input.
@@ -6233,7 +6233,9 @@ a summarising model):
   OpenBenchmarking.org calls it a Zen 3 part. AMD's first AVX-512 parts are
   Zen 4. This ADR already recorded it as having none (the GitHub runners
   result above).
-- **Zen 4 has no AMX. Not verified from a source; inferred.** No page read
+- **Zen 4 has no AMX. Not verified from a source; inferred.** (Sourced
+  later, after #6's result was opened: see "Run #6's result" below. The
+  prediction is left as committed.) No page read
   states it outright. AMX is Intel's extension, introduced with Sapphire
   Rapids; the Zen 4 instruction lists found (AVX-512 F, VL, BW, CD, IFMA,
   DQ, VPOPCNTDQ, BITALG, VNNI, VBMI, VBMI2, BF16, as summarised by a web
@@ -6414,6 +6416,112 @@ run that verified nothing should look like a pass in the Actions list is a
 separate question from the ruling above**, with its own costs (a failing
 run on every new CPU would also be a failure by host). It is recorded
 here; nothing was changed for it.
+
+### Run #6's result against the committed prediction (opened 2026-10-10, after `93b6b90` was pushed)
+
+Values as reported by the user from #6's `names-result.json`, opened only
+after the prediction (`ef8b102`), the CPU-flags change (`2733d36`) and the
+second exit (`93b6b90`) were committed and pushed. B's spans
+`d1f611f06ea88b2feaa2bfdb5e8164bede8cafe8a905503e185b99f6f654bbfb`, names
+`46dd8ff36336bbc80cf61571cb241d3074da08fd421686d7a18b0ee512f16777`, second
+pass identical; 934 detections; R 502/612; main PERSON 145/153; precision
+662/934; 152.5 ms per KiB; memory 375 MiB more after the model started,
+455 MiB peak added. **The EPYC 9V74 is in the Xeon group** (group B: the
+Xeon Platinum 8573C and Xeon 6973P-C); group A is the i5-12450H and EPYC
+7763 (`96a5c328…`, `ba1a6b82…`).
+
+**1. The prediction, scored.** Predicted: group B, **medium** confidence.
+Result: group B, both hashes byte for byte. **A hit.** Its reasoning named
+the mechanism the result is consistent with: the quantised model's
+integer products are exact, so the difference more likely comes from the
+floating-point kernels, which the runtime runs with AVX-512 on any CPU that
+reports it, AMD included. Consistent with, not shown by: no run has looked
+at which kernels were selected. Medium was the right confidence: the
+prediction rested on an unobserved VM, an unsourced AMX fact (item 3) and
+no kernel inspection, and one hit does not make any of those firmer.
+
+**2. What this rules out.**
+
+- **"Intel server chips" as the explanation.** Until now, group B was
+  entirely Intel (two Xeons) and group A had the only AMD part. A vendor
+  or product-line explanation fitted every result. **An AMD part in group
+  B ends it**, and with the EPYC 7763 in group A, AMD is now in both
+  groups. **This is the strongest thing this result does.**
+- **"AMX decides."** Group B now contains a CPU without AMX (item 3 for how
+  firm that is), so AMX is not needed to be in group B.
+- **Per-CPU-model variation.** Five CPU models, still two groups: a fifth
+  CPU joined an existing group rather than producing a third pair of
+  hashes.
+
+**3. What it does not establish, and the row it rests on.** The conclusion
+"AVX-512 decides, not AMX" rests on the 9V74 having no AMX, which the
+prediction's verification marked "inferred, not sourced". That row is now
+load-bearing, so it was checked again (2026-10-10, after the result was
+opened; it could not change the prediction):
+
+- **Sourced, from the compiler's documentation.** GCC's x86 options page
+  (`gcc.gnu.org/onlinedocs/gcc/x86-Options.html`) gives the full extension
+  set for `-march=znver4` (AMD Family 19h, Zen 4): BMI, BMI2, CLWB, F16C,
+  FMA, FSGSBASE, AVX, AVX2, ADCX, RDSEED, MWAITX, SHA, CLZERO, AES, PCLMUL,
+  CX16, MOVBE, MMX, SSE to SSE4.2 and SSE4A, ABM, XSAVEC, XSAVES,
+  CLFLUSHOPT, POPCNT, RDPID, WBNOINVD, PKU, VPCLMULQDQ, VAES, AVX512F,
+  AVX512DQ, AVX512IFMA, AVX512CD, AVX512BW, AVX512VL, AVX512BF16,
+  AVX512VBMI, AVX512VBMI2, AVX512VNNI, AVX512BITALG, AVX512VPOPCNTDQ and
+  GFNI: **no AMX-TILE, AMX-INT8 or AMX-BF16**. Its `sapphirerapids` entry
+  (Sapphire Rapids / Emerald Rapids, the 8573C's family) lists all three.
+  Its `znver3` entry (the EPYC 7763's family) lists AVX2 and no AVX-512.
+- **Limits.** This is GCC's documented model of the family (what it
+  enables when targeting it), not AMD's own specification; it is about
+  Zen 4 generally, not the 9V74 part, whose Zen 4 identity rests on the
+  sources recorded with the prediction; and the page came through a fetch
+  tool whose own summary misread the list (it called AVX512BF16 an AMX
+  extension). The verbatim list was read, not the summary.
+- **Still not established:** that AVX-512 is the cause. The two groups
+  split by AVX-512 on all five CPUs, but no run has looked at which kernels
+  were selected, and AVX-512 is not the only thing the groups differ in.
+  "AVX-512 decides" is the hypothesis that fits all five results, not a
+  finding.
+
+**4. The concrete difference.** Group B finds **one detection more** than
+group A (934 against 933), and that one counts as a **true positive on
+both measures**: recall 502 against 501 of 612, precision 662 against 661,
+false positives unchanged, main PERSON 145 of 153 in both. By these counts
+the groups differ by one name, found by B and missed by A. The counts
+cannot show whether the span sets also differ in ways that leave every
+count equal (a boundary moved within a name, say); the names hash says
+only that they differ. Which name it is was not looked at (texts are never
+printed).
+
+**5. Speed, as weak corroboration.** Group B runs sit near 150 ms per KiB:
+#2 (Xeon Platinum 8573C) 147.0, #6 (EPYC 9V74) 152.5. Group A's runner
+runs sit near 293: #1, #3, #5 (EPYC 7763) 292.1, 293.0, 294.5. So speed
+separates the same two groups by a measurement independent of the hashes.
+**Weak, not proof:** clock speed, core design, memory and host generation
+differ between these machines too, and AVX-512 is one plausible cause of
+the speed among several. The Xeon 6973P-C's speed (#4) is not recorded in
+this repository (#4's log may hold it).
+
+**6. The VM and AVX-512: evidence, not observation.** #6 never printed its
+flags (the change in `2733d36` came after it), so "the VM exposed AVX-512
+to the guest" is still unobserved. The result is **consistent** with it:
+under the hypothesis, a 9V74 VM that hid AVX-512 would have landed in group
+A. That is evidence from the result, not an observation of the guest. The
+next 9V74 run prints its flags.
+
+**7. Tally and what is outstanding.** Opening the artifact changes no
+count: **5 of 10 counted**, on three CPU models: EPYC 7763 3 (confirmed
+baseline), Xeon Platinum 8573C 1, EPYC 9V74 1. Outstanding, at minimum:
+
+- **EPYC 9V74:** one more counted run whose two hashes and every measured
+  field equal #6's, for its baseline (the minting rule: two agreeing runs,
+  not one; knowing its group does not substitute for the second run). That
+  run will also print its flags.
+- **Xeon Platinum 8573C:** two counted runs with their own second pass that
+  agree (#2 predates C3), which also gives a second model three runs.
+- **Two more counted runs** on any model with a baseline, to reach 10.
+- Every counted run on a further new model adds at least one more
+  required run on that model; and the second exit stands: at 20 counted
+  runs with any counted model still unbaselined, E1 is not adopted.
 
 <a id="adr-037"></a>
 
