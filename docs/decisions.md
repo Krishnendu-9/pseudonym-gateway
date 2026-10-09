@@ -7423,7 +7423,9 @@ this phase exists for; spending the allowance on probes and then finding
 every stream fails would be the wrong order. The run stops after them.
 The probes follow in a later run, from a list proposed with its call
 count before it runs; `reasoning_effort` is trimmed from seven values to
-three (`none`, `medium`, `xhigh`). Spacing: 15 s after each call ends,
+three (`none`, `medium`, `xhigh`). (Reversed 2026-10-10, before any probe
+ran: all seven are measured, 15 probes; see "Amendment 2026-10-10: the
+probe run" at the end of this section.) Spacing: 15 s after each call ends,
 at most 4 a minute, within the 5.
 
 **Pre-registered: the two-form model probe** (written before the run).
@@ -7464,6 +7466,113 @@ to use the Interactions API". Findings:
 Calls to `gemini-2.5-flash` today: 2, both 404. Whether a 404 counts
 against the 20-a-day allowance is not known; AI Studio's usage page would
 show it.
+
+#### Amendment 2026-10-10: the probe run (registered before any probe)
+
+Written on 2026-10-10. **No probe has been sent to any model.** This is the
+plan for the probe run; it is committed and pushed before the run, and the
+live-run guard (section 11 item 4) refuses to start unless the working tree
+is clean and HEAD is an ancestor of the last known origin/main. The guard
+shows that everything on disk was committed and pushed, not that this is
+the plan (section 11, "What it does not do"); the commit carrying this
+amendment is the record. The predictions below are the assistant's,
+written before the run and reviewed by the user before committing.
+
+**1. From 11 probes to 15, and why.** Section 10 trimmed `reasoning_effort`
+from seven values to three, making 11 probes. All seven are measured
+instead, 15 probes, for two reasons:
+
+- **(a) The budget that justified the cut is gone.** The cut was made under
+  `gemini-2.5-flash`'s 20 requests a day. The run's model is
+  `gemini-3.5-flash-lite`, at 500 a day (section 11 item 2; see 7).
+- **(b) The stronger reason is the product, not the budget.** All seven
+  `reasoning_effort` values pass the gateway's schema and are forwarded
+  (section 12, item 1), so all seven are things a client can send through
+  Pseudonym today. Leaving four unmeasured leaves four values whose
+  behaviour on this provider is unknown, and a rejection reaches the
+  client as an opaque 502 (`provider_error`; the provider's body is never
+  read).
+
+**Both reasons are independent of any result: no probe has run.** Neither
+depends on what a probe returns; (a) is a fact about the allowance, (b) a
+fact about the gateway's schema.
+
+**2. The run.** Model `gemini-3.5-flash-lite` (bare name, as in Attempt 4).
+Each probe is Attempt 4's `s1` request (a system message "Be brief.", a user
+message carrying `[CARD_1]` and `[EMAIL_1]` only, `stream: false`), through
+the real pipeline, with exactly one parameter added. Not streamed. The
+command, with the probes named so the shape calls are not run again:
+
+```powershell
+npx tsx --env-file=.env scripts/measure-gemini.ts --model gemini-3.5-flash-lite --out test/fixtures/gemini-7b --calls p01,p02,p03,p04,p05,p06,p07,p08,p09,p10,p11,p12,p13,p14,p15
+```
+
+The recording goes to the next unused `attempt-N` (attempt 5 if none is
+added before), with `attempt.json` naming the commit (`head`) and the
+origin/main it was compared with (`originMain`).
+
+**3. The 15 probes, in the order sent, each with its prediction.**
+"Accepted" means HTTP 200 and the adapter `ok`, unless the row says
+otherwise. Confidence is the assistant's own.
+
+| Probe | Parameter and value sent                      | Prediction                                                                | Confidence | Why                                                                                                                                                                                                                                                                                                                                                               |
+| ----- | --------------------------------------------- | ------------------------------------------------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| p01   | `temperature: 0`                              | accepted                                                                  | high       | Shown in Gemini's own examples for this endpoint (section 4).                                                                                                                                                                                                                                                                                                     |
+| p02   | `top_p: 0.5`                                  | accepted                                                                  | medium     | Not documented on this endpoint, but the native API has top-p; ignored rather than honoured is possible and one call cannot tell (section 10's limit).                                                                                                                                                                                                            |
+| p03   | `seed: 42`                                    | accepted                                                                  | medium     | Not documented here; the native API has a seed. Whether it is honoured stays unmeasured (section 10).                                                                                                                                                                                                                                                             |
+| p04   | `frequency_penalty: 0.5`                      | accepted                                                                  | low        | The native API has a frequency penalty, but, from memory and not checked, some Gemini models have answered penalties with a 400 saying they are not enabled for that model.                                                                                                                                                                                       |
+| p05   | `presence_penalty: 0.5`                       | accepted                                                                  | low        | As p04.                                                                                                                                                                                                                                                                                                                                                           |
+| p06   | `stop: ["\n"]` (one stop string, a line feed) | accepted, `finish_reason` `stop`                                          | medium     | The native API has stop sequences; a one-sentence answer probably contains no line feed, so it ends normally.                                                                                                                                                                                                                                                     |
+| p07   | `max_tokens: 16`                              | accepted: `finish_reason` `length`, content a cut-short, non-empty string | medium     | Attempt 4's `s1` on this model reported usage 29 + 22 = 51 with no separate reasoning count for an 84-character answer, so the default effort seems to spend few or no tokens on thinking, and 16 cuts the visible answer. The alternative: hidden thinking uses the budget, the answer has no text, and the adapter rejects a 200 (section 12's second outcome). |
+| p08   | `response_format: {"type": "json_object"}`    | accepted, content a JSON string                                           | high       | Documented on this endpoint (section 4).                                                                                                                                                                                                                                                                                                                          |
+| p09   | `reasoning_effort: "none"`                    | **rejected (400)**                                                        | low        | Gemini's documentation: `none` turns thinking off only for 2.5 models, and thinking "cannot be turned off for … 3 models"; this is a 3-family model. Against it: Attempt 4's usage suggests little or no thinking by default, so the layer might accept `none` and map it.                                                                                        |
+| p10   | `reasoning_effort: "minimal"`                 | accepted                                                                  | medium     | In the documented set.                                                                                                                                                                                                                                                                                                                                            |
+| p11   | `reasoning_effort: "low"`                     | accepted                                                                  | high       | In the documented set.                                                                                                                                                                                                                                                                                                                                            |
+| p12   | `reasoning_effort: "medium"`                  | accepted                                                                  | high       | In the documented set.                                                                                                                                                                                                                                                                                                                                            |
+| p13   | `reasoning_effort: "high"`                    | accepted, within 120 s                                                    | medium     | In the documented set; a one-sentence task on a lite model should not think for long. A timeout would be section 12's third outcome.                                                                                                                                                                                                                              |
+| p14   | `reasoning_effort: "xhigh"`                   | **rejected (400)**                                                        | medium     | Outside the documented set (section 4). An unknown enum value is more likely refused than ignored; ignored (a 200 at the default effort) is the alternative, and the worse one for clients.                                                                                                                                                                       |
+| p15   | `reasoning_effort: "max"`                     | **rejected (400)**                                                        | medium     | As p14.                                                                                                                                                                                                                                                                                                                                                           |
+
+Predicted in sum: 12 accepted, 3 rejected (p09, p14, p15), none timed out.
+
+**4. What each outcome means:** section 12, item 3, not restated here. In
+short: a 400 is Google rejecting the parameter; a 200 that `complete()`
+rejects is the adapter rejecting Google's answer, a different finding; no
+answer within 120 s is a third thing. The recording keeps them apart by
+storing each call's HTTP status and the adapter's outcome separately.
+
+**5. Stop rules, as sections 10 and 11 already set them.** A 403, a 429,
+or any status other than 200 and 400 stops the run at once, and nothing
+further is sent; no call is retried. A 404 stops it too: section 11's
+fallback chain was for choosing a model, and the model is now fixed. A 400
+does not stop the run: it is a probe's result (section 10), and stopping
+on it would leave the probes after the first rejection unmeasured. A call
+with no answer within 120 s is recorded and the run goes on (section 12).
+The script enforces each of these (`goesOn` in `measure-gemini.ts`).
+
+**6. Spacing.** The script waits `SPACING_MS` = 15,000 ms before every call
+after the first (`await sleep(SPACING_MS)`), and the wait starts only after
+the previous call's response has been read to the end (`measure` awaits the
+recorded body). So successive calls start at least 15 s apart whatever the
+latency: at most 4 in any 60 s, against 15 a minute. Latency can only
+lengthen the gap, never shorten it. The run takes at least 14 × 15 s =
+3.5 minutes plus the calls' own time.
+
+**7. Budget, per model, never summed across models.**
+
+- **`gemini-3.5-flash-lite`:** 3 calls so far, all in Attempt 4
+  (2026-10-07, 14:28 UTC: `s1`, `s2`, `s3`, all 200). None since: the
+  guard, its tests and this plan made no call. **This run: at most 15**
+  (fewer only if a stop rule fires), so at most 18 on this model in all.
+  **Allowance: 15 a minute, 500 a day** (section 11 item 2, read by the user
+  on AI Studio and not re-read for this plan; section 11 item 9 requires it
+  to be checked on AI Studio before the run). The daily count resets at
+  midnight Pacific, so Attempt 4's calls fall on an earlier day; whether
+  anything else used this key on the run's day is not known to this record.
+- **Other models, not part of this run:** `qwen3:8b` 1 call (404,
+  Attempt 1); `gemini-2.5-flash` 2 calls (both 404, Attempt 3); the model
+  list, 1 call (Attempt 2), which names no model.
+- **Whether a 404 consumes allowance is still unknown.**
 
 ### 11. Pre-registration: the fallback model chain and Phase 7b live run plan (2026-10-07)
 
@@ -7528,7 +7637,8 @@ Recorded before any call to the chain, governing the live protocol run.
 8. **Execution order:**
    The 3 shape calls (`s1` non-streaming, `s2` streamed, `s3` streamed with
    `stream_options.include_usage`) are run first as their own isolated run.
-   The 11 one-parameter probes form a separate, subsequent run after shape
+   The 11 one-parameter probes (15 since the section 10 amendment of
+   2026-10-10) form a separate, subsequent run after shape
    compatibility is confirmed.
 
 9. **Budget and quota confirmation:**
