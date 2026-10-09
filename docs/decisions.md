@@ -8102,6 +8102,35 @@ does not confirm it.
   which names no model.
 - Whether a 404 consumes allowance is still unknown.
 
+**The allowance check.** Section 11 item 9 required the allowance figures
+to be confirmed on AI Studio before the run. That check was not performed
+before the run. The figures were confirmed by the user AFTER it, on
+2026-10-10, and match what was registered: 15 RPM, 250K TPM, 500 RPD for
+`gemini-3.5-flash-lite`. The run stayed far inside any plausible allowance,
+so nothing was at risk, but a registered pre-run step was skipped for the
+second time in this phase.
+
+**Two observations from the same AI Studio page (read by the user on
+2026-10-10, about 20 minutes after the run); observations, not findings.**
+
+- **(a) Peak requests per minute: 4 of 15.** The plan predicted at most 4
+  calls a minute from `SPACING_MS` (section 10's amendment, item 6). The
+  provider's own counter corroborates the spacing.
+- **(b) Peak requests per day: 11 of 500** for the day the 15 probes ran:
+  not 15, and not 18. **Unresolved**, with two candidate explanations: the
+  counter may still have been catching up about 20 minutes after the run;
+  or the six 400 responses may not count in full against the daily
+  allowance. Of the 15 calls, 9 were answered with a 200 and 6 with a 400,
+  and that is **weak evidence for the catching-up explanation**: an
+  intermediate value is what a counter still updating looks like, while no
+  simple counting rule produces 11 from 15 sent and 9 succeeded (every
+  call gives 15, successes only 9, errors only 6). It is weak, and not
+  enough to choose. Whether an error consumes allowance has been recorded as
+  unknown since Attempt 3 (section 10, for its two 404s); this is the first
+  evidence bearing on it, and it does not settle it. Re-reading the same
+  page on a later day, once the counter has settled, remains what would
+  settle it.
+
 **Open decision (rule 6, nothing decided here).** Six of the fifteen
 parameters or values the gateway accepts and forwards are refused by this
 model, and a client sending any of them gets an opaque 502
