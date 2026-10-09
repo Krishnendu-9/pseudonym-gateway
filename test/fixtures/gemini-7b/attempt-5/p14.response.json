@@ -1,0 +1,8 @@
+[{
+  "error": {
+    "code": 400,
+    "message": "Invalid reasoning_effort: xhigh. Valid values are: high, low, medium, minimal, none",
+    "status": "INVALID_ARGUMENT"
+  }
+}
+]

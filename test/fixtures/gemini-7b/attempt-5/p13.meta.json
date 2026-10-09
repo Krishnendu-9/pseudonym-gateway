@@ -1,0 +1,76 @@
+{
+  "id": "p13",
+  "what": "reasoning_effort high",
+  "recordedOn": "2026-10-09T21:21:26.670Z",
+  "model": "gemini-3.5-flash-lite",
+  "sentBody": {
+    "model": "gemini-3.5-flash-lite",
+    "messages": [
+      {
+        "role": "system",
+        "content": "Be brief."
+      },
+      {
+        "role": "user",
+        "content": "Please confirm the refund for card [CARD_1] was sent to [EMAIL_1]. Reply in one sentence."
+      }
+    ],
+    "stream": false,
+    "reasoning_effort": "high"
+  },
+  "status": 200,
+  "responseHeaders": {
+    "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+    "cache-control": "private",
+    "content-encoding": "gzip",
+    "content-type": "application/json",
+    "date": "Fri, 09 Oct 2026 21:21:28 GMT",
+    "expires": "Fri, 09 Oct 2026 21:21:28 GMT",
+    "p3p": "CP=\"This is not a P3P policy! See g.co/p3phelp for more info.\"",
+    "server": "scaffolding on HTTPServer2",
+    "server-timing": "gfet4t7; dur=1180",
+    "transfer-encoding": "chunked",
+    "vary": "Origin, X-Origin, Referer",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "SAMEORIGIN",
+    "x-xss-protection": "0"
+  },
+  "headersMs": 1578,
+  "firstByteMs": 1579,
+  "totalMs": 1583,
+  "bytes": 1399,
+  "outcome": {
+    "adapter": "ok",
+    "finishReason": "stop",
+    "usage": true
+  },
+  "shape": {
+    "keys": [
+      "choices",
+      "created",
+      "id",
+      "model",
+      "object",
+      "usage"
+    ],
+    "choiceKeys": [
+      "finish_reason",
+      "index",
+      "message"
+    ],
+    "messageKeys": [
+      "content",
+      "extra_content",
+      "role"
+    ],
+    "finishReasonRaw": "stop",
+    "contentType": "string",
+    "contentLength": 69,
+    "placeholders": [
+      "CARD_1",
+      "EMAIL_1"
+    ],
+    "longDigitRuns": 0,
+    "errorKeys": null
+  }
+}
