@@ -10734,6 +10734,14 @@ provider and model`
    provider rejected the request (status 400)").
 2. Whether `gemini` gets a default `PSEUDONYM_PROVIDER_BASE_URL`.
 
+_Updated 2026-10-11: neither item is open now. Item 1 is ruled in "Part 2
+built, and its rulings" below (the code kept, "(status 400)" dropped from
+the message). Item 2 was settled in part 1 (`6398978`) by matching what
+Ollama already does: a default base URL per provider when the variable is
+unset, a set value always wins (`PROVIDER_BASE_URL_DEFAULTS` in
+`src/config/env.ts`); Gemini's default is the endpoint every Phase 7
+measurement was sent to._
+
 **Registration: the `reasoning_effort: "none"` pair (the user's design,
 2026-10-11; written before either call; registered when committed and
 pushed).** It replaces a first draft of this registration, never committed,
@@ -10937,6 +10945,74 @@ product's URL or profile would silently change what that command sends. A
 comment at both copies says the duplication is deliberate and why: the
 script's two constants, and `PROVIDER_BASE_URL_DEFAULTS` in
 `src/config/env.ts` with `GEMINI_PROFILE` in `src/providers/gemini.ts`.
+
+#### Part 2 built, and its rulings (2026-10-11)
+
+**Built (not live; no call to any provider).** Option 3, 4b and decision
+B's warning, as ruled above.
+
+- **Profiles.** `ProviderProfile.refusals`, keyed by exact model name;
+  `RefusalRule` is one of three kinds (`any`, `nonzero`, `values`), each
+  with the `probes` it rests on (`src/providers/openai-compatible.ts`).
+  Gemini's entries for `gemini-3.5-flash-lite`: `seed` and
+  `frequency_penalty` at any value, `presence_penalty` unless 0,
+  `reasoning_effort` at `xhigh` and `max`; not `none` (decision D).
+  `test/unit/providers/gemini-profile.test.ts` checks every cited probe
+  against its recording: it exists, was sent to that model, differs from
+  `s1` only by that field, and has the status the rule predicts.
+- **Option 3** (`src/gateway/refusals.ts`) runs right after the model
+  check, before name detection, redaction or the provider. Shown by test:
+  a refused request reaches no provider and no name finder, and a body that
+  redaction would refuse with a 422 is option 3's 400 instead.
+- **4b** (`src/gateway/errors.ts`): a provider HTTP 400 is a 400, `param`
+  null, logged once at `warn` with the provider's profile name and the
+  status. Its branch comes after the 429 branch, so the existing RA6
+  mutation still guards that boundary.
+- **Decision B's warning**: `modelNameWarning` in `src/config/wiring.ts`,
+  printed by `main.ts`.
+- **Existing assertions changed, each because of 4b:** a provider 400 was a
+  502 in `errors.test.ts` (two places), `chat-completions.test.ts`,
+  `canary.test.ts` (two rows) and `strict-provider.test.ts`; it is a 400
+  now. A new test sends Ollama's over-context answer (HTTP 400, bug-log 55) through the Ollama adapter, so the breaking change (decision F) is
+  visible in the tests. `serverConfig`'s expected value gains the
+  provider's name.
+- **Mutations:** `scripts/mutations/option3-4b.ts`, 26 of 26 caught; the
+  part 1 list and the 429 list, re-run, all caught.
+
+**The rulings (the user, 2026-10-11).**
+
+1. **4b's code: `provider_rejected_request`, kept. Its message drops
+   "(status 400)"** and is now "the provider rejected the request". 4b
+   only ever maps a 400, so the status restates what the client already
+   has from the response, and the code carries the meaning. Using section
+   16's proposal rather than stalling was confirmed.
+
+   **Which codes are OpenAI's and which are the gateway's own.**
+   `unsupported_parameter` and `unsupported_value` are **borrowed**: codes
+   OpenAI's API has been observed to send, undocumented, one observation
+   each (issues 2194 and 2112, above). `provider_rejected_request` is **the
+   gateway's own**, like every other code it sends (`provider_error`,
+   `provider_rate_limited`, `model_not_found`, `invalid_request` and the
+   rest).
+
+2. **Section 16's "Still open" list is closed** (dated note under it).
+3. **Model names in the profile are consistent with the brief.** The brief
+   says model names are configuration, never code. A profile entry keyed by
+   a model name records what was measured against that model; it does not
+   choose what runs. The model the gateway sends requests to still comes
+   only from `PSEUDONYM_MODEL`, and a model with no entry simply gets no
+   option 3 refusals. **The line, and what crosses it:** if the profile
+   table ever gains a default model, or a fallback to some listed model
+   when the configured one is not found, it has started choosing what runs,
+   and that breaks the brief.
+4. **Why option 3 comes before name detection, not only what follows from
+   it.** With names on and the name model unavailable, a request carrying a
+   refused field now gets option 3's 400 instead of name detection's 503.
+   That is correct on its own merits: a 503 invites a client's SDK to retry
+   (OpenAI's SDKs retry it twice by default, section 13), and a request
+   carrying a parameter the provider permanently refuses can never succeed,
+   so every retry is wasted. The 400 tells the client to change the
+   request, which is the only thing that can help.
 
 <a id="adr-042"></a>
 
