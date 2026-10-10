@@ -282,9 +282,18 @@ interface Scenario {
   /** Parts of it that must not reach the stub either. */
   readonly parts: readonly string[];
   readonly placeholder: string;
+  /** Text the gateway's own output must not contain once it serves. */
+  readonly mustNotPrint?: string;
 }
 
-async function serves({ label, options, value, parts, placeholder }: Scenario): Promise<void> {
+async function serves({
+  label,
+  options,
+  value,
+  parts,
+  placeholder,
+  mustNotPrint,
+}: Scenario): Promise<void> {
   const run = `pseudonym-smoke-${process.pid}-${label.replaceAll(' ', '-')}`;
   const [network, stub, gateway] = [`${run}-net`, `${run}-stub`, `${run}-gateway`];
   const named = (name: string): string => `${label}: ${name}`;
@@ -345,6 +354,13 @@ async function serves({ label, options, value, parts, placeholder }: Scenario): 
       // The gateway's logs hold no bodies (ADR-014), so they can be shown.
       const logs = docker(['logs', gateway]);
       process.stdout.write(logs.stdout + logs.stderr);
+    }
+    if (mustNotPrint !== undefined) {
+      const logs = docker(['logs', gateway]);
+      check(
+        named(`the gateway does not print "${mustNotPrint}"`),
+        !`${logs.stdout}${logs.stderr}`.includes(mustNotPrint),
+      );
     }
 
     const response = await request(
@@ -440,6 +456,9 @@ if (models !== undefined) {
     value: 'Rahul Verma',
     parts: ['Rahul', 'Verma'],
     placeholder: '[PERSON_1]',
+    // The Windows-only telemetry line (ADR-046 amendment D) would be untrue
+    // here: on Linux the runtime's telemetry is off.
+    mustNotPrint: 'telemetry cannot be turned off',
   });
 }
 

@@ -66,6 +66,11 @@ if (hardening === undefined) {
 // calls this, and the name modules, the worker and the runtime are imported
 // only inside it.
 const names = await nameFinder(env, async () => {
+  // A known gap, shown when it applies: on Windows the runtime's telemetry
+  // cannot be turned off (ADR-046 amendment D).
+  const { runtimeTelemetryNotice } = await import('./gateway/name-worker.js');
+  const notice = runtimeTelemetryNotice(process.platform);
+  if (notice !== undefined) process.stderr.write(`${notice}\n`);
   const { startNameDetection } = await import('./gateway/names.js');
   const { loadNameModel, MODEL_ROOT, NAME_MODEL } = await import('./gateway/name-model.js');
   return startNameDetection(

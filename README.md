@@ -913,8 +913,14 @@ publishes on the host's loopback only
 ([ADR-046](docs/decisions.md#adr-046)).
 
 **Disclosed: a dependency's telemetry (found 2026-10-10).** ONNX Runtime
-1.30, the library that runs the person-name model, sends usage telemetry to
-Microsoft by default. It is used only with names on.
+1.30.0, the library that runs the person-name model, sends usage telemetry
+to Microsoft by default. Pseudonym loads it only with names on; with names
+off it is never loaded.
+
+**What ships does not send it.** The shipped artifact is the Linux
+container. There, telemetry is forced off in code and proven off by a
+negative control. The exposure is the development environment on Windows,
+not the product.
 
 - **What it sends:** the CPU model, a device ID, and for each model it
   loads the model's file name, hashes and metadata. It does not send
@@ -922,27 +928,43 @@ Microsoft by default. It is used only with names on.
 - **How it was found:** while testing the Docker image, by a line in the
   container's log, then confirmed in ONNX Runtime's source.
 
-**On Linux** (production), its own client sends the events to
-`mobile.events.data.microsoft.com`. Pseudonym now forces it off in code
-before the model loads, whatever the environment says. The fix is shown by
-a negative control, not asserted: in the image, with the switch set back to
-"on" from outside, the runtime still wrote nothing. The image built before
-the fix wrote a device ID and a queue of unsent events.
+**Linux: a bug, fixed.** Out of the box, the runtime's own client queues
+the events on disk and sends them to `mobile.events.data.microsoft.com`.
+Since 2026-10-10 Pseudonym forces it off in code before the model loads,
+whatever the environment says.
 
-**On Windows** the runtime hands the same events to Windows' own
-diagnostic pipeline, which may upload them depending on the machine's
-diagnostic-data setting. **Pseudonym cannot turn this off on Windows:** that
-build ignores the off switch, and the Node binding offers no way to call
-the C API that would. Production is Linux; development on Windows is
-exposed. Whether the development machine's Windows uploaded any of these
-events was not observed: that needs an elevated trace, which was not run.
+- **Shown by a negative control, not asserted:** in the image, with the
+  switch set back to "on" from outside, the runtime wrote nothing. The image
+  built before the fix wrote a device ID and a queue of unsent events. Those
+  files were observed; an upload was not, since the image has no CA bundle.
+- **What was probably sent and cannot be undone:** one Linux run in Phase
+  6c (a Debian container, 2026-10-07) had a CA bundle and no CI variable,
+  and **probably uploaded one session's events**. That cannot be verified
+  or taken back.
+- **GitHub's runners had telemetry off:** the runtime turns it off itself
+  when it sees a CI variable.
 
-**What was probably sent and cannot be undone:** one Linux run in Phase 6c
-(a Debian container, 2026-10-07) had a CA bundle and no CI variable, and
-**probably uploaded one session's events**. That cannot be verified or
-taken back. Runs on GitHub's runners had telemetry off: the runtime turns
-it off itself when it sees a CI variable
-([ADR-046](docs/decisions.md#adr-046), item 8 and its amendment).
+**Windows: a platform limitation, not fixable from Pseudonym.** At ONNX
+Runtime 1.30.0, the Windows build ignores the off switch. The only other
+off switch is a C API call that the Node binding does not expose.
+
+- **Where the events go:** the runtime hands them to Windows' own
+  diagnostic pipeline, which uploads according to the machine's
+  diagnostic-data setting.
+- **Shown at start-up:** with names on, Pseudonym prints one line on
+  Windows saying this cannot be turned off, and pointing here.
+- **An operator's options:** keep names off (the runtime is then never
+  loaded); run the Linux container; or set Windows' own diagnostic-data
+  setting as low as the edition allows. Whether Windows' lowest available
+  setting (Required, on Home) leaves these events out is not established.
+- **Unobserved, and resting on inference.** The DLL registers Microsoft's
+  telemetry provider, and the source says it is on by default, but no
+  telemetry event has been observed firing on Windows. Watching for them
+  needs an elevated trace (the testing guide has the `logman` commands).
+  That check is the maintainer's to run, and this entry stays marked
+  unobserved until it is.
+
+([ADR-046](docs/decisions.md#adr-046), item 8 and amendments A and D.)
 
 Logs contain the method, route, status and timing of each request, never a
 body, a URL or an error message. Two kinds of line add numbers and nothing
@@ -1115,7 +1137,8 @@ built image, not the Dockerfile:
   received only its placeholder;
 - the same with names on: the model, restored from the Names workflow's
   cache and checked file by file, is mounted read-only, and a synthetic
-  name reaches the stub only as its placeholder.
+  name reaches the stub only as its placeholder; the Windows-only telemetry
+  line is not printed there.
 
 Five deliberately broken images each fail it, and a sixth, with
 `NODE_ENV=development`, passes it, as it should since ADR-047

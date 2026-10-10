@@ -10868,6 +10868,78 @@ user asked for in question 3 of ADR-046.
 - **Not yet run on GitHub.** Only ran locally, where the smoke test passed
   38 of 38 checks.
 
+### Amendment D (2026-10-10, after 38478cf): the disclosure's shape, and the gap shown at start-up
+
+The user's two additions. No live API call was made.
+
+**1. The bounding fact, stated beside the gap.** The shipped artifact is the
+Linux container. There, telemetry is forced off and proven off by a
+negative control (item 8). **The exposure is the development environment,
+not the product.** The README threat model and the user manual now say
+this first, so that no reader concludes Pseudonym ships with telemetry.
+
+The disclosure is split into two entries, which are not alike:
+
+- **Linux: a bug, fixed.** On by default, now forced off in code
+  (`disableRuntimeTelemetry`), proven by the negative control.
+- **Windows: a platform limitation, permanent at ONNX Runtime 1.30.0,** and
+  not fixable from the Node binding. The Windows build does not read
+  `ORT_DISABLE_TELEMETRY`, and the binding does not expose
+  `DisableTelemetryEvents` (amendment A).
+
+**An operator's options on Windows.** The user named two: run the
+container, or use Windows' own diagnostic-data setting. There is a third,
+recorded because it is true: keep names off, and the runtime is never
+loaded (amendment B). For the setting, whether Windows Home's lowest
+available level (Required) leaves these events out is not established.
+
+**2. The gap shown where it happens.** With names on, `main.ts` prints one
+line at start-up from `runtimeTelemetryNotice(process.platform)`
+(`name-worker.ts`):
+
+> names warning: ONNX Runtime's telemetry cannot be turned off on Windows;
+> see the README's threat model, "Disclosed: a dependency's telemetry"
+
+It prints only on `win32`, and only when names are on (inside
+`nameFinder`'s callback). The user gave the reasoning: the same as
+withholding an unbaselined CPU's results, and as counting dropped
+`extra_content`. A known gap should be visible at the moment it applies.
+
+**Not on Linux, where it is untrue.** It is not printed on macOS either.
+The macOS arm64 build of `onnxruntime-node` 1.30.0 contains
+`ORT_DISABLE_TELEMETRY` and the same 1DS client as Linux, so the switch
+should apply there. That is inferred from the binary; no Mac was run.
+
+Shown:
+
+- **Unit tests:**
+  - the exact line on `win32`, one line long;
+  - nothing on `linux` or `darwin`;
+  - the README title it points at exists.
+- **Mutations OT4–OT6** (`scripts/mutations/runtime-telemetry.ts`): never
+  printed, printed everywhere but Linux, printed everywhere. 3 of 3 caught,
+  and OT1–OT3 still caught.
+- **The built gateway on this Windows machine:** the line appeared with
+  names on, and not with names off.
+- **In the image** (`docker-smoke.ts --models`):
+  - names on does not print it, a new check (39 checks with `--models`);
+  - negative control N7, the compiled check changed to `linux` in the
+    image, fails exactly that check.
+
+**Evidence status, recorded with the finding.** The Windows finding
+**rests on inference**: the DLL registers the provider, and the source says
+it is on by default.
+
+- **No telemetry event has been observed firing on Windows.**
+- The check that would observe it, the elevated `logman` trace in the
+  testing guide, needs an elevated shell. **It is the user's to run.**
+- Until the user runs it, the Windows entry is marked **unobserved** in the
+  README, the user manual and here.
+
+Linux is not in the same position: there the runtime's on-disk queue and
+device ID were observed, and the fix removed them. An upload itself was not
+observed on Linux either; the image has no CA bundle.
+
 ---
 
 <a id="adr-047"></a>

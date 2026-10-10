@@ -1548,13 +1548,29 @@ To switch names on:
    has the lines for this, commented out.
 
 With names on and no model mounted, the container refuses to start rather
-than sending names as written. ONNX Runtime, the library that runs the
+than sending names as written.
+
+**The name library's telemetry.** ONNX Runtime, the library that runs the
 model, sends usage statistics to Microsoft by default: the CPU model, a
-device ID, and the model's file name and hashes, never your text. On Linux,
-which is what the container runs, Pseudonym always turns that off before
-the model loads. On Windows it cannot: there the library hands the
-statistics to Windows' own diagnostic data, which Windows may upload
-depending on its privacy settings. See the README's threat model.
+device ID, and the model's file name and hashes, never your text. It is
+loaded only with names on.
+
+- **What Pseudonym ships does not send them.** The container runs Linux,
+  where Pseudonym always turns them off before the model loads, and a test
+  on the image shows they stay off. The exposure is development on Windows,
+  not the product.
+- **On Linux this was a bug, now fixed** (2026-10-10).
+- **On Windows it is a limitation of the library** (version 1.30.0) that
+  Pseudonym cannot fix. The Windows version ignores the off switch, and
+  Node has no way to reach the one that works. With names on, Pseudonym
+  prints one line at start-up saying so. Your options there: keep names
+  off; run the container; or turn Windows' diagnostic-data setting
+  (Settings, Privacy & security, Diagnostics & feedback) as low as your
+  edition allows. Whether the lowest setting on Windows Home leaves these
+  statistics out is not known.
+- **Not yet observed on Windows.** It is known from the library's files and
+  source, not from watching it send. See the README's threat model, entry
+  "Disclosed: a dependency's telemetry".
 
 **How big it is.** A 200 MB download, 594 MB unpacked. About 115 MB of the
 download (304 MB unpacked) is the name library, kept so that names can be

@@ -115,6 +115,19 @@ export function disableRuntimeTelemetry(env: NodeJS.ProcessEnv = process.env): v
   env.ORT_DISABLE_TELEMETRY = '1';
 }
 
+/**
+ * The one line main.ts prints at start-up with names on where the switch
+ * above does nothing (ADR-046 amendment D). On Windows, ONNX Runtime 1.30.0
+ * does not read ORT_DISABLE_TELEMETRY, and the Node binding does not expose
+ * the C API that would turn telemetry off. Undefined elsewhere: the Linux and
+ * macOS builds read the switch, so the line would be untrue there.
+ */
+export function runtimeTelemetryNotice(platform: NodeJS.Platform): string | undefined {
+  return platform === 'win32'
+    ? "names warning: ONNX Runtime's telemetry cannot be turned off on Windows; see the README's threat model, \"Disclosed: a dependency's telemetry\""
+    : undefined;
+}
+
 export class WorkerNameModel implements NameModel {
   readonly #worker: Worker;
   readonly #calls = new Map<number, Call>();

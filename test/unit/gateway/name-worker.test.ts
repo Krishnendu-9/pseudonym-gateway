@@ -5,6 +5,7 @@
 // the runtime or the model. The real model's tests are the names project
 // (`npm run test:names`).
 
+import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { MessageChannel, type MessagePort } from 'node:worker_threads';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -12,6 +13,7 @@ import { NameDetectionUnavailable } from '../../../src/gateway/errors.js';
 import {
   disableRuntimeTelemetry,
   NameWorkerStartError,
+  runtimeTelemetryNotice,
   serveNames,
   startNameWorker,
   WORKER_START_TIMEOUT_MS,
@@ -287,6 +289,23 @@ describe("ONNX Runtime's telemetry is off before any thread starts (ADR-046)", (
     disableRuntimeTelemetry(env);
     expect(env).toEqual({ ORT_DISABLE_TELEMETRY: '1' });
   });
+
+  it('on Windows, where the switch does nothing, one start-up line says so and points at the disclosure', () => {
+    const notice = runtimeTelemetryNotice('win32');
+    expect(notice).toBe(
+      "names warning: ONNX Runtime's telemetry cannot be turned off on Windows; see the README's threat model, \"Disclosed: a dependency's telemetry\"",
+    );
+    expect(notice).not.toContain('\n');
+    // The entry it points at must exist, under that title.
+    expect(readFileSync('README.md', 'utf8')).toContain("**Disclosed: a dependency's telemetry");
+  });
+
+  it.each(['linux', 'darwin'] as const)(
+    'on %s, whose runtime reads the switch, no line: it would be untrue',
+    (platform) => {
+      expect(runtimeTelemetryNotice(platform)).toBeUndefined();
+    },
+  );
 
   it('a thread started with the switch set to "0" still starts with it on', async () => {
     process.env.ORT_DISABLE_TELEMETRY = '0';

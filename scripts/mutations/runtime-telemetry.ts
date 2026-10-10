@@ -37,4 +37,29 @@ export const MUTATIONS: readonly Mutation[] = [
     find: "env.ORT_DISABLE_TELEMETRY = '1';",
     replace: "env.ORT_DISABLE_TELEMETRY ??= '1';",
   },
+  // Added the same day, with the Windows start-up line (ADR-046 amendment D).
+  {
+    id: 'OT4',
+    what: 'the Windows line is never printed',
+    file: WORKER,
+    tests: TESTS,
+    find: "return platform === 'win32'",
+    replace: "return platform === 'none'",
+  },
+  {
+    id: 'OT5',
+    what: 'the line is printed everywhere but Linux (macOS included, where it is untrue)',
+    file: WORKER,
+    tests: TESTS,
+    find: "return platform === 'win32'",
+    replace: "return platform !== 'linux'",
+  },
+  {
+    id: 'OT6',
+    what: 'the line is printed on every platform',
+    file: WORKER,
+    tests: TESTS,
+    find: "return platform === 'win32'",
+    replace: 'return platform === platform',
+  },
 ];
