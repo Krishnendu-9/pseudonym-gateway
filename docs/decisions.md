@@ -10545,6 +10545,264 @@ with one unrelated timing test failing beside its 15 aimed tests. The
 testing guide reads this as the machine being held up; it was not
 reproduced.
 
+### 16. Option 3 and 4b: the rulings, before any code (the user, 2026-10-11)
+
+Written on 2026-10-11. **Nothing here is built.** This amendment is
+committed before any implementation; implementation is a separate step.
+No live call was made to write it.
+
+**The basis: Attempt 6 (section 14's run).** Run on 2026-10-10 from
+18:56:08 to 18:56:41 UTC, from commit `de82b77` (also the local
+origin/main), into `test/fixtures/gemini-7b/attempt-6/`. p16 (`seed: 0`):
+400 `INVALID_ARGUMENT`, `Invalid JSON payload received. Unknown name "seed":
+Cannot find field.` p17 (`frequency_penalty: 0`): 400, the same message for
+`frequency_penalty`. p18 (`presence_penalty: 0`): 200, adapter `ok`, both
+placeholders kept. All three as predicted. By section 14's registered
+outcomes, option 3 refuses `seed` and `frequency_penalty` at any value, and
+refuses `presence_penalty` only away from 0, forwarding 0 unchanged. The
+counter part of section 14 is recorded separately, once read.
+
+**Does the registered definition assume a flat list? No.** Section 13's
+decision says "a field **or value** measured as refused", and section 14
+registered the value-dependent outcome for `presence_penalty` before the
+run. No amendment was needed for that. Two extrapolations stay in it, both
+registered: `presence_penalty` "refused at any value other than 0" rests on
+one refused value (0.5), and `seed` and `frequency_penalty` "at any value"
+rest on two values each with an unknown-field message.
+
+**How option 3 and 4b divide the work.** Option 3 acts at request
+validation, before redaction, name detection or any provider call, and only
+on measured refusals for the configured provider and model; it names the
+field in `param`. 4b acts on **every** provider HTTP 400, whatever caused
+it (a field option 3 allows that the provider starts refusing, an
+unmeasured value, another model's refusals, a context overflow, a gateway
+bug), with `param: null`, because the body is never read. A field that
+option 3 allows and the provider later refuses gets 4b's answer; the fix is
+a new measurement and a profile entry. Both apply to streamed requests: an
+option 3 refusal is an ordinary 400 before any event, and a provider 400
+arrives before the first chunk (section 15).
+
+**The rulings.**
+
+- **A. Gemini becomes a product provider.** `PSEUDONYM_PROVIDER` gains
+  `gemini`, with Gemini's profile in `src/providers/`, and the gateway
+  refuses to start with `gemini` and no `PSEUDONYM_PROVIDER_API_KEY`. The
+  user's reason: option 3 against a test profile only would guard nothing a
+  deployment can reach, and every Phase 7 measurement was against Gemini.
+- **B. Profiles are keyed by exact provider and configured model (K1).**
+  The only keying that keeps "entries only from measurement" (section 7's
+  condition for option A). The configured model must match an entry's model
+  exactly; a model with no entry gets no option 3 refusals and falls to 4b.
+  **At start-up, the gateway warns** when the configured model differs from
+  a model in the provider's profile only by a leading `models/` (either
+  way round): falling through to 4b is correct but cannot be discovered
+  otherwise, and the warning costs nothing. The warning names both models
+  (configuration, not request content).
+- **C. Three rule kinds, closed; profiles stay data only.** `any` (refused
+  at every value), `nonzero` (refused unless the parsed value is 0, E
+  below), `values` (refused at the listed values). Every entry cites the
+  probes it rests on. The entries for `gemini-3.5-flash-lite`:
+
+  | Field               | Kind      | Values         | Probes                                |
+  | ------------------- | --------- | -------------- | ------------------------------------- |
+  | `seed`              | `any`     |                | p03 (42), p16 (0): both refused       |
+  | `frequency_penalty` | `any`     |                | p04 (0.5), p17 (0): both refused      |
+  | `presence_penalty`  | `nonzero` |                | p05 (0.5) refused, p18 (0) accepted   |
+  | `reasoning_effort`  | `values`  | `xhigh`, `max` | p14, p15 refused; p10 to p13 accepted |
+
+  Gemini's profile for any other model has no entries.
+
+- **D. `reasoning_effort: "none"` is not on the list** (the user overruled
+  the assistant's recommendation). Its link to p09's refusal is by
+  elimination, not a measurement, and Google's own error text (p14, p15)
+  lists `none` as valid. An inferred entry in a list whose whole value is
+  that entries come from measurement is not worth the specificity. The
+  user also noted that the assistant's "a stale entry fails loudly"
+  argument is circular, because p09's refusal is the thing being
+  attributed. **Until the pair below runs, `none` falls to 4b.**
+- **E. Zero means the parsed value `=== 0`, so −0 counts.** The gateway
+  builds the outgoing body itself with `JSON.stringify`, which writes −0 as
+  `0`, so Google receives exactly what p18 measured. Checked with Node: `0`,
+  `0.0`, `0e0`, `-0`, `-0.0` and `1e-400` (which underflows) all parse to
+  ±0 and are sent as `0`; `5e-324` is not 0; the string `"0"` is already
+  refused by the schema today (`invalid value at presence_penalty`) and
+  never reaches option 3. **`null` means unset and is allowed for all four
+  fields** (`seed`, `frequency_penalty`, `presence_penalty`,
+  `reasoning_effort`): each is `.nullish()` in `src/gateway/schema.ts`, the
+  outgoing body drops `null`, and option 3 never refuses it.
+- **F. 4b returns HTTP 400**, logged at `warn` with the profile name and the
+  status (a run of them can be a gateway bug). **This changes Ollama's
+  behaviour, a breaking change:** Ollama answers a request over its context
+  with HTTP 400 (bug-log 55, Ollama 0.35.1), which is a 502 today and
+  becomes a 400; so does any other Ollama 400. It goes in the README's
+  provider-errors text, not only here.
+- **G. `param` becomes `string | null`.** Every existing error keeps
+  `null`; option 3 sets the field name, taken only from the profile's own
+  constants, never from the request.
+- **H. One registered end-to-end call against Gemini, after the
+  implementation.** Its own registration, written once the code exists,
+  and not run before 2026-10-11 08:00 UTC (13:30 IST; see the pair below
+  for why not 12:30). Not registered here.
+
+**A privacy property of option 3 that 4b does not have.** A request option
+3 refuses is never sent: no redacted text reaches the provider for a
+request that would have been refused anyway. Under 4b the redacted request
+has already gone out before the 400 comes back. It goes in the README with
+the implementation.
+
+**README, when built, not before** (rule 15: the README never describes
+behaviour that does not exist): F's breaking change, option 3's privacy
+property, and Gemini as a supported provider together with the free-tier
+terms recorded in section 2 (content used to improve products, human
+reviewers).
+
+**The two error codes, checked against OpenAI's documentation
+(2026-10-11).** `unsupported_parameter` and `unsupported_value` were
+proposed from memory. **Neither appears in OpenAI's documentation**:
+`developers.openai.com/api/docs/guides/error-codes` (the page
+`platform.openai.com/docs/guides/error-codes` now redirects to) lists other
+code values and neither of these. **Both are real values the API returns**,
+seen in error bodies quoted in issues on OpenAI's own repositories:
+
+- `openai/openai-python` issue 2194: `{'error': {'message': "Unsupported
+parameter: 'reasoning.generate_summary' is not supported with the
+'o3-mini-2025-01-31' model.", 'type': 'invalid_request_error', 'param':
+'reasoning.generate_summary', 'code': 'unsupported_parameter'}}`
+- `openai/openai-python` issue 2112, HTTP 400: `{'error': {'message':
+"Unsupported value: 'reasoning_effort' does not support 'medium' with this
+model.", 'type': 'invalid_request_error', 'param': None, 'code':
+'unsupported_value'}}`
+
+Limits: both pages were read through a fetch tool that passes them through
+a summarising model; these are user reports of observed behaviour, not a
+specification, and OpenAI may change them. Two differences from ours:
+OpenAI quotes the value in its message (ours never does) and, in the
+second, leaves `param` null (ours sets it, as section 13 registered). So
+the codes are not wrong, but they are **not documented**.
+
+**Ruling (the user, 2026-10-11): the codes are adopted, as undocumented
+codes observed in the wild.** The user read both issues and confirmed the
+bodies above. `unsupported_parameter` for the `any` kind (`seed`,
+`frequency_penalty`); `unsupported_value` for the `nonzero` and `values`
+kinds (`presence_penalty`, `reasoning_effort`). **The evidential basis is one
+observation each**: openai-python issue 2194 for `unsupported_parameter`,
+issue 2112 for `unsupported_value`. OpenAI documents neither and may change
+or drop either.
+
+- **A deliberate divergence, not a match: `param` is set for both codes.**
+  Issue 2194 shows OpenAI setting `param` with `unsupported_parameter`;
+  issue 2112 shows it leaving `param` null with `unsupported_value` and
+  naming the field only in the message. Pseudonym sets `param` to the
+  field in both cases, because a null `param` tells the client nothing a
+  program can read; the field would then be recoverable only by parsing
+  prose.
+- **Messages name neither the provider nor the model.** Chosen by the
+  assistant at the user's request; the user confirms it by committing. The
+  wording, each a fixed string written in the gateway with the field name
+  from the profile's constants:
+  - `any`: `<field> is not supported by the configured provider and model`
+  - `nonzero`: `<field> must be 0 or unset for the configured provider and
+model`
+  - `values`: `<field> does not support this value for the configured
+provider and model`
+
+  **The reason first given for this does not hold, and is recorded so it
+  is not reused.** It was that naming the model, as OpenAI's messages do,
+  would disclose the backend model to any client that sends a bad
+  parameter. But the gateway already refuses any request whose `model`
+  differs from the configured one (`src/gateway/server.ts`, the
+  `model_not_found` check, before anything else; ADR-014: clients must send
+  the configured name), and option 3 runs after that check. **Every client
+  that reaches option 3 has just sent the model's exact name**, so naming
+  it would disclose nothing. The wording is kept for the reasons that do
+  hold: every message a client sees stays fixed text written in the
+  gateway, with nothing from configuration put into it (`errors.ts`, top
+  comment), which keeps that rule checkable; and naming the model would
+  tell the client only what it sent.
+
+- **The `values` message lists no allowed values.** A list ("one of
+  minimal, low, medium, high") would claim that every value outside it is
+  refused. `none` is outside it and is not refused by option 3: it is
+  forwarded, and Google's answer goes to 4b. The message says only what
+  was measured: this value is refused.
+
+**Still open; put to the user before code:**
+
+1. 4b's `code` and message (proposed: `provider_rejected_request`, "the
+   provider rejected the request (status 400)").
+2. Whether `gemini` gets a default `PSEUDONYM_PROVIDER_BASE_URL`.
+
+**Registration: the `reasoning_effort: "none"` pair (the user's design,
+2026-10-11; written before either call; registered when committed and
+pushed).** It replaces a first draft of this registration, never committed,
+that repeated p09 alone.
+
+- **Why a pair, not a repeat.** p09 is Attempt 4's `s1` request plus
+  `reasoning_effort: "none"` and nothing else: p09 had no `temperature`
+  (p01 did), so section 13 item 7's "the request was p01's apart from that
+  one field" is **wrong**: p09 differs from p01 by two fields. p09's only
+  single-field control is therefore `s1`, answered 200 on 2026-10-07, two
+  days before p09 (2026-10-09). A repeat of p09 alone would test only
+  whether its refusal reproduces. The pair puts the control in the same
+  session.
+- **The calls.** Two, `gemini-3.5-flash-lite`, in one run of one process
+  from one commit: `s1` (placeholders only, `stream: false`), then p09 (the
+  same plus `reasoning_effort: "none"`). They differ only in that field.
+  The script runs calls in its own list order, so `s1` goes first whatever
+  order `--calls` gives, and section 10's 15 s spacing separates them. Both
+  are already defined, so no script change is needed:
+
+  ```powershell
+  npx tsx --env-file=.env scripts/measure-gemini.ts --model gemini-3.5-flash-lite --out test/fixtures/gemini-7b --calls s1,p09
+  ```
+
+- **One built-in exception, part of the command.** If `s1` is answered 404,
+  the script's pre-registered two-form probe (section 10) sends `s1` once
+  more with `models/` before the model name. If that is not a 200, the run
+  stops before p09 (no result). If it is, p09 is sent with the same
+  prefixed name, so the pair still differs in one field. **At most 3 calls.**
+- **Definitions.** A call _succeeds_ when Google answers HTTP 200 and the
+  adapter's outcome is `ok`. A call _fails_ when Google answers HTTP 400.
+- **What each outcome means (the user's mapping, written before the
+  run):**
+  - `s1` succeeds, p09 fails: **clean attribution**. `none` goes on the
+    `values` entry as a measurement, citing p09 and this pair.
+  - Both succeed: **p09's original refusal was transient**; recorded as the
+    finding. `none` stays off the list (forwarded; a refusal goes to 4b).
+    The assistant's note: the pair cannot tell "transient" from "Google
+    changed its behaviour between 2026-10-09 and the run"; either way p09
+    did not reproduce.
+  - Both fail: **something about `s1` changed**. `none` is unattributable
+    and stays off the list.
+  - `s1` fails, p09 succeeds: **recorded as fitting no hypothesis.** The
+    list does not change.
+  - Added by the assistant, for completeness: any other result for either
+    call (a 200 that `complete()` rejects, no answer within 120 s, or a
+    status other than 200 or 400, which section 12 makes stop the run) is
+    **no result**: recorded, no conclusion, and `none` stays off the list.
+- **Prediction (the assistant's): `s1` succeeds and p09 fails with 400
+  `INVALID_ARGUMENT`, `Request contains an invalid argument.`, medium
+  confidence.** For: `s1` has succeeded every time it was sent, the
+  identical p09 request was refused, and Gemini's documentation says
+  thinking cannot be turned off for Gemini 3 models (section 4). Against:
+  Google's own messages list `none` as valid (p14, p15), and a one-off p09
+  refusal is not excluded.
+- **Not before 2026-10-11 08:00 UTC (13:30 IST).** The counter experiment
+  needs the Oct 10 bar to hold only Attempt 6. Under UTC−7 that bar closes at
+  07:00 UTC (12:30 IST); under the chart's UTC-8 label, at 08:00 UTC (13:30
+  IST). The later time holds under both.
+- **Budget, per model.** `gemini-3.5-flash-lite`: 21 calls so far (18, plus
+  Attempt 6's 3); this run makes 23, or 24 with the two-form probe.
+- **The counter, as a side observation.** If nothing else is sent to this
+  model on that display day, the Oct 11 bar holds only this run's calls,
+  and its reading is recorded as an observation. Against section 14's
+  hypotheses, for the predicted outcome (`s1` 200, p09 refused): A and M
+  give 2; S, U and V give 1; P gives 1 or 2 (2 about one time in three).
+  If both succeed, every hypothesis gives 2. Any other outcome is computed
+  by each hypothesis's own rule; a 400 of a kind not seen before leaves U,
+  V and M undefined for that call. Two calls cannot tell a fixed rule from
+  a random one.
+
 <a id="adr-042"></a>
 
 ## ADR-042: Rule 1 is kept by compliance; the permission deny list is a partial backstop (2026-10-08)
