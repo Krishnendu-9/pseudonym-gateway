@@ -4074,6 +4074,51 @@ It would also not address B, for which scanning is not a candidate. Moving
 this project's temp files somewhere specific changes nothing for anything
 else.
 
+### An association across the split, not a merge of it (2026-10-10)
+
+The two symptoms stay separate, A and B above, each with its own
+candidates and evidence. This records one fact that cuts across them.
+
+**Every unexplained full-run failure on record happened in a run far slower
+than normal:**
+
+| Failure                                                      | Its run took | Normal for that work |
+| ------------------------------------------------------------ | ------------ | -------------------- |
+| the machine-sampler timeout (2026-10-10)                     | 139 s        | 79–112 s             |
+| the deleted directory, `ENOENT` (2026-10-10, 15:31)          | 142.3 s      | 79–112 s             |
+| 21 of 3,024 tests, mostly timeouts (2026-10-07, step 5 gate) | 1,227 s      | 71–73 s that day     |
+| SG1's mutation run, one timing test failing (2026-10-10)     | 653 s        | 12 s                 |
+
+**No normal run has failed.** All 43 runs on 2026-10-10 in the 79–112 s
+mode passed: the flake comparison's 40, and the gates at 13:00, 14:09 and
+15:45.
+
+**Not every slow run failed.** The 17:13 gate (143.2 s) passed. In the
+139–143 s mode, 2 of 3 runs failed, against 0 of 43 in the normal mode. That
+comparison was made after the fact, on a small sample, and is descriptive.
+
+**What this does not establish.**
+
+- **That the slow mode causes either symptom.**
+- **For the sampler timeout** (a timing failure), slowness causing it is a
+  plausible mechanism.
+- **For the deleted directory** it is not: being slow deletes nothing.
+  That symptom **still has no mechanism.** If the two are linked, a cause
+  shared by both is likelier than slowness causing the deletion. One example
+  of what that would look like, a hypothesis only: a single event that both
+  costs time and touches temp files.
+- **That the 2026-10-07 and SG1 failures belong to the same mode.** They
+  were slow by far more than the 139–143 s cluster, on other work, and are
+  consistent with the association without being shown to be the same
+  event.
+
+**What it changes about the search.** **The slow mode's cause is now the
+highest-value lead for both symptoms at once,** instead of two separate
+hunts. Finding what happens in a slow run, the roughly 50-second event of
+section A, would either explain the deleted directory too, or rule out a
+shared cause and leave B to its own candidates. The symptom split is kept
+as it is: this is an association across it, not a merge.
+
 ### Run records against both symptoms
 
 | Date and work                                                                                                                                                                                                        | A. Slowness                                                                                                                                  | B. Deleted directory  |
