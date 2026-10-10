@@ -1,0 +1,56 @@
+{
+  "id": "p17",
+  "what": "frequency_penalty 0",
+  "recordedOn": "2026-10-10T18:56:24.782Z",
+  "model": "gemini-3.5-flash-lite",
+  "sentBody": {
+    "model": "gemini-3.5-flash-lite",
+    "messages": [
+      {
+        "role": "system",
+        "content": "Be brief."
+      },
+      {
+        "role": "user",
+        "content": "Please confirm the refund for card [CARD_1] was sent to [EMAIL_1]. Reply in one sentence."
+      }
+    ],
+    "stream": false,
+    "frequency_penalty": 0
+  },
+  "status": 400,
+  "responseHeaders": {
+    "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+    "content-encoding": "gzip",
+    "content-type": "application/json; charset=UTF-8",
+    "date": "Sat, 10 Oct 2026 18:56:24 GMT",
+    "server": "scaffolding on HTTPServer2",
+    "server-timing": "gfet4t7; dur=34",
+    "transfer-encoding": "chunked",
+    "vary": "Origin, X-Origin, Referer",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "SAMEORIGIN",
+    "x-xss-protection": "0"
+  },
+  "headersMs": 239,
+  "firstByteMs": 241,
+  "totalMs": 318,
+  "bytes": 457,
+  "outcome": {
+    "adapter": "failed",
+    "failure": "http",
+    "status": 400
+  },
+  "shape": {
+    "keys": [
+      "0"
+    ],
+    "choiceKeys": null,
+    "messageKeys": null,
+    "contentType": "undefined",
+    "contentLength": null,
+    "placeholders": [],
+    "longDigitRuns": 0,
+    "errorKeys": null
+  }
+}

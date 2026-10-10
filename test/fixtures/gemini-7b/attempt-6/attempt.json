@@ -1,0 +1,8 @@
+{
+  "mode": "calls",
+  "model": "gemini-3.5-flash-lite",
+  "calls": "p16,p17,p18",
+  "startedAt": "2026-10-10T18:56:08.976Z",
+  "head": "de82b772a615bf9b2235d9158262e2e4e37042fc",
+  "originMain": "de82b772a615bf9b2235d9158262e2e4e37042fc"
+}
