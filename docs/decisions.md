@@ -9090,6 +9090,182 @@ The present behaviour is unverified until those exist.
   degradation is real; d1 conflicts with the brief's rule against
   forwarding input unredacted.
 
+#### Rulings (the user, 2026-10-10)
+
+Recorded on 2026-10-10. Nothing is built yet, and no call to Google was
+made for this.
+
+**Decision 1: 1e, OpenAI's shape.** `content: null` with the refusal text
+in a `refusal` field, restored like any other model text; in a stream,
+`delta.refusal` chunks, restored.
+
+The user's reasoning:
+
+- The gateway's promise is that a client changes its base URL and nothing
+  else, so a refusal should arrive in the shape the official SDK already
+  reads.
+- **1b is rejected** because a program that parses the answer as JSON would
+  treat the refusal as the result: silent wrongness in a different coat.
+- **1a is rejected** because it leaves the client unable to tell "the
+  model declined" from "the gateway broke".
+
+**This ruling is what closes bug-log 70.** The streaming path is the case
+that produced it. Bug 70 found two quiet shapes: a streamed refusal, and a
+non-streamed `content: ""` with `refusal` set. **The strict fake must learn
+to send both kinds:**
+
+- the loud one, `content: null` with `refusal` set, the only shape it
+  sends today;
+- the quiet ones.
+
+**A fix tested only against the shape that already failed loudly would not
+have caught bug 70, and is not accepted as closing it.**
+
+Left for whoever builds it, and not ruled here: what an answer with both
+`content` and `refusal` set becomes (decision 1's last cost above).
+
+**Decision 2: 2c with c2, a 503 with the gateway's own fixed
+`Retry-After`.**
+
+The user's reasoning:
+
+- A 429 to the client asserts that the client is rate limited, which is
+  false when several clients share one key; a 503 is true whoever caused
+  it.
+
+**The second reason as first given did not survive the check below, and is
+replaced, not softened.** It was: "the 502 is actively harmful, because
+the SDK turns one 429 into up to three calls into a provider that is
+already limiting us." Honouring `Retry-After` spaces those calls out but
+does not reduce them, so 2c does not answer that harm. The reason the
+ruling now rests on follows the check.
+
+**The dependency, checked before recording (2026-10-10).** 2c's value is
+in how the SDK treats its `Retry-After`, and a 503 is also a 5xx. So the
+question was whether `openai-node` honours `Retry-After` (and
+`retry-after-ms`) on a 5xx, not only on a 429. Read in `src/client.ts`,
+branch `master`:
+
+- **Yes, on every retried status.** When `shouldRetry` says yes (408, 409,
+  429, any status of 500 or more, unless `x-should-retry` says otherwise),
+  `makeRequest` calls `retryRequest(…, response.headers, …)`.
+  `retryRequest` reads `retry-after-ms` first, then `retry-after` (seconds
+  or an HTTP date), with **no check of the status**.
+- **A value over 60 s is ignored.** It falls back to the default backoff
+  (0.5 s doubling, at most 8 s), which is today's timing. So **the fixed
+  value must be at most 60 s**, or 2c quietly turns back into today's
+  storm.
+- **Honouring the header spaces the retries out; it does not reduce how
+  many there are.** With default settings, one client request still makes
+  up to three provider calls. With `Retry-After: N`, those calls are N
+  seconds apart instead of about 0.5 s and 1 s.
+
+Limits of the check, as for section 13's:
+
+- The file was read through a fetch tool that passes it through a
+  summarising model; the code came back quoted.
+- Only the Node SDK was read. `openai-python` and other clients were not
+  checked.
+- The code can change; this is `master` on 2026-10-10.
+
+**The reason the ruling rests on (the user, 2026-10-10, after the check).**
+Three calls about 1.5 seconds apart are certainly futile against any rate
+limit. Three calls spaced tens of seconds apart may land in a fresh
+per-minute window and succeed. The gateway cannot tell a per-minute limit
+from a daily one without reading the error body, which the adapter never
+does (principle B). So spacing is free upside where the limit is
+per-minute, and no worse where it is daily: the same number of calls, all
+of which fail. Its one cost there is time to a definitive failure, which
+is the trade-off on the fixed value below.
+
+**`x-should-retry: false` is not added (the user's ruling).** It is not an
+HTTP standard, and only one SDK is known to honour it (`openai-node`, read
+above). Suppressing the retry would also forfeit the one benefit the
+ruling now rests on. A faster definitive failure is worth less than a
+retry that might work.
+
+**The 60-second ceiling is a constraint on the fixed value**: above 60 s,
+`openai-node` ignores the header and falls back to today's timing. When
+the value is proposed, the trade-off goes with it:
+
+- a larger value is more likely to clear a per-minute window;
+- a smaller one gets the client a definitive answer sooner. With the
+  SDK's default of two retries, the last one comes about 2 × N seconds
+  after the first failure.
+
+Also left for whoever builds it, and not ruled here:
+
+- the fixed value itself (at most 60 s, proposed with the trade-off
+  above);
+- the error code;
+- whether the message keeps the upstream status number, today's one
+  disclosure (decision 2 above).
+
+**Decision 3: 3a with 3c.** Strip deliberately, with tests replaying all
+12 recorded answers, and record counts and lengths, never the value.
+
+The user's reasoning:
+
+- Google calls echoing the signature recommended rather than required for
+  text, and mandatory only for Gemini 3 function calls, which the gateway
+  already rejects.
+- **3d is rejected on a stronger ground than the brief's rule.** Echoing
+  back a client-supplied opaque string is an unbounded channel through the
+  gateway that detection cannot read: someone could put an Aadhaar number
+  in it.
+- In the user's words as first given, "sealing signatures the gateway
+  issued would close that, but only by adding the per-request state this
+  design deliberately avoids."
+
+  **Correction (the user, 2026-10-10): "per-request state" is wrong.** An
+  HMAC over each outbound signature is checked on the way back in from the
+  request alone, so sealing (d2) holds no per-request state. What it
+  actually costs:
+  - a long-lived secret held by every gateway instance;
+  - a rotation procedure for that secret;
+  - a failure mode during rotation, where one instance rejects a
+    signature another issued.
+
+  All of that in a design that deliberately holds no secret beyond the
+  provider key. **The ruling stands on the channel argument regardless.**
+
+- **The quality cost, recorded honestly:** later turns may degrade
+  (Google's "performance may degrade", unquantified). The counts exist so
+  that this cost is visible rather than assumed.
+
+Notes for whoever builds 3a and 3c:
+
+- `s3` replays as `bad_response` today (usage on every chunk), so its test
+  pins that or waits for that fix.
+- Where the counts and lengths go (measurement records, the log, or both)
+  is settled when built. Adding a field to the log's fixed set (method,
+  route, status, timing) is put to the user first.
+
+**Order of work: 2c and section 13's option 3 + 4b.** Both change the
+provider-error path.
+
+- **2c lands first.** It needs no measurement. Section 13's decision says
+  nothing is built until section 14's zero-value calls have run, and they
+  have not.
+- **What 4b must leave alone.** Both changes edit the `http` branch of
+  `fromProvider` in `src/gateway/errors.ts`. 4b is ruled as **"any provider
+  400"** to a 4xx, **not any 4xx**. A 429 is a 4xx, so a 4b widened to
+  "4xx" would take the 429 back from 2c. 4b must also leave alone the way
+  2c attaches `Retry-After` to the gateway's response (`GatewayError`
+  carries no headers today, so 2c adds that). 2c's tests must pass
+  unedited after 4b.
+- **Option 3 is a different path.** It refuses a parameter before
+  anything is sent (request validation against the provider and model
+  profile), so it does not touch `fromProvider`.
+- **Both apply to streamed requests too.** A provider 429 or 400 arrives
+  as the HTTP status before the first chunk, so it is an ordinary HTTP
+  error on the streamed path as well (ADR-019), not a stream error event.
+- **Every other provider status** (401, 403, 404, 5xx) stays a 502 under
+  both.
+- **The strict fake's pinned 429 test** ("502, `Retry-After` dropped,
+  not endorsed") is replaced by 2c, deliberately. It is the only existing
+  test that should change for this.
+
 <a id="adr-042"></a>
 
 ## ADR-042: Rule 1 is kept by compliance; the permission deny list is a partial backstop (2026-10-08)

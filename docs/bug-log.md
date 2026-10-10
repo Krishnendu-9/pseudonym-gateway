@@ -2931,7 +2931,9 @@ be a string there. The strict fake (ADR-041 section 9) sends a refusal in
 exactly that one shape, so its "no finding against the gateway" did not
 cover the other two.
 
-**Fix:** none yet. What a refusal should become is ADR-041 section 15,
-decision 1, the user's. Whatever is chosen, the streamed shape must stop
-being silent. **Guarded by:** nothing yet; the strict fake should send all
-three shapes once the decision is made.
+**Fix:** none yet. Ruled 2026-10-10 (ADR-041 section 15, decision 1):
+option 1e, OpenAI's shape. That ruling is what closes this bug once
+built. **Guarded by:** nothing yet. The strict fake must send the loud
+shape and both quiet ones. A fix tested only against the shape that
+already failed loudly would not have caught this bug, and is not accepted
+as closing it.
