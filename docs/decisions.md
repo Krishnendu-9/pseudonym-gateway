@@ -9366,6 +9366,147 @@ What they establish, against the two conditions:
   record cannot be ruled out. The user will read the Usage page and the
   7-day range before the run.
 
+**Per-day readings (read by the user on 2026-10-11 00:15 IST, 2026-10-10
+18:45 UTC); observations, not findings.** The RPD chart, 28-day range,
+hovered day by day, `gemini-3.5-flash-lite`, axis labelled UTC-8:
+Oct 6: 0; Oct 7: 3; Oct 8: 0; Oct 9: 11; Oct 10: 0 of 500. **So the 11 is
+the 2026-10-09 figure.**
+
+**What the readings establish about (b): the assistant's analysis, after
+the readings, checked against `test/fixtures/gemini-7b/attempt-4/` and
+`attempt-5/`.** Nothing below was registered before the readings were
+taken.
+
+1. **Model.** All 18 calls sent `gemini-3.5-flash-lite` (the recorded
+   `model` and the sent body's `model` agree on every call). Every 200
+   answer names `gemini-3.5-flash-lite` in its own `model` field; the 400
+   bodies name no model.
+2. **Which display day.** `recordedOn` is the end of a call (p01: start
+   21:18:13.386 + 1,582 ms = 21:18:14.968, recorded 21:18:14.973).
+   Attempt 4: 2026-10-07 14:27:57.898 to 14:28:34.807 UTC. Attempt 5:
+   2026-10-09 21:18:13.386 to 21:21:57.392 UTC (2026-10-10 02:48 to 02:51
+   IST). The axis says UTC-8; Pacific daylight time is UTC−7 on these
+   dates, so a display day starts at 07:00 or 08:00 UTC (12:30 or 13:30
+   IST). Under either, Attempt 4 falls on Oct 7 (06:27 or 07:27 local) and
+   Attempt 5 on Oct 9 (13:18 to 13:21, or 14:18 to 14:21 local), more than
+   13 hours after that day's start and about 10 hours before its end. **No
+   call falls in the Oct 8 or Oct 10 bucket under either reading, so the
+   readings do not contradict the recorded times, and Attempt 5 cannot
+   have been split across display days.**
+3. **Oct 7 = 3.** All three Attempt 4 calls were answered with HTTP 200 by
+   Google. s3 then failed in our adapter (`bad_response`), but that is
+   after Google's answer; on Google's side it was a successful request. s2
+   and s3 were streamed. **What this calibrates: a call answered with a 200
+   counts once, streamed or not (three calls, one day). It says nothing
+   about failed calls**, because none failed that day. Attempts 1 to 3's
+   404s and the model list went to other models or no model and are not in
+   this chart.
+4. **Oct 9 = 11 against 15 calls.** 9 were answered 200 and **6** failed,
+   all HTTP 400 `INVALID_ARGUMENT`: p03 and p04 unknown field (`seed`,
+   `frequency_penalty`), p05 `Penalty is not enabled for this model`, p09
+   `Request contains an invalid argument.`, p14 and p15 invalid
+   `reasoning_effort` value. Not 4 failed: 6. So 11 fits none of the simple
+   rules: every call counts (15), only successes count (9), only failures
+   count (6).
+   - **The "still catching up" explanation is refuted** as far as this
+     display can refute it: it read 11 about 20 minutes after the run and
+     11 again about 27 hours after.
+   - **If** the display counts per call **and** every 200 counts once (item
+     3), then 4 of the 15 calls were not counted, and they must be 4 of the
+     6 failures: **2 failed calls were counted and 4 were not.** That
+     establishes, under those two premises, that this display counts failed
+     calls neither always nor never.
+   - **It does not establish** which 2 were counted, or why; whether the
+     display counts per call at all (a lossy or approximate counter also
+     fits 11); or whether the quota Google enforces counts as the display
+     does (the limit already noted above). Grouped by error message, three
+     pairs suggest themselves ({p03, p04} unknown field, {p14, p15} invalid
+     value, {p05, p09} model-level), but there are 15 ways to choose 2 of 6,
+     and these pairs were chosen after seeing 11.
+5. **What ADR-041 says about how (b) may be settled.** Section 13 named the
+   method: "Re-reading the same page on a later day, once the counter has
+   settled, remains what would settle it"; condition 2 above names the same
+   re-read. So using telemetry that already exists is the method this ADR
+   chose, and nothing in it requires a new measurement for (b). But neither
+   section registered which reading would mean what, so items 2 to 4 are
+   **post hoc** and carry that weight. (b) as framed in section 13 (still
+   catching up, or the 400s not counting in full) is answered for its first
+   half (not catching up) and reshaped for its second (some failures count,
+   by a rule not known).
+6. **Condition 2 is now met**: the 2026-10-09 figure has been re-read, and
+   18:30 UTC had passed at the 18:45 UTC reading. Condition 1 was met
+   before (above). The run still needs the user's go-ahead, and the guard
+   needs this text committed and pushed.
+
+**Prediction for the RPD counter after p16 to p18 (written 2026-10-11,
+before any of the three calls; registered when committed and pushed,
+before the run).**
+
+- **Probe outcomes:** the table above, unchanged and not revised in the
+  light of item 4: p16 400 unknown field (high), p17 400 unknown field
+  (high), p18 200 (low).
+- **Which bucket:** Oct 10, which read 0 at 18:45 UTC. This holds only if
+  the last call ends before 2026-10-11 07:00 UTC (12:30 IST). Between 07:00
+  and 08:00 UTC the bucket depends on which axis reading is right, and
+  after 08:00 UTC it is Oct 11. **A run whose last call ends at or after
+  07:00 UTC gives no counter result**; the probe results still stand.
+- **When read:** the per-day hover on the 28-day range, no earlier than 30
+  minutes after the last call, and again on 2026-10-12 or later. Both are
+  reported; if they differ, the later one is the result.
+- **Hypotheses.** A: every call counts. S: only 200s count. Both are
+  already contradicted by Oct 9's 11 (they predict 15 and 9). In the
+  question's terms, A is "failed calls consume allowance" and S is "they
+  do not". Three more, **fitted after seeing 11**, one per pair in item 4:
+  U, a 400 for an unknown field counts and others do not; V, a 400 for an
+  invalid value counts and others do not; M, a model-level 400 (`not
+enabled for this model`, and p09's) counts and others do not.
+
+| p18 returns                      | A   | S   | U   | V   | M   |
+| -------------------------------- | --- | --- | --- | --- | --- |
+| 200 (predicted)                  | 3   | 1   | 3   | 1   | 1   |
+| 400 `not enabled for this model` | 3   | 0   | 2   | 0   | 1   |
+
+- If p16 or p17 do not return as predicted, each hypothesis's number is
+  recomputed by its own rule. A 400 of a kind not seen in Attempt 5 leaves
+  U, V and M undefined for that call; A and S still predict.
+- **The assistant's point prediction: 1, low confidence.** S, V and M all
+  give 1 if p18 is accepted, and M gives 1 either way.
+- **How a reading is read:** it supports a hypothesis only if it equals
+  that hypothesis's entry in the row for p18's actual outcome. A value
+  that fits no listed hypothesis is recorded as such; **no hypothesis is
+  added after the reading to fit it.**
+- **What the run cannot show:** whether the enforced quota counts as the
+  display does. p16 and p17 are the same kind of failure, so the run tests
+  U against the rest and, only if p18 is rejected, also separates M from S
+  and V. If p18 is accepted, a reading of 1 does not separate S, V and M.
+- **A counter that counts failures at random (P), added by the user before
+  this prediction was committed.** Every hypothesis above is a fixed
+  per-call rule, but item 4 notes that a lossy counter also fits Oct 9. P:
+  every 200 counts (item 3), and each failed call counts independently
+  with probability about 1 in 3, Oct 9's 2 of 6 (Wilson 95% interval 9.7%
+  to 70.0%, so the rate itself is barely known). At 1 in 3 (the
+  assistant's arithmetic):
+  - p18 accepted (two failures): expected extra 0.67; reading 1 at 44.4%,
+    2 at 44.4%, 3 at 11.1%; 0 cannot occur.
+  - p18 rejected (three failures): expected extra 1.00; reading 0 at
+    29.6%, 1 at 44.4%, 2 at 22.2%, 3 at 3.7%.
+- **What this means for the run: it distinguishes A from S, and against P
+  it can only count against the fixed rules, never confirm one.** A
+  reading of 1 is consistent with S, V, M and P; so is a 0 when p18 is
+  rejected (S, V, P). **A reading of 0 or 1 is therefore not reported as
+  support for S over P**: at 1 in 3, S makes it at most about 3.4 times
+  as likely as P does (1 against 0.296, or 1 against 0.444), with a rate
+  estimated from six calls.
+- **Which reading would discriminate.** None excludes P: at any rate
+  strictly between 0 and 1, P gives every reading from its minimum up to 3
+  a chance. Only one outcome separates P from all the fixed rules listed:
+  **p18 accepted and a reading of 2**, which no fixed rule predicts and P
+  gives 44.4%. A 3 fits A (and U if p18 is accepted) but P also gives it
+  11.1% or 3.7%. **At n = 3, no reading can show that failures are counted
+  by a fixed rule rather than at random.** If the counter can also drop
+  successful calls (Oct 7's 3 of 3 does not rule it out), even a 0 with
+  p18 accepted fits.
+
 ### 15. Phase 7c: the three deferred decisions (options, 2026-10-10; waits for the user)
 
 Written on 2026-10-10. **Nothing here is decided, and no call to Google was
