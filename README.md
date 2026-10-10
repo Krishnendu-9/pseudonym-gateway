@@ -892,22 +892,57 @@ manipulates answers (only the URL-exfiltration path is mitigated).
 exists only in memory for one request, and is never logged, stored or put in
 an error. It is not encrypted (the key would sit in the same process), and
 JavaScript strings cannot be reliably wiped, so someone who can read the
-process's memory can read values ([ADR-012](docs/decisions.md#adr-012)). In production (`NODE_ENV=production`)
-Pseudonym refuses to start if the debugger, heap snapshots or diagnostic
-reports could be switched on, or, on Linux, if core dumps are enabled or
-`--disable-sigusr1` is missing. It cannot stop a host that pipes core dumps
-to a handler (the kernel then ignores the limit; Pseudonym warns), and it can
-verify none of this on Windows or macOS. Production means Linux
-([ADR-016](docs/decisions.md#adr-016)).
+process's memory can read values ([ADR-012](docs/decisions.md#adr-012)).
+On every start, Pseudonym refuses to start if the debugger, heap snapshots
+or diagnostic reports could be switched on, or, on Linux, if core dumps are
+enabled or `--disable-sigusr1` is missing. Only
+`PSEUDONYM_DISABLE_HARDENING=true` turns that check off, and Pseudonym then
+says so on every start. `NODE_ENV` does not affect it: a development
+`.env`, which says `NODE_ENV=development`, used to switch it off silently
+([ADR-047](docs/decisions.md#adr-047)). It cannot stop a host that pipes
+core dumps to a handler (the kernel then ignores the limit; Pseudonym
+warns), and it can verify none of this on Windows or macOS. Production
+means Linux ([ADR-016](docs/decisions.md#adr-016)).
 
 **In a container,** the loopback default does not protect anything. The
 image listens on `0.0.0.0`, because inside a container `127.0.0.1` cannot
 be reached from outside it. Who can reach the gateway is then decided by
 the network in front of it: the Docker networks the container is on, and
 which ports are published on which host interface. The compose file
-publishes on the host's loopback only. With person names on, ONNX Runtime's
-telemetry to Microsoft, which its Linux build sends by default, is forced
-off ([ADR-046](docs/decisions.md#adr-046)).
+publishes on the host's loopback only
+([ADR-046](docs/decisions.md#adr-046)).
+
+**Disclosed: a dependency's telemetry (found 2026-10-10).** ONNX Runtime
+1.30, the library that runs the person-name model, sends usage telemetry to
+Microsoft by default. It is used only with names on.
+
+- **What it sends:** the CPU model, a device ID, and for each model it
+  loads the model's file name, hashes and metadata. It does not send
+  request text.
+- **How it was found:** while testing the Docker image, by a line in the
+  container's log, then confirmed in ONNX Runtime's source.
+
+**On Linux** (production), its own client sends the events to
+`mobile.events.data.microsoft.com`. Pseudonym now forces it off in code
+before the model loads, whatever the environment says. The fix is shown by
+a negative control, not asserted: in the image, with the switch set back to
+"on" from outside, the runtime still wrote nothing. The image built before
+the fix wrote a device ID and a queue of unsent events.
+
+**On Windows** the runtime hands the same events to Windows' own
+diagnostic pipeline, which may upload them depending on the machine's
+diagnostic-data setting. **Pseudonym cannot turn this off on Windows:** that
+build ignores the off switch, and the Node binding offers no way to call
+the C API that would. Production is Linux; development on Windows is
+exposed. Whether the development machine's Windows uploaded any of these
+events was not observed: that needs an elevated trace, which was not run.
+
+**What was probably sent and cannot be undone:** one Linux run in Phase 6c
+(a Debian container, 2026-10-07) had a CA bundle and no CI variable, and
+**probably uploaded one session's events**. That cannot be verified or
+taken back. Runs on GitHub's runners had telemetry off: the runtime turns
+it off itself when it sees a CI variable
+([ADR-046](docs/decisions.md#adr-046), item 8 and its amendment).
 
 Logs contain the method, route, status and timing of each request, never a
 body, a URL or an error message. Two kinds of line add numbers and nothing
@@ -939,6 +974,12 @@ npm run typecheck      # type-check
 cp .env.example .env    # PSEUDONYM_MODEL is the demo model; change it to use another
 npm run dev             # gateway on http://127.0.0.1:3000/v1
 ```
+
+The start-up guard runs on every start. On Windows and macOS it only
+warns. On Linux `npm run dev` refuses to start, because it does not pass
+`--disable-sigusr1`, until you set `PSEUDONYM_DISABLE_HARDENING=true` in
+your own `.env` (never in production;
+[ADR-047](docs/decisions.md#adr-047)).
 
 `npm install` also installs the person-name runtime, an optional
 dependency of about 302 MB that is never loaded with names off. To run the
@@ -979,10 +1020,13 @@ is restarted
 
 The [Dockerfile](Dockerfile) builds a Debian slim image (Node 22.23.3,
 pinned by digest) that runs the built gateway as an unprivileged user,
-with `NODE_ENV=production` so the start-up guard applies. It is 794 MB as
-Docker Desktop reports it; about 301 MB of that is the person-name runtime,
-kept so that names can be switched on without another image. The model is
-never inside it.
+with the start-up guard on. It is 594 MB unpacked and a 200 MB download
+(Docker Desktop shows 794 MB, counting both). About 304 MB unpacked and
+115 MB of the download is the person-name runtime. That is kept
+deliberately, so that names can be switched on by mounting the model,
+without another image. With names off the runtime is never loaded, and an
+image without it would be 289 MB unpacked and an 85 MB download. The model
+is never inside it ([ADR-046](docs/decisions.md#adr-046), amendment B).
 
 ```bash
 docker compose up --build    # gateway on http://127.0.0.1:3000/v1
@@ -1014,10 +1058,13 @@ docker run --init --ulimit core=0 --read-only --cap-drop ALL \
   pseudonym-gateway
 ```
 
-**Do not pass a development `.env` to `docker run --env-file`.** The one
-made from `.env.example` says `NODE_ENV=development`, which turns the
-start-up guard off, and `HOST=127.0.0.1`, which nothing outside the
-container can reach. The compose file overrides both; `docker run` cannot.
+**A development `.env` and `docker run --env-file`.** The `.env` made
+from `.env.example` says `HOST=127.0.0.1`, which nothing outside the
+container can reach. The compose file overrides it; `docker run` cannot,
+so pass `-e HOST=0.0.0.0` after it. Its `NODE_ENV=development` no longer
+matters: the guard is on unless `PSEUDONYM_DISABLE_HARDENING=true`
+([ADR-047](docs/decisions.md#adr-047)). Never give a container a `.env`
+with that set.
 
 **The network is the boundary.** The image sets `HOST=0.0.0.0`. The
 loopback default protects a process on a host, not a container, so
@@ -1060,13 +1107,18 @@ built image, not the Dockerfile:
   the built code, its dependencies and `package.json`;
 - it runs as a non-root user, configured and running;
 - the start-up guard refuses a core dump limit, a debugger flag and a
-  missing `--disable-sigusr1`;
+  missing `--disable-sigusr1`, and still refuses with `.env.example` passed
+  by `--env-file`;
 - names on with no model mounted refuses to start;
 - a real request with a synthetic email, sent through the published port
   to a stub provider, comes back with the email restored, and the stub
-  received only its placeholder.
+  received only its placeholder;
+- the same with names on: the model, restored from the Names workflow's
+  cache and checked file by file, is mounted read-only, and a synthetic
+  name reaches the stub only as its placeholder.
 
-Five deliberately broken images each fail it
+Five deliberately broken images each fail it, and a sixth, with
+`NODE_ENV=development`, passes it, as it should since ADR-047
 ([ADR-046](docs/decisions.md#adr-046)).
 
 Not covered by CI:
@@ -1085,9 +1137,10 @@ Not covered by CI:
   ([ADR-043](docs/decisions.md#adr-043)).
 - **One platform and one Node version**: Linux with Node 22.23.3, not
   Windows or macOS, and not the oldest version `engines` allows (22.20).
-- **The Docker image with person names on.** CI has no model for that
-  job; it was checked by hand (`docker-smoke.ts --models models`). Only
-  linux/amd64 is built.
+- **The Docker image on arm64.** Only linux/amd64 is built. The names-on
+  image check runs on whichever runner CPU GitHub assigns; it checks that a
+  name is redacted, not that spans match a baseline (the Names workflow
+  does that).
 
 ## Documentation
 

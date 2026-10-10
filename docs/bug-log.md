@@ -3005,7 +3005,10 @@ by name afterwards; a run still going at the limit fails its check
 ("still running after 60 s").
 
 **Guarded by:** negative control N4 (testing guide, Phase 8): the three
-guard checks now fail in about 60 s each, and no container is left.
+guard checks now fail in about 60 s each, and no container is left. Since
+ADR-047, `NODE_ENV=development` no longer turns the guard off; N4 now bakes
+`PSEUDONYM_DISABLE_HARDENING=true` into the image instead, and four refusal
+checks time out the same way.
 
 ## 73. The Docker smoke test exited mid-run, without cleaning up, when it asked too early (2026-10-10, found while adding the names-on run in Phase 8; fixed before commit)
 
@@ -3030,3 +3033,29 @@ the process alive.
 **Guarded by:** nothing automatic; the smoke test is the check. Every run
 since (the final run with names on, the five negative controls, and the
 gate) finished and left no container behind.
+
+## 74. The image size was recorded as "unpacked" when it was Docker Desktop's disk usage (2026-10-10, found while examining the size after commit 97e244e; corrected the same day)
+
+**Symptom:** ADR-046 and the README gave the image as 794 MB, "the
+unpacked size in its image store". A probe image without the name runtime
+was 419 MB smaller, but its `node_modules` was only 302.8 MB smaller. The
+two numbers could not both be unpacked sizes.
+
+**Root cause:** I read `docker image inspect` `.Size` as the unpacked size
+without checking what it counts. With Docker 29's containerd image store it
+is "disk usage": the unpacked layers plus the compressed copy Docker keeps.
+`docker image ls` shows it beside a separate "content size" column (the
+compressed size). The image is 593,768,448 bytes unpacked and 200,233,311
+compressed. The README's "794 MB as Docker Desktop reports it" was true; the
+ADR's explanation of it was not.
+
+**Fix:** ADR-046 section 9 corrected in place, marked. The amendment gives
+all three figures for both images, measured by summing `docker history`
+layer sizes and from `docker image ls`. The README now gives the unpacked
+and download sizes.
+
+**Guarded by:** nothing automatic. A size figure now names what it
+measures (unpacked, compressed or disk usage). The compressed figure is
+disk usage minus the summed layer sizes. It was checked against a separate
+measure, the size of the `docker save` archive: 200,253,440 bytes, which is
+the compressed layers plus about 20 KB of tar framing.

@@ -1357,6 +1357,10 @@ call); **a start-up guard plus documentation**.
 `main.ts` when `NODE_ENV=production`: a pure function over `platform`,
 `execArgv`, `NODE_OPTIONS`, `/proc/self/limits` and `core_pattern`.
 
+> **Amended 2026-10-10 by ADR-047** (the user's ruling): the guard no
+> longer depends on `NODE_ENV`. It runs on every start unless
+> `PSEUDONYM_DISABLE_HARDENING=true`. The checks themselves are unchanged.
+
 - **Refuses to start** if any dump or inspect flag is set, in argv or
   `NODE_OPTIONS` (`_` and `-` treated alike; `--flag=value` and quoted
   values handled); on Linux also if `--disable-sigusr1` is missing, or the
@@ -10477,6 +10481,11 @@ container ran with `NODE_ENV=production` and `HOST=0.0.0.0`. **Plain
 the image.** The README warns about it; whether the guard should key on
 something other than `NODE_ENV` is open (consequences).
 
+> **Superseded the same day by ADR-047** (the user's ruling). The guard now
+> runs unless `PSEUDONYM_DISABLE_HARDENING=true`, so a `.env` from
+> `.env.example` no longer turns it off; a test and a smoke check prove it.
+> Compose still overrides `HOST`; it no longer sets `NODE_ENV`.
+
 ### 2. What goes into the image
 
 **The build context is an allowlist.** `.dockerignore` excludes everything
@@ -10585,7 +10594,9 @@ it in the new image.
 ### 6. The start-up guard survives
 
 The image sets `NODE_ENV=production`, so the guard runs, and the command is
-`node --disable-sigusr1 dist/src/main.js`. The core dump limit cannot be set
+`node --disable-sigusr1 dist/src/main.js`. (Since ADR-047, later the same
+day, the image sets no `NODE_ENV`: the guard runs unless
+`PSEUDONYM_DISABLE_HARDENING=true`.) The core dump limit cannot be set
 from a Dockerfile. It stays the operator's: `docker run --ulimit core=0`,
 or `ulimits: core: 0` in compose, which sets soft and hard to 0.
 Measured: Docker Desktop's default is soft 0, hard unlimited. Docker Engine
@@ -10692,8 +10703,15 @@ the slim image has no CA bundle. That is an accident, not a control: one
 ### 9. Size
 
 The image is **794,001,759 bytes**, as Docker Desktop reports it (`docker
-image inspect` `.Size`, the unpacked size in its image store), built from
-this change's final tree on 2026-10-10. Of that:
+image inspect` `.Size`), built from this change's final tree on 2026-10-10.
+
+> **Corrected 2026-10-10 (bug-log 74).** This first said `.Size` was "the
+> unpacked size in its image store". It is not. Docker 29's containerd image
+> store reports "disk usage": the unpacked layers **plus** the compressed
+> copy it keeps. The image is 593,768,448 bytes unpacked and 200,233,311
+> compressed (what a pull downloads). The amendment at the end of this ADR
+> has the measurements and the single-image decision. The table below
+> measures directories, and stands.
 
 | Part                        | Bytes       |
 | --------------------------- | ----------- |
@@ -10702,8 +10720,9 @@ this change's final tree on 2026-10-10. Of that:
 | of which `onnxruntime-node` | 301,125,480 |
 | `/app/dist`                 | 389,694     |
 
-The compressed (pulled) size was not measured. CI prints the size on its
-runner.
+"The base image" row is Docker Desktop's disk usage too (246,292,480
+unpacked). The compressed (pulled) size was not measured at first; see the
+amendment. CI prints the size on its runner.
 
 ### Negative controls (the smoke test can fail)
 
@@ -10725,11 +10744,219 @@ script:
   configuration. The README says so.
 - **Open, for the user:** a development `.env` passed with `docker run
 --env-file` turns the guard off. Compose is protected; plain
-  `docker run` is not. The guard keys only on `NODE_ENV`.
+  `docker run` is not. The guard keys only on `NODE_ENV`. **Resolved the
+  same day by ADR-047** (the user's ruling): the guard is on unless
+  `PSEUDONYM_DISABLE_HARDENING=true`.
 - npm and yarn from the base image remain in the runtime image; nothing
   runs them.
 - Only linux/amd64 was built and tested. The base digest covers arm64,
   but this image was not built or tested there.
 - CI does not run the names-on smoke test (no model in `ci.yml`).
+  **Changed the same day:** it does now (amendment below).
 - The README status line is unchanged in substance. Phase 7 is not done,
   so "Phase 6 of 8 done" stays, with the image added beside it.
+
+### Amendment (2026-10-10, later the same day): telemetry on Windows, the size decision, names on in CI
+
+The user asked for four things after 97e244e: the telemetry finding made a
+disclosed threat-model item, the question of Windows answered, the image
+size examined and decided, and the names-on smoke run moved into CI. The
+guard ruling is ADR-047. No live API call was made.
+
+**A. Windows: affected, and not covered by the code switch.** Item 8 said
+"by default on Linux". Every local names run since Phase 6a was on Windows
+(6a, the 6b moves, `eval:names`, `test:names`). How it was checked:
+
+- **The installed Windows build**
+  (`onnxruntime-node/bin/napi-v6/win32/x64/onnxruntime.dll`), searched in
+  both ASCII and UTF-16:
+  - it contains the ETW provider name `Microsoft.ML.ONNXRuntime` and the
+    events `ProcessInfo`, `SessionCreation` and `modelGraphHash`;
+  - it contains `ORT_RUNNING_UNIT_TESTS`;
+  - it does **not** contain `ORT_DISABLE_TELEMETRY`, `GITHUB_ACTIONS`, or
+    any 1DS collector address.
+- **The source at v1.30.0** (`core/platform/windows/telemetry.cc`):
+  - the provider is defined with `TraceLoggingOptionMicrosoftTelemetry()`;
+  - it is on by default (`enabled_ = true`);
+  - events carry `MICROSOFT_KEYWORD_MEASURES`, with the same fields as on
+    Linux (`cpuModel`, `modelFileName`, model hashes, metadata);
+  - the only automatic off switch is the unit-test check;
+  - no environment variable is read.
+- **ONNX Runtime's own `docs/Privacy.md`** says Windows events "may be
+  periodically sent to Microsoft servers" by the operating system, "based
+  on user consent". It also lists `ORT_DISABLE_TELEMETRY=1` as an off
+  switch, which this Windows build does not read.
+- **The Node binding** (`js/node/src/ort_singleton_data.cc` at v1.30.0)
+  creates its environment with no telemetry call, and exposes no
+  `DisableTelemetryEvents`. The compiled binding has no "telemetry" string
+  either.
+- **This machine:** diagnostic data `AllowTelemetry=0`, which Windows Home
+  treats as Required (`MaxTelemetryAllowed=1`); the DiagTrack service is
+  running.
+- **Not observed.** Watching the provider needs an ETW trace session, which
+  needs an elevated shell. This session was not elevated, and that was not
+  worked around. The testing guide has the commands for the user.
+
+**So on Windows:** the runtime emits these events into Windows' own
+diagnostic pipeline by default. Pseudonym cannot turn that off: the
+variable is not read there, and the binding offers no API. Whether Windows
+uploads them depends on its diagnostic-data level, and for this machine
+that is not established.
+
+`ORT_RUNNING_UNIT_TESTS=1` would turn it off. But the source calls it "an
+internal harness signal, not a user-facing opt-out", so it is not used.
+**The user's decision: disclose as a gap.** Production is Linux (ADR-016),
+where the code switch works.
+
+**B. The image size, decided: one image (the user's decision).**
+
+- **The runtime is loaded lazily, so a names-free image is possible.**
+  Only `src/gateway/name-worker-entry.ts` requires `onnxruntime-node` and
+  `@huggingface/tokenizers`. That thread starts only with names on, and
+  `main.ts` imports the name modules dynamically, only then.
+- **Shown by a probe image** built with `npm ci --omit=dev --omit=optional`
+  (not committed):
+  - names off: it served;
+  - names on, with the model mounted: it refused,
+    `NAME_MODEL_LOAD_FAILED`.
+
+Measured on 2026-10-10. "Unpacked" is the sum of `docker history`'s layer
+sizes. "Compressed" is disk usage minus unpacked, which `docker image ls`
+shows rounded as "content size" (200 MB and 85.3 MB). It was checked
+against a separate measure, the size of the `docker save` archive:
+200,253,440 and 85,339,648 bytes, the compressed layers plus tar framing.
+
+| Image                     | Unpacked    | Compressed (a pull) | Disk usage (Docker Desktop) |
+| ------------------------- | ----------- | ------------------- | --------------------------- |
+| Single image (as shipped) | 593,772,544 | 200,233,821         | 794,006,365                 |
+| Without the name runtime  | 289,304,576 | 85,319,612          | 374,624,188                 |
+| The base image            | 246,292,480 | (not measured)      | 326,104,305                 |
+
+The name runtime costs about **304 MB unpacked and 115 MB per pull**, in
+every deployment, including the names-off default, which never loads it.
+The probe was built from the Dockerfile before ADR-047 removed `NODE_ENV`
+from it; that changes no layer's size.
+
+**Decision: a single image, deliberately.** One artifact to smoke-test,
+and names switched on by a mount and a setting. That is the property the
+user asked for in question 3 of ADR-046.
+
+- **The cost, recorded:** the size above.
+- **A runtime that is never loaded with names off:** about 300 MB of native
+  code, its telemetry client included, sits on disk in every container.
+  Code that is never loaded runs nothing.
+- **Considered and not built:** a slim default plus a names tag, or slim
+  only. A later decision can add either with a build argument; the probe
+  shows it works.
+
+**C. Names on in CI (the user's decision: the main CI `docker` job).**
+
+- The job restores the model from the Names workflow's cache, under the
+  same key (`name-model-<hash of name-model.ts>`). It only restores; Names
+  is the one job that saves it.
+- It runs `npm run fetch:model`, which checks every file and downloads on a
+  miss, and then `docker-smoke.ts --models models` on every push.
+- **Why there and not in Names:** a change that breaks names in the image
+  (the worker's path, a missing runtime, the C library) is caught on the
+  push that makes it, not up to a day later and only on `main`.
+- **ADR-036's per-CPU stopping rule does not govern it:** it checks that a
+  name is redacted, not that spans equal a baseline.
+- **Cost:** about a minute, and a download from Hugging Face whenever the
+  cache is cold. The daily Names run keeps it warm on `main`. If Hugging
+  Face is down on a cold cache, the job fails; it never passes without the
+  check.
+- **Not yet run on GitHub.** Only ran locally, where the smoke test passed
+  38 of 38 checks.
+
+---
+
+<a id="adr-047"></a>
+
+## ADR-047: The start-up guard is on unless turned off by name (2026-10-10; the user's ruling)
+
+**Status.** Accepted: the user's ruling. It amends ADR-016, whose checks
+are unchanged; what changes is when they run. The variable's name was
+chosen by the user from three options.
+
+**Context.** Since ADR-016, `main.ts` ran the start-up guard only when
+`NODE_ENV=production`. ADR-046 found what that does in a container:
+
+- `.env.example` sets `NODE_ENV=development`, as development templates
+  do.
+- A `.env` made from it and passed with `docker run --env-file` overrides
+  the image's `ENV`.
+- The guard was then off inside the container. Dumps, the debugger and
+  diagnostic reports went unchecked, and nothing said so.
+
+**The ruling: invert it.** Hardening is **on** unless an explicitly named
+variable turns it off. It is never inferred from `NODE_ENV`.
+
+**The reasoning, as the user gave it:**
+
+- `--env-file` overrides a Dockerfile `ENV`, so **the image cannot defend
+  itself; only the code can.**
+- Keying safety off a variable that every development template sets to
+  "development" **makes the unsafe state the silent default.**
+- **The cost:** developers who relied on `NODE_ENV=development` must set
+  the named flag once. **That cost is worth paying for a default that
+  fails safe.**
+
+**Decision.**
+
+- **`PSEUDONYM_DISABLE_HARDENING`**: `true` turns the guard off; `false`
+  or unset leaves it on.
+- **Any other value is an environment error**, so `TRUE`, `1` or a typo
+  refuses to start rather than turning the guard off.
+- **`startupHardening(env, input)`** (`src/hardening.ts`) is the decision
+  `main.ts` now runs. It returns the guard's result, or `undefined` when
+  turned off by name.
+- **When off, `main.ts` says so on every start:** "hardening off:
+  PSEUDONYM_DISABLE_HARDENING=true; dumps and the debugger are not
+  checked".
+- **`NODE_ENV` is still validated, and switches nothing.** The image no
+  longer sets it, and compose no longer overrides it.
+- **`.env.example`** keeps `NODE_ENV=development` and documents the flag
+  commented out, so a `.env` copied from it never disables the guard.
+
+**Who pays the cost.**
+
+- **On Windows and macOS:** nothing changes in practice. The guard only
+  warns there unless a forbidden flag is set, so `npm run dev` now prints a
+  warning on every start.
+- **On Linux:** `npm run dev` passes no `--disable-sigusr1`, and most hosts
+  allow core dumps, so it now refuses until the developer sets
+  `PSEUDONYM_DISABLE_HARDENING=true` in their own `.env`. `.env.example`
+  says exactly that.
+- **Tests and `eval:names`:** unaffected. They build the server directly
+  and never run `main.ts`.
+
+**Proof.**
+
+- **Unit tests** (`test/unit/hardening.test.ts`):
+  - `.env.example` is parsed with `node:util`'s `parseEnv`, the parser
+    behind `--env-file`, then loaded; on an unsafe Linux input the guard
+    refuses (**the exact case ADR-046 found**);
+  - `NODE_ENV` set to `development`, `test` or `production` changes nothing;
+  - `false` keeps the guard on, and only `true` turns it off;
+  - `TRUE` and `1` are rejected (`env.test.ts`).
+- **Mutations G1–G4** (`scripts/mutations/hardening-default.ts`) are 4 of 4
+  caught. G1 puts the old `NODE_ENV` rule back, and the `.env.example` test
+  is among the 5 tests that catch it.
+- **In the image** (`docker-smoke.ts`):
+  - with `docker run --env-file .env.example --ulimit core=1024`, the guard
+    refuses;
+  - the image must not set the flag;
+  - negative control N4 (the flag baked into the image) fails 5 checks;
+  - N6, an image with `NODE_ENV=development`, now passes all 30.
+
+**Consequences.**
+
+- An operator who wants the guard off must say so by name, and is told on
+  every start.
+- A Linux development `.env` with the flag set, passed to a container,
+  still turns the guard off there. That is now an explicit act in a file
+  the operator wrote, not a template's default. The README says never to
+  give such a file to a container.
+- Compose does not pin the flag to `false`: that would override an
+  explicitly named choice, which this ruling makes the one way to turn the
+  guard off.

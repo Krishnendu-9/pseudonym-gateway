@@ -37,16 +37,18 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 FROM base AS runtime
-# NODE_ENV=production runs the start-up guard (ADR-016). HOST=0.0.0.0: the
-# loopback default would make the gateway unreachable from outside the
-# container, so inside it the default's protection is gone and the network
-# boundary is what limits who can reach it (ADR-046).
+# No NODE_ENV: the start-up guard (ADR-016) runs unless
+# PSEUDONYM_DISABLE_HARDENING=true, whatever NODE_ENV says, because
+# --env-file overrides anything set here and the image cannot defend itself
+# (ADR-047). HOST=0.0.0.0: the loopback default would make the gateway
+# unreachable from outside the container, so inside it the default's
+# protection is gone and the network boundary is what limits who can reach
+# it (ADR-046).
 # ORT_DISABLE_TELEMETRY: ONNX Runtime's Linux build sends Microsoft
 # telemetry by default; the gateway forces it off in code before the name
 # thread starts (name-worker.ts), and it is declared here so that the image
 # says so too (ADR-046).
-ENV NODE_ENV=production \
-    HOST=0.0.0.0 \
+ENV HOST=0.0.0.0 \
     PORT=3000 \
     ORT_DISABLE_TELEMETRY=1
 # package.json for "type": "module"; root owns every file, and the process

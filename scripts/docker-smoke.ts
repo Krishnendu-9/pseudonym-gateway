@@ -9,16 +9,19 @@
 //  2. configuration: a non-root user, the environment the image promises
 //     and a health check;
 //  3. the ADR-016 start-up guard is live: it refuses a core dump limit, an
-//     inspect flag in NODE_OPTIONS and a start without --disable-sigusr1;
-//     and names on with no model mounted refuses to start (ADR-036);
+//     inspect flag in NODE_OPTIONS and a start without --disable-sigusr1,
+//     and still refuses with a .env made from .env.example passed by
+//     --env-file (ADR-047); names on with no model mounted refuses to start
+//     (ADR-036);
 //  4. serving: with a stub provider on a private network, a request with
 //     a synthetic email is answered with the email restored, the stub saw
 //     only its placeholder, Docker's own health check says healthy, and the
 //     gateway's process does not run as root.
-// With `--models <dir>` (the directory `npm run fetch:model` fills; CI has
-// no model), it also serves with names on and that directory mounted
-// read-only, and checks that a synthetic name reaches the stub only as its
-// placeholder.
+// With `--models <dir>` (the directory `npm run fetch:model` fills), it also
+// serves with names on and that directory mounted read-only, and checks that
+// a synthetic name reaches the stub only as its placeholder. CI runs it with
+// the model from the Names workflow's cache.
+// Run from the repository's root: the --env-file check reads .env.example.
 // It prints check names, paths and exit codes, never a request, an answer
 // or the stub's log (rule 5).
 
@@ -182,9 +185,13 @@ check(
   user !== '' && !['root', '0'].includes(user.split(':')[0]!),
   `user "${user}"`,
 );
-for (const variable of ['NODE_ENV=production', 'HOST=0.0.0.0', 'ORT_DISABLE_TELEMETRY=1']) {
+for (const variable of ['HOST=0.0.0.0', 'ORT_DISABLE_TELEMETRY=1']) {
   check(`the image sets ${variable}`, config.Env?.includes(variable) === true);
 }
+check(
+  'the image does not set PSEUDONYM_DISABLE_HARDENING',
+  !(config.Env ?? []).some((e) => e.startsWith('PSEUDONYM_DISABLE_HARDENING=')),
+);
 check(
   'the command runs node with --disable-sigusr1',
   config.Cmd?.[0] === 'node' && config.Cmd.includes('--disable-sigusr1'),
@@ -227,6 +234,13 @@ refuses(
   'the guard refuses a start without --disable-sigusr1',
   ['--ulimit', 'core=0', ...MODEL, image, 'node', 'dist/src/main.js'],
   '--disable-sigusr1 must be set in production',
+);
+// The case ADR-046 found: a .env made from the template, with its
+// NODE_ENV=development, used to turn the guard off (ADR-047).
+refuses(
+  'a .env made from .env.example (--env-file) does not turn the guard off',
+  ['--env-file', '.env.example', '--ulimit', 'core=1024', image],
+  'core dumps must be disabled',
 );
 refuses(
   'names on with no model mounted refuses to start',

@@ -7,6 +7,7 @@ describe('loadEnv', () => {
   it('applies defaults when only the model is set', () => {
     expect(loadEnv(REQUIRED)).toEqual({
       NODE_ENV: 'development',
+      PSEUDONYM_DISABLE_HARDENING: false,
       HOST: '127.0.0.1',
       PORT: 3000,
       LOG_LEVEL: 'info',
@@ -37,9 +38,11 @@ describe('loadEnv', () => {
       PSEUDONYM_MAX_STREAM_BYTES: '4096',
       PSEUDONYM_RESTORE_IN_UNSAFE_REGIONS: 'true',
       PSEUDONYM_PLACEHOLDER_INSTRUCTION: 'true',
+      PSEUDONYM_DISABLE_HARDENING: 'true',
     });
     expect(env).toMatchObject({
       NODE_ENV: 'production',
+      PSEUDONYM_DISABLE_HARDENING: true,
       HOST: '0.0.0.0',
       PORT: 8080,
       LOG_LEVEL: 'debug',
@@ -73,6 +76,8 @@ describe('loadEnv', () => {
     ['PSEUDONYM_MAX_STREAM_BYTES', '32MiB'],
     ['PSEUDONYM_RESTORE_IN_UNSAFE_REGIONS', 'yes'],
     ['PSEUDONYM_PLACEHOLDER_INSTRUCTION', '0'],
+    ['PSEUDONYM_DISABLE_HARDENING', 'TRUE'],
+    ['PSEUDONYM_DISABLE_HARDENING', '1'],
   ])('rejects %s=%s', (name, value) => {
     expect(() => loadEnv({ ...REQUIRED, [name]: value })).toThrow(
       `Invalid environment variables: ${name}`,

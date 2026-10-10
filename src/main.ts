@@ -9,7 +9,7 @@ import { loadEnv } from './config/env.js';
 import { nameFinder, nameOptions, ollamaConfig, serverConfig } from './config/wiring.js';
 import { safeErrorDetails } from './gateway/errors.js';
 import { buildServer } from './gateway/server.js';
-import { checkProductionHardening } from './hardening.js';
+import { startupHardening } from './hardening.js';
 import { createOllamaProvider } from './providers/ollama.js';
 
 const readOptional = (path: string): string | undefined => {
@@ -38,17 +38,24 @@ try {
   process.exit(1);
 }
 
-if (env.NODE_ENV === 'production') {
-  const { problems, warnings } = checkProductionHardening({
-    platform: process.platform,
-    execArgv: process.execArgv,
-    nodeOptions: process.env.NODE_OPTIONS,
-    procSelfLimits: readOptional('/proc/self/limits'),
-    corePattern: readOptional('/proc/sys/kernel/core_pattern'),
-  });
-  for (const warning of warnings) process.stderr.write(`hardening warning: ${warning}\n`);
-  if (problems.length > 0) {
-    for (const problem of problems) process.stderr.write(`hardening problem: ${problem}\n`);
+// On unless PSEUDONYM_DISABLE_HARDENING=true (ADR-047), whatever NODE_ENV says.
+const hardening = startupHardening(env, {
+  platform: process.platform,
+  execArgv: process.execArgv,
+  nodeOptions: process.env.NODE_OPTIONS,
+  procSelfLimits: readOptional('/proc/self/limits'),
+  corePattern: readOptional('/proc/sys/kernel/core_pattern'),
+});
+if (hardening === undefined) {
+  process.stderr.write(
+    'hardening off: PSEUDONYM_DISABLE_HARDENING=true; dumps and the debugger are not checked\n',
+  );
+} else {
+  for (const warning of hardening.warnings) process.stderr.write(`hardening warning: ${warning}\n`);
+  if (hardening.problems.length > 0) {
+    for (const problem of hardening.problems) {
+      process.stderr.write(`hardening problem: ${problem}\n`);
+    }
     process.exit(1);
   }
 }

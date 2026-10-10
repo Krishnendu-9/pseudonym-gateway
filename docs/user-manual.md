@@ -319,7 +319,8 @@ Node 22.20 or newer is required (`.nvmrc` says 22.23.3). It listens on
 | `PSEUDONYM_RESTORE_IN_UNSAFE_REGIONS`   | `false`                                  | `true` restores inside URLs too (not recommended)                                                                             |
 | `PSEUDONYM_PLACEHOLDER_INSTRUCTION`     | `false`                                  | Adds a short system message asking the model to copy placeholders exactly (ADR-017; off since it did not help the demo model) |
 | `PSEUDONYM_NAMES`                       | unset (off)                              | `true` turns person names on (Phase 6, ADR-037); until the name model is built in, the gateway then refuses to start          |
-| `HOST`, `PORT`, `LOG_LEVEL`, `NODE_ENV` | `127.0.0.1`, 3000, `info`, `development` | The usual                                                                                                                     |
+| `PSEUDONYM_DISABLE_HARDENING`           | `false`                                  | `true` turns the start-up guard off (ADR-047); only for development on Linux, never in production or a container              |
+| `HOST`, `PORT`, `LOG_LEVEL`, `NODE_ENV` | `127.0.0.1`, 3000, `info`, `development` | The usual; `NODE_ENV` turns nothing on or off (ADR-047)                                                                       |
 
 A wrong value stops the server at start-up with a message naming the
 variable, never its value.
@@ -412,13 +413,21 @@ ends. An answer that fails is not counted.
 
 ### Production
 
-With `NODE_ENV=production`, Pseudonym checks at start-up that nothing can
-copy its memory out: no inspector or heap-snapshot or report flags (in the
-command line or `NODE_OPTIONS`), and on Linux `--disable-sigusr1` set and
-core dumps off (`ulimit -c 0`). If any check fails it refuses to start.
-It warns if the host pipes core dumps to a handler (which ignores the
-limit), and on Windows or macOS, where none of this can be verified.
-Production is meant to run on Linux (Docker in Phase 8). ADR-016.
+On every start, Pseudonym checks that nothing can copy its memory out: no
+inspector or heap-snapshot or report flags (in the command line or
+`NODE_OPTIONS`), and on Linux `--disable-sigusr1` set and core dumps off
+(`ulimit -c 0`). If any check fails it refuses to start. It warns if the
+host pipes core dumps to a handler (which ignores the limit), and on
+Windows or macOS, where none of this can be verified. Production is meant
+to run on Linux. ADR-016.
+
+Until 2026-10-10 this ran only with `NODE_ENV=production`. Since ADR-047
+it runs unless `PSEUDONYM_DISABLE_HARDENING=true`, and Pseudonym then says
+on every start that the check is off. Any other value of that variable is
+an error. `NODE_ENV` turns nothing on or off. On Linux, `npm run dev` does
+not pass `--disable-sigusr1`, so to develop there, set the variable in your
+own `.env` (`.env.example` shows it, commented out). Never set it in
+production, or in a `.env` you give to a container.
 
 ### Known limits
 
@@ -1506,10 +1515,12 @@ those need care in a container:
 - `PSEUDONYM_PROVIDER_BASE_URL` must be an address the container can
   reach. `localhost` inside a container is the container itself. For an
   Ollama on the same machine use `http://host.docker.internal:11434/v1`.
-- `NODE_ENV` and `HOST` from `.env` are ignored. The compose file sets
-  `NODE_ENV=production`, so the start-up guard runs, and `HOST=0.0.0.0`.
-  Without compose, do not pass a development `.env` to `docker run
---env-file`: its `NODE_ENV=development` would switch the guard off.
+- `HOST` from `.env` is ignored: the compose file sets `HOST=0.0.0.0`.
+  Without compose, a development `.env` passed to `docker run --env-file`
+  says `HOST=127.0.0.1`; add `-e HOST=0.0.0.0` after it. The start-up guard
+  runs whatever `NODE_ENV` says (ADR-047), unless
+  `PSEUDONYM_DISABLE_HARDENING=true`, which a container should never be
+  given.
 
 **Who can reach it.** Outside a container, Pseudonym listens on
 `127.0.0.1` unless told otherwise, so only programs on the same machine can
@@ -1538,8 +1549,17 @@ To switch names on:
 
 With names on and no model mounted, the container refuses to start rather
 than sending names as written. ONNX Runtime, the library that runs the
-model, sends usage statistics to Microsoft from Linux by default. Pseudonym
-always turns that off before the model loads.
+model, sends usage statistics to Microsoft by default: the CPU model, a
+device ID, and the model's file name and hashes, never your text. On Linux,
+which is what the container runs, Pseudonym always turns that off before
+the model loads. On Windows it cannot: there the library hands the
+statistics to Windows' own diagnostic data, which Windows may upload
+depending on its privacy settings. See the README's threat model.
+
+**How big it is.** A 200 MB download, 594 MB unpacked. About 115 MB of the
+download (304 MB unpacked) is the name library, kept so that names can be
+switched on without another image; with names off it is never loaded
+(ADR-046).
 
 **The health check.** Docker asks `GET /health` every 30 seconds; it
 never contacts the AI provider. A container marked healthy is answering

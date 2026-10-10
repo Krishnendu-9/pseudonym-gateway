@@ -79,8 +79,9 @@ jobs:
   # The container image (ADR-046): built from the Dockerfile, then checked
   # as built by scripts/docker-smoke.ts: what it contains (no .env, eval/,
   # test/ or model), a non-root user, the start-up guard refusing what it
-  # must, and a real request through the gateway to a stub provider. Its own
-  # job, beside the tests, so neither waits for the other.
+  # must, and real requests through the gateway to a stub provider, with
+  # names off and with names on (the model mounted). Its own job, beside
+  # the tests, so neither waits for the other.
   docker:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -105,5 +106,21 @@ jobs:
       - name: Image size
         run: docker image inspect pseudonym-gateway:ci --format '{{.Size}} bytes'
 
-      - name: Smoke test the image
-        run: npx tsx scripts/docker-smoke.ts pseudonym-gateway:ci
+      # The model for the names-on run (ADR-047's CI decision), from the cache
+      # the Names workflow saves, under the same key. Restore only: Names is
+      # the one job that writes it. On a miss, fetch:model downloads the
+      # pinned files; either way it checks every file's size and SHA-256,
+      # and the gateway checks them again before it loads the model.
+      - name: Restore the model
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: models
+          key: name-model-${{ hashFiles('src/gateway/name-model.ts') }}
+
+      - name: Fetch or check the model
+        run: npm run fetch:model
+
+      # Names on checks that a name is redacted, not span equality, so
+      # ADR-036's per-CPU stopping rule does not govern it.
+      - name: Smoke test the image, names off and on
+        run: npx tsx scripts/docker-smoke.ts --models models pseudonym-gateway:ci

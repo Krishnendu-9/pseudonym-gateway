@@ -8,7 +8,15 @@ const booleanFlag = (fallback: 'true' | 'false') =>
     .transform((value) => value === 'true');
 
 const envSchema = z.object({
+  // Validated by convention only: since ADR-047 it switches nothing on or
+  // off. The start-up guard used to run only when this was "production",
+  // which every development template sets to "development".
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  // The start-up guard (ADR-016) runs unless this is exactly "true"
+  // (ADR-047): the unsafe state has to be asked for by name. Any value but
+  // "true" or "false" is an error, so a typo refuses to start rather than
+  // turning the guard off.
+  PSEUDONYM_DISABLE_HARDENING: booleanFlag('false'),
   // Loopback by default: nothing is exposed to the network until it is asked
   // for. The Docker image sets 0.0.0.0, so this protects nothing there; the
   // network in front of the container does that (ADR-046).

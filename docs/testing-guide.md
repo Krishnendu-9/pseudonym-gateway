@@ -3833,6 +3833,11 @@ entry, with the date and the work that ran.
   mutations, about 7 s each), the name-worker test file run alone, and one
   full gate (`npm test` 3,217 tests, the coverage run, `npm run eval`,
   `test:names`, `eval:names`), with Docker Desktop stopped before the gate.
+- **2026-10-10, Phase 8 follow-up (ADR-047):** no stall. The work: one
+  mutation list (4 mutations, 4–5 s each), and one full gate (`npm test`
+  3,227 tests, coverage, `npm run eval`, `test:names`, `eval:names`). The
+  `npm test` sampler's longest gap was 10.0 s, one interval longer than
+  usual, with no test slow or failing.
 
 ## The Docker image (Phase 8, 2026-10-10, ADR-046, bug-logs 72 and 73)
 
@@ -3844,22 +3849,28 @@ npx tsx scripts/docker-smoke.ts pseudonym-gateway:local
 npx tsx scripts/docker-smoke.ts --models models pseudonym-gateway:local   # also names on (needs npm run fetch:model)
 ```
 
-It runs 29 checks, plus 8 more with `--models`, in four groups:
+It runs 30 checks, plus 8 more with `--models`, in four groups. Run it from
+the repository's root: one check reads `.env.example`.
 
 - **What the image contains.** A `docker export` of a container made from
   the image, listed with `tar`.
-- **Its configuration.** The user, the environment, the command and the
-  health check.
-- **Four refusals.** Three from the ADR-016 guard, and names on with no
-  model. Each is limited to 60 s.
+- **Its configuration.** The user, the environment (including that
+  `PSEUDONYM_DISABLE_HARDENING` is not set), the command and the health
+  check.
+- **Five refusals.** Three from the ADR-016 guard; the guard again with
+  `--env-file .env.example` (ADR-047, the case ADR-046 found); and names on
+  with no model. Each is limited to 60 s.
 - **Serving.** A stub provider, which is the image itself running a small
   `node -e` server, on a private Docker network. A request with a
   synthetic email goes through the published port, and the stub's log is
   checked. It is never printed.
 
 It prints check names, paths and exit codes only. It needs Docker and
-`tar` on the PATH. CI runs it in its own job (`docker` in `ci.yml`). It
-ran green on Docker Desktop 29.8.1 (Windows 11, WSL2 VM with 4 CPUs).
+`tar` on the PATH. CI runs it in its own job (`docker` in `ci.yml`), with
+`--models` since the same day: the model comes from the Names workflow's
+cache (restore only) and `npm run fetch:model` checks it (ADR-046
+amendment C). It ran green on Docker Desktop 29.8.1 (Windows 11, WSL2 VM
+with 4 CPUs): 38 of 38 with `--models`. It has not run on GitHub yet.
 
 **The build context, listed.** To see what the `.dockerignore` allowlist
 lets in, build a throwaway Dockerfile, written anywhere outside the repo,
@@ -3878,18 +3889,20 @@ On 2026-10-10 it showed 68 files: `package.json`, `package-lock.json`,
 **Negative controls: the smoke test can fail.** Each is a copy of the
 Dockerfile, outside the repo, with one change. Build it with `docker
 build -f <copy> -t pseudonym-gateway:nN .`, then run the smoke test on
-that tag. All five were run against the final script, and each failed it:
+that tag. Re-run after ADR-047 against the final script, without
+`--models`: N1–N5 each failed it, and N6 passed it, as it must.
 
-| Control | Change to the copy                                                                                     | Failed checks                                                                          |
-| ------- | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
-| N1      | after the `COPY --from=build` line: `RUN mkdir -p /app/eval && touch /app/eval/held-out.txt /app/.env` | 4: `/app` contents, `.env`, held-out, forbidden directories                            |
-| N2      | delete `USER node`                                                                                     | 2: configured user, running uid (`0 0`)                                                |
-| N3      | delete the `HOST=0.0.0.0` line of `ENV`                                                                | 6: the environment and all five serving checks; **Docker's health check still passed** |
-| N4      | `ENV NODE_ENV=development`                                                                             | 4: the environment and the three guard refusals ("still running after 60 s")           |
-| N5      | `CMD` without `--disable-sigusr1`                                                                      | 9: the command, the names refusal (refused by the guard instead), serving, health, uid |
+| Control | Change to the copy                                                                                     | Result                                                                                                    |
+| ------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| N1      | after the `COPY --from=build` line: `RUN mkdir -p /app/eval && touch /app/eval/held-out.txt /app/.env` | 4 failed: `/app` contents, `.env`, held-out, forbidden directories                                        |
+| N2      | delete `USER node`                                                                                     | 2 failed: configured user, running uid (`0 0`)                                                            |
+| N3      | the `ENV` line's `HOST=0.0.0.0` changed to `HOST=127.0.0.1`                                            | 6 failed: the environment and all five serving checks; **Docker's health check still passed**             |
+| N4      | before `USER node`: `ENV PSEUDONYM_DISABLE_HARDENING=true`                                             | 5 failed: the environment and four guard refusals, `--env-file` included ("still running after 60 s")     |
+| N5      | `CMD` without `--disable-sigusr1`                                                                      | 9 failed: the command, the names refusal (refused by the guard instead), serving, health, uid             |
+| N6      | before `USER node`: `ENV NODE_ENV=development` (N4 before ADR-047)                                     | **passed, 30 of 30**: `NODE_ENV` no longer turns the guard off. Before ADR-047 this image failed 4 checks |
 
-N4 found bug 72: a refusal check that waited without a limit could only
-pass or hang. N3 shows why serving is checked through the published port.
+N4 found bug 72, when it was still the `NODE_ENV=development` image: a
+refusal check that waited without a limit could only pass or hang. N3 shows why serving is checked through the published port.
 Docker's own check runs inside the container, where a loopback-bound
 gateway answers.
 
@@ -3919,10 +3932,60 @@ The image built before the switch wrote
 45 KB event queue (`onnxruntime.db`, `-wal`, `-shm`). Mutations OT1–OT3
 (`scripts/mutations/runtime-telemetry.ts`): 3 of 3 caught, about 7 s each.
 
+**ONNX Runtime's telemetry on Windows: not covered, and not observed.**
+
+- **The Windows build ignores the switch.** Its DLL has no
+  `ORT_DISABLE_TELEMETRY` string, in ASCII or UTF-16. It hands its events
+  to Windows' ETW pipeline, on provider `Microsoft.ML.ONNXRuntime`, GUID
+  `3a26b1ff-7484-7484-7484-15261f42614d` (ADR-046 amendment A).
+- **What would show it fire** needs an elevated PowerShell. Run these from
+  the repository's root, with names-model files present. They capture only
+  that provider; the trace holds the CPU model and the model's file name,
+  never text:
+
+  ```powershell
+  logman create trace ort-telemetry -p "{3a26b1ff-7484-7484-7484-15261f42614d}" -o "$env:TEMP\ort-telemetry.etl" -ets
+  npm run test:names
+  logman stop ort-telemetry -ets
+  tracerpt "$env:TEMP\ort-telemetry.etl" -o "$env:TEMP\ort-telemetry.xml" -of XML
+  Select-String -Path "$env:TEMP\ort-telemetry.xml" -Pattern 'ProcessInfo|SessionCreation' | Measure-Object
+  ```
+
+  A count above zero means the runtime emitted its events while Pseudonym
+  ran.
+
+- **What it cannot show:** whether Windows uploaded them. Windows'
+  Diagnostic Data Viewer (Settings, Privacy & security, Diagnostics &
+  feedback) shows what was sent, once its data viewing is switched on.
+- **Not run:** this session had no elevated shell, and that was not worked
+  around.
+
+**The guard is on unless named off (ADR-047).** `test/unit/hardening.test.ts`
+parses `.env.example` with `node:util`'s `parseEnv`, the parser behind
+`--env-file`, loads it with `loadEnv`, and checks that `startupHardening`
+refuses an unsafe Linux process. That is the case ADR-046 found. Further
+tests:
+
+- `NODE_ENV` set to `development`, `test` or `production` changes nothing;
+- `false` keeps the guard on, and only `true` turns it off;
+- `TRUE` and `1` are rejected (`env.test.ts`).
+
+Mutations G1–G4 (`scripts/mutations/hardening-default.ts`): 4 of 4 caught.
+G1 puts the old `NODE_ENV` rule back and is caught by 5 tests, the
+`.env.example` test among them.
+
+**The image's sizes, measured** (ADR-046 amendment B, bug-log 74):
+
+- unpacked is the sum of `docker history --no-trunc --human=false --format
+'{{.Size}}'`;
+- compressed is `docker image ls`'s "content size", which equals disk
+  usage minus unpacked, and is checked against `docker save <image> | wc -c`;
+- `docker image inspect` `.Size` is disk usage (both together), not the
+  unpacked size.
+
 **Not covered:**
 
-- names on in CI (no model in that job);
 - linux/arm64;
 - `eval:names` inside the image (the spans were reproduced in Phase 6c on
   the full `bookworm` image, from the repository, not on this one);
-- the compressed size of the image.
+- the names-on smoke check in CI has not yet run on GitHub.

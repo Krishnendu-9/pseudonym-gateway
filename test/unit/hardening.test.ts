@@ -1,11 +1,15 @@
 // The production start-up guard (ADR-016): which flags and settings stop
 // production from starting, and what can only be a warning.
 
+import { readFileSync } from 'node:fs';
+import { parseEnv } from 'node:util';
 import { describe, expect, it } from 'vitest';
+import { loadEnv } from '../../src/config/env.js';
 import {
   checkProductionHardening,
   coreSoftLimit,
   FORBIDDEN_FLAGS,
+  startupHardening,
   type HardeningInput,
 } from '../../src/hardening.js';
 
@@ -27,6 +31,49 @@ const HARDENED: HardeningInput = {
 
 const check = (overrides: Partial<HardeningInput>) =>
   checkProductionHardening({ ...HARDENED, ...overrides });
+
+// A Linux process with core dumps allowed and no --disable-sigusr1: the guard
+// must refuse it.
+const UNSAFE: HardeningInput = { ...HARDENED, execArgv: [], procSelfLimits: limits('unlimited') };
+const REFUSED = [
+  '--disable-sigusr1 must be set in production (SIGUSR1 starts the inspector)',
+  'core dumps must be disabled (ulimit -c 0)',
+];
+
+describe('startupHardening: on unless named off (ADR-047)', () => {
+  it('a .env built from .env.example does not turn the guard off (the case ADR-046 found)', () => {
+    // Parsed as `node --env-file` and `docker run --env-file` read it.
+    const env = loadEnv(parseEnv(readFileSync('.env.example', 'utf8')));
+    expect(env.NODE_ENV).toBe('development');
+    expect(env.PSEUDONYM_DISABLE_HARDENING).toBe(false);
+    expect(startupHardening(env, UNSAFE)?.problems).toEqual(REFUSED);
+  });
+
+  it.each(['development', 'test', 'production'] as const)(
+    'NODE_ENV=%s changes nothing: the guard runs',
+    (nodeEnv) => {
+      const env = loadEnv({ PSEUDONYM_MODEL: 'm', NODE_ENV: nodeEnv });
+      expect(startupHardening(env, UNSAFE)?.problems).toEqual(REFUSED);
+    },
+  );
+
+  it('PSEUDONYM_DISABLE_HARDENING=false keeps it on', () => {
+    const env = loadEnv({ PSEUDONYM_MODEL: 'm', PSEUDONYM_DISABLE_HARDENING: 'false' });
+    expect(startupHardening(env, UNSAFE)?.problems).toEqual(REFUSED);
+  });
+
+  it('only PSEUDONYM_DISABLE_HARDENING=true turns it off', () => {
+    const env = loadEnv({ PSEUDONYM_MODEL: 'm', PSEUDONYM_DISABLE_HARDENING: 'true' });
+    expect(startupHardening(env, UNSAFE)).toBeUndefined();
+  });
+
+  it('a hardened process passes through it unchanged', () => {
+    expect(startupHardening({ PSEUDONYM_DISABLE_HARDENING: false }, HARDENED)).toEqual({
+      problems: [],
+      warnings: [],
+    });
+  });
+});
 
 describe('checkProductionHardening on Linux', () => {
   it('a hardened process passes with no warnings', () => {

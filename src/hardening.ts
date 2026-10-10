@@ -66,6 +66,20 @@ export function coreSoftLimit(procSelfLimits: string): string | undefined {
   return line?.slice('Max core file size'.length).trim().split(/\s+/)[0];
 }
 
+/**
+ * The start-up check as main.ts runs it (ADR-047): always, unless
+ * PSEUDONYM_DISABLE_HARDENING is "true", in which case undefined. Not keyed
+ * on NODE_ENV: --env-file overrides an image's ENV, so a container image
+ * cannot defend itself, and a variable every development template sets to
+ * "development" made the unsafe state the silent default.
+ */
+export function startupHardening(
+  env: { readonly PSEUDONYM_DISABLE_HARDENING: boolean },
+  input: HardeningInput,
+): HardeningResult | undefined {
+  return env.PSEUDONYM_DISABLE_HARDENING ? undefined : checkProductionHardening(input);
+}
+
 export function checkProductionHardening(input: HardeningInput): HardeningResult {
   const problems: string[] = [];
   const warnings: string[] = [];

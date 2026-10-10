@@ -29,10 +29,10 @@ services:
       - path: .env
         required: false
     # Set after env_file, which they override: a .env made from .env.example
-    # says NODE_ENV=development, which turns the start-up guard off, and
-    # HOST=127.0.0.1, which nothing outside the container can reach.
+    # says HOST=127.0.0.1, which nothing outside the container can reach. Its
+    # NODE_ENV=development no longer matters: the start-up guard runs unless
+    # PSEUDONYM_DISABLE_HARDENING=true (ADR-047).
     environment:
-      NODE_ENV: production
       HOST: 0.0.0.0
       PORT: '3000'
     # Lets PSEUDONYM_PROVIDER_BASE_URL=http://host.docker.internal:11434/v1
