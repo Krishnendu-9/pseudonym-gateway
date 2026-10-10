@@ -6894,6 +6894,129 @@ artifacts show. Removal is deferred until that question is settled. This
 too is a departure from the committed text, recorded as one. The schedule's
 remaining purpose is the hypothesis test, not E1.
 
+### #10 and #11 against the committed predictions (opened 2026-10-10, after `a3911d1`)
+
+**The order of events:**
+
+| When (2026-10-10, IST) | What                                                                                    |
+| ---------------------- | --------------------------------------------------------------------------------------- |
+| 16:58:22               | `42d50fd`: the finding, the keying ruling and the predictions for #10 and #11 committed |
+| 17:01:47               | `a3911d1`: E1's close-out committed                                                     |
+| after both, pushed     | #10's and #11's `names-result.json` opened by the user                                  |
+
+Values as the user reported them from each `names-result.json`. Each
+reported hash was checked in full against the committed ones: #11's two
+hashes equal `eval/names-baseline.json` byte for byte, and #10's equal #6's,
+recorded in full above.
+
+| Run | Guest's AVX-512 | B's spans                     | Names                         | Second pass | Detections | Recall  | Precision | ms per KiB |
+| --- | --------------- | ----------------------------- | ----------------------------- | ----------- | ---------- | ------- | --------- | ---------- |
+| #10 | yes             | `d1f611f06ea88b2f…` (group B) | `46dd8ff36336bbc8…` (group B) | identical   | 934        | 502/612 | 662/934   | 157.0      |
+| #11 | no              | `96a5c3289a275cf9…` (group A) | `ba1a6b82da7c951d…` (group A) | identical   | 933        | 501/612 | 661/933   | 306.4      |
+
+**1. The scorecard: two of two.**
+
+| Run | Predicted (committed in `42d50fd`) | Confidence | Result  | Scored |
+| --- | ---------------------------------- | ---------- | ------- | ------ |
+| #10 | group B                            | high       | group B | hit    |
+| #11 | group A                            | medium     | group A | hit    |
+
+**#11 contradicts the earlier committed prediction** (`ef8b102`, the
+standing step for the EPYC 9V74). That prediction was keyed to the model
+name and, read as written, put every 9V74 run in group B. It scored a hit
+on #6 and **a miss on #11**. The contradiction was **flagged in advance**,
+in `42d50fd`, before either artifact was opened ("For #11 the two
+contradict each other, and #11's result decides between them"). It was
+not discovered afterwards. `ef8b102` stands as committed, with this score
+beside it.
+
+**2. What this establishes, and what it does not.**
+
+- **Established: whether the guest shows AVX-512 predicts the group,
+  across every observation so far, with no exception.**
+  - **Where the guest's instruction set is known**, the group follows it:
+    the i5-12450H and the EPYC 7763, fixed by parts without AVX-512 and
+    printed on #7–#9; #10 (printed, AVX-512); #11 (printed, none).
+  - **Where it is not known** (#2, #4, #6: parts with AVX-512, guest flags
+    never printed), every run fell in group B. That is consistent with the
+    hypothesis, but not an observation of it.
+- **This was its strongest test so far.** #10 and #11 share one CPU model
+  name, and, as the user reported, one Linux kernel, one Node and one
+  model, on the same code. **The only observed difference was the
+  instruction set the guest sees**, and the group followed it.
+  "Observed" matters here: the hosts behind the two VMs (hardware
+  generation, hypervisor configuration) were not observed, and may differ
+  in other ways too.
+- **Not established: the mechanism.** Which kernel, or which operation,
+  produces the difference has not been examined. No run has looked at
+  which kernels the runtime selected.
+- **So it remains a hypothesis that has survived its strongest test,** not
+  a proven cause.
+- Speed agrees, weakly as before: #10 157.0 ms per KiB with group B's
+  other runs near 150; #11 306.4 with group A's runner runs near 293.
+
+**3. The keying ruling is supported by evidence that postdates it.** The
+ruling, made under rule 6 and committed in `42d50fd` at 16:58:22 IST, keys
+S2, C1 and minting on model name plus printed flags. It was made because
+#10's and #11's flags differed, and before their hashes were known. **Those
+hashes, opened after it, show two different pairs under one model name,**
+split exactly by the flags. A baseline keyed by model name alone would have
+made one of the two fail by host. **The order is the point:** the ruling
+was not fitted to these results. It was committed before them, and they
+bear it out.
+
+**4. The difference, characterised.** This tells us more than the hash
+comparison did. From the result files' breakdown rows, as the user read
+them, group B finds **exactly one detection more**, and five breakdown rows
+each move by one:
+
+| Breakdown row          | Group A | Group B |
+| ---------------------- | ------- | ------- |
+| `name-form:three-part` | 90      | 91      |
+| `name-lang:en`         | 243     | 244     |
+| `name-place:sentence`  | 70      | 71      |
+| `name-region:north`    | 91      | 92      |
+| `name-script:latin`    | 390     | 391     |
+
+- **It is a true positive.** Recall moves 501 to 502 of 612, and
+  precision's numerator moves with it (661/933 to 662/934). The
+  lookalike counts are identical, and the main cases' PERSON stays at
+  145 of 153 in both.
+- **So the two groups differ by one three-part English name, in
+  Latin script, from the north region, in sentence position.** The
+  headline PERSON figure is unaffected by the split.
+- **Derived from counts, which cannot rule out compensating differences.**
+  The rows are totals per tag. Two changes that cancel inside a row (one
+  name found and another lost under the same tags), or a span boundary
+  moving inside a name that is counted the same either way, would leave
+  every count equal. The names hash says only that the span sets differ.
+  Which name it is was not looked at: texts are never printed.
+
+**5. Wording.** Where the README and the user manual described the split by
+CPU model (for example the README's "differs by one detection in 933 on two
+Intel Xeon models"), they now describe it by instruction set. One model
+name, the EPYC 9V74, now sits on both sides. This ADR's earlier entries
+are left as written, as dated records.
+
+**6. E1's close-out is unaffected.**
+
+- Both runs were already counted (both printed `skip`; recorded in
+  `42d50fd`).
+- **Neither key can be baselined from one run:** the minting rule needs
+  two agreeing counted runs on a key.
+- **The close-out was committed** (`a3911d1`) **before either artifact was
+  opened**, and its argument does not depend on these hashes. #2's and #6's
+  keys stay unknown, and #6's is not inferred from its group-B hashes now
+  either: that is the circularity the ruling excludes.
+- **E1 stays not adopted.** The tally is unchanged: 10 counted.
+
+**What this leaves open.**
+
+- **The daily schedule.** Its removal was deferred "until that question is
+  settled". Whether this result settles the 9V74 question enough to remove
+  the schedule is the user's decision, not taken here.
+- **The two 9V74 keys** each have one counted run, and no baseline.
+
 <a id="adr-037"></a>
 
 ## ADR-037: Person names in the request path, against a fake model (Phase 6b step 3, 2026-10-03; amends ADR-003, ADR-013)

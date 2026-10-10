@@ -7,8 +7,10 @@ reaches an LLM, and restores it in the reply.**
 > streaming, the evaluation and person names are built, and a CI workflow
 > runs the checks, tests and evaluation. Person names can be switched on,
 > off by default: the model runs inside the gateway, reproduces its
-> published measurement exactly on the CPU it was measured on and on an AMD
-> EPYC 7763, and differs by one detection in 933 on two Intel Xeon models;
+> published measurement exactly on machines without AVX-512 (the CPU it was
+> measured on, among others), and differs by one detection in 933, one
+> extra correct name, on machines with it, where one CPU model name has
+> appeared on both sides;
 > a separate workflow checks it on GitHub's runners by hand and daily,
 > against each CPU model's own baseline. Phase 8 has started before Phase 7
 > is finished: a Docker image builds, and CI checks what it contains and
@@ -463,31 +465,43 @@ eval:names` sends the 1,998 measured messages through it and compares
   i5-12450H. Under a rule written and committed before any Linux run
   ([ADR-036](docs/decisions.md#adr-036), Phase 6c), the same comparison,
   every span by SHA-256:
-  - **reproduced them exactly** on the i5-12450H under Linux (Debian 12 in
-    a container, 4 logical CPUs against Windows' 12), and on a GitHub
-    runner's **AMD EPYC 7763** (in two separate runs), across a vendor
-    boundary;
-  - **differed slightly** on another runner's **Intel Xeon Platinum
-    8573C**, on the same Linux as the EPYC run, so not because of the
-    operating system, and identically on a fourth runner's **Intel Xeon
-    6973P-C**. Their figures, beside the published ones, never in their
-    place:
+  - **Two answers, split by instruction set, not by CPU model.** Every
+    machine so far gave one of exactly two sets of spans, byte for byte.
+    Which one followed whether the machine has AVX-512:
+    - **without AVX-512, the published figures reproduce exactly:** the
+      i5-12450H under Linux (Debian 12 in a container), GitHub runners'
+      **AMD EPYC 7763** (six runs), and a runner reporting **AMD EPYC
+      9V74** whose virtual machine hid AVX-512;
+    - **with AVX-512, one extra name is found:** runners' **Intel Xeon
+      Platinum 8573C** and **Intel Xeon 6973P-C**, and a runner reporting
+      the **same AMD EPYC 9V74** model name whose virtual machine showed
+      AVX-512.
 
-    | Generated set (1,998 messages)  | i5-12450H and EPYC 7763 | Xeon Platinum 8573C and Xeon 6973P-C |
-    | ------------------------------- | ----------------------- | ------------------------------------ |
-    | Names found (612)               | 501 (81.8%)             | 502 (82.0%)                          |
-    | Detections, precision           | 933, 70.8%              | 934, 70.8%                           |
-    | False positives per 1,000 words | 5.85                    | 5.85                                 |
-    | Held-out (45)                   | 41 (i5-12450H only)     | not run (spent)                      |
+    So one CPU model name sits on both sides. The two Xeons' runs, and an
+    earlier EPYC 9V74 run, did not log what their virtual machine showed.
+    Their chips have AVX-512, so they are consistent with the split, but not
+    observations of it. The operating system is ruled out (the same Linux
+    on both sides). Their figures, beside the published
+    ones, never in their place:
 
-  - Four CPUs, two answers: the two without AVX-512 agree with each other,
-    and the two with AVX-512 and AMX agree with each other, byte for byte.
-    The difference is small (one detection in 933, a correct name). The
-    likely reason: the runtime picks its compute kernels by instruction
-    set. That explanation predicted the Xeon 6973P-C's result before it was
-    looked at, and held; it is still **not shown**, since no run has looked
-    at which kernels were chosen. The held-out figure stays the
-    i5-12450H's. **Not adopted: names checks on every push.** A rule set
+    | Generated set (1,998 messages)  | Without AVX-512     | With AVX-512    |
+    | ------------------------------- | ------------------- | --------------- |
+    | Names found (612)               | 501 (81.8%)         | 502 (82.0%)     |
+    | Detections, precision           | 933, 70.8%          | 934, 70.8%      |
+    | False positives per 1,000 words | 5.85                | 5.85            |
+    | Main cases, PERSON              | 145/153             | 145/153         |
+    | Held-out (45)                   | 41 (i5-12450H only) | not run (spent) |
+
+  - **What the difference is.** From the counts, it is one extra correct
+    name: a three-part English name in a sentence, the rest unchanged. Counts
+    cannot rule out changes that cancel each other out.
+  - **Why: a hypothesis, not a finding.** The likely reason is that the
+    runtime picks its compute kernels by instruction set. It predicted
+    four later runs' results before they were looked at: three of those
+    predictions were committed in advance, including the two for the runs
+    that share the EPYC 9V74 name. It is still
+    **not shown**: no run has looked at which kernels were chosen. The
+    held-out figure stays the i5-12450H's. **Not adopted: names checks on every push.** A rule set
     in advance decided it, closed out early on 2026-10-10 at 10 counted
     runs. One CPU model name turned out to cover two instruction sets on
     GitHub's runners, so two runs from before the CPU flags were logged can
@@ -778,10 +792,10 @@ machine.
 | **Held-out** (separate session, run once, never tuned on) | **41/45 (91.1%)**   | 79.3–96.5%   | 41/46 (89.1%)   |
 
 Both rows were measured on the Intel Core i5-12450H. The generated row is
-reproduced exactly on an AMD EPYC 7763 and differs slightly, and
-identically, on an Intel Xeon Platinum 8573C and an Intel Xeon 6973P-C
-(502/612, 662/934); the held-out row is not re-run on any other CPU
-([Person names](#person-names)).
+reproduced exactly on machines without AVX-512, and differs by one extra
+correct name, identically, on machines with it (502/612, 662/934),
+whatever the CPU model's name; the held-out row is not re-run on any other
+CPU ([Person names](#person-names)).
 
 The held-out figure is the one to quote: the generated set and the
 detector configuration share an author, while the held-out set was

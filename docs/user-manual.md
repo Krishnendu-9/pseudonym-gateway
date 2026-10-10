@@ -1395,9 +1395,10 @@ Measured on an **Intel Core i5-12450H**: on the generated set's 612-name
 block **501 found (81.8%)**; in the main cases 145 of 153. On the held-out
 set, run once: **41 of 45**. On that CPU every name the gateway finds on
 the generated set is exactly what the measurement found: `npm run
-eval:names` checks it, span by span. So does an AMD EPYC 7763; an Intel
-Xeon Platinum 8573C and an Intel Xeon 6973P-C each find the same one name
-more ("Which platforms the figures hold on", below).
+eval:names` checks it, span by span. So does every machine without the
+AVX-512 instructions tried so far. Machines with them find the same one
+name more, whatever the CPU model's name ("Which platforms the figures
+hold on", below).
 
 ### What is not found
 
@@ -1475,30 +1476,46 @@ The figures were measured on an **Intel Core i5-12450H** under Windows 11
 x64. Under a rule written and committed before any Linux run (ADR-036),
 the same comparison, span by span:
 
-- **gave exactly the same names** on the i5-12450H under Linux (Debian 12
-  in a container, 4 logical CPUs against Windows' 12), and on a GitHub
-  runner's **AMD EPYC 7763**, a different vendor's CPU;
-- **differed slightly** on another runner's **Intel Xeon Platinum 8573C**,
-  running the same Linux as the EPYC: 502 of 612 found (82.0%) against 501
-  (81.8%), 934 detections against 933, precision 70.8% and false positives
-  5.85 per 1,000 words in both. One more detection, and it is a correct
-  name;
-- **differed in exactly the same way** on a fourth runner's **Intel Xeon
-  6973P-C**: the same names, byte for byte, as the Xeon Platinum 8573C.
+- **gave exactly the same names on every machine without the AVX-512
+  instructions:**
+  - the i5-12450H under Linux (Debian 12 in a container, 4 logical CPUs
+    against Windows' 12);
+  - GitHub runners' **AMD EPYC 7763**;
+  - a runner reporting **AMD EPYC 9V74** whose virtual machine hid AVX-512.
+- **gave one more name on every machine with them,** the same names byte
+  for byte:
+  - runners' **Intel Xeon Platinum 8573C** and **Intel Xeon 6973P-C**;
+  - a runner reporting the **same AMD EPYC 9V74** model name whose virtual
+    machine showed AVX-512.
 
-So four CPUs give two answers: the two without AVX-512 (the i5-12450H and
-the EPYC 7763) agree with each other, and the two with AVX-512 and AMX
-(the two Xeons) agree with each other. The code, the model and every other
-pinned input were the same, and the operating system is ruled out (the
-EPYC and the 8573C ran the same one). The likely reason: the runtime picks
-its compute kernels by the instructions the CPU has. That explanation
-predicted the 6973P-C's result before it was looked at, and held; it is
-still not shown, since no run has looked at which kernels were chosen. The
-published figures stay as measured, the Xeons' are reported beside them,
-and the held-out figure (41 of 45) is not re-run on any other CPU. Speed
-differs a great deal more than the names: 308–332 ms per KiB on the
-i5-12450H under Windows, 450.7 on it under Linux with 4 CPUs, 292.1 on the
-EPYC and 147.0 on the Xeon.
+  The figures: 502 of 612 found (82.0%) against 501 (81.8%), 934
+  detections against 933, precision 70.8% and false positives 5.85 per
+  1,000 words in both.
+
+**So the split is by instruction set, not by CPU model:** one model name,
+the EPYC 9V74, appears on both sides. The Xeons' runs, and one earlier
+9V74 run, did not log what their virtual machine showed. Their chips have
+AVX-512, so they fit the split, but they are not observations of it.
+
+**The one extra detection.** From the counts, it is a correct name: a
+three-part English name in Latin script, in the middle of a sentence. The
+main cases' PERSON figure is 145 of 153 either way. Counts cannot rule out
+two changes that cancel each other out.
+
+**Why: a hypothesis, not a finding.** The code, the model and every other
+pinned input were the same, and the operating system is ruled out. The
+likely reason is that the runtime picks its compute kernels by the
+instructions the machine offers. That explanation predicted four later
+runs' results before they were looked at (three of those predictions
+written down in advance), including both 9V74 runs. It is still not shown:
+no run has looked at which kernels were chosen.
+
+The published figures stay as measured, the other figures are reported
+beside them, and the held-out figure (41 of 45) is not re-run on any other
+machine. Speed differs a great deal more than the names: 308–332 ms per
+KiB on the i5-12450H under Windows, 450.7 on it under Linux with 4 CPUs,
+about 290–306 on the machines without AVX-512 on GitHub, and about 147–157
+on those with it.
 
 ## Running in a container (Phase 8, 2026-10-10, ADR-046)
 
