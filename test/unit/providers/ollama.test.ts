@@ -153,6 +153,53 @@ describe('createOllamaProvider: the answer', () => {
   });
 });
 
+// ADR-041 section 15, decision 1; bug-log 70.
+describe('createOllamaProvider: a refusal named in message.refusal', () => {
+  const answer = (): Promise<unknown> =>
+    provider()
+      .complete(REQUEST, new AbortController().signal)
+      .then(
+        (result) => result,
+        (error: unknown) => error,
+      );
+  const withMessage = (message: Record<string, unknown>): void => {
+    const body = JSON.parse(completionBody('x')) as { choices: { message: unknown }[] };
+    body.choices[0]!.message = { role: 'assistant', ...message };
+    mock.respondWith(respond(200, JSON.stringify(body)));
+  };
+
+  it.each([
+    ['content null', null],
+    ['content ""', ''],
+  ])('%s: content null, the refusal kept as written', async (_label, content) => {
+    withMessage({ content, refusal: 'No, [CARD_1].' });
+    expect(await answer()).toMatchObject({ content: null, refusal: 'No, [CARD_1].' });
+  });
+
+  it('content and a refusal: both kept', async () => {
+    withMessage({ content: 'Partly.', refusal: 'Not [CARD_1].' });
+    expect(await answer()).toMatchObject({ content: 'Partly.', refusal: 'Not [CARD_1].' });
+  });
+
+  it('no refusal named: no refusal key, content as before', async () => {
+    withMessage({ content: 'ok', refusal: null });
+    expect(await answer()).not.toHaveProperty('refusal');
+    withMessage({ content: '', refusal: '' });
+    const result = await answer();
+    expect(result).toMatchObject({ content: '' });
+    expect(result).not.toHaveProperty('refusal');
+  });
+
+  it.each([
+    ['refusal null', { content: null, refusal: null }],
+    ['refusal ""', { content: null, refusal: '' }],
+    ['no refusal key', { content: null }],
+  ])('content null and %s → bad_response (open, section 15)', async (_label, message) => {
+    withMessage(message);
+    expect(await answer()).toMatchObject({ failure: 'bad_response' });
+  });
+});
+
 describe('createOllamaProvider: failures', () => {
   it.each([400, 404, 429, 500, 503])(
     'status %i → http, with the status and no body',
@@ -511,6 +558,47 @@ describe('createOllamaProvider.stream: failures before the first chunk (a reject
   });
 });
 
+// ADR-041 section 15, decision 1; bug-log 70: before this, every refusal
+// piece was dropped and the stream read as an empty answer.
+describe('createOllamaProvider.stream: a refusal named in delta.refusal', () => {
+  it('each refusal piece is a refusal event; an empty one names nothing; content null is no content', async () => {
+    mock.respondWith(
+      streamed([
+        piece('', { role: 'assistant', refusal: '' }),
+        piece('', { refusal: 'No, ' }),
+        sseData(
+          streamChunk([
+            { index: 0, delta: { content: null, refusal: '[CARD_1].' }, finish_reason: null },
+          ]),
+        ),
+        finishChunk(),
+        DONE,
+      ]),
+    );
+    expect(await collect(await openStream())).toEqual([
+      { type: 'refusal', text: 'No, ' },
+      { type: 'refusal', text: '[CARD_1].' },
+      { type: 'finish', reason: 'stop' },
+    ]);
+  });
+
+  it('content and refusal in one chunk: content first, then the refusal, then the finish', async () => {
+    mock.respondWith(
+      streamed([
+        sseData(
+          streamChunk([{ index: 0, delta: { content: 'a', refusal: 'b' }, finish_reason: 'stop' }]),
+        ),
+        DONE,
+      ]),
+    );
+    expect(await collect(await openStream())).toEqual([
+      { type: 'content', text: 'a' },
+      { type: 'refusal', text: 'b' },
+      { type: 'finish', reason: 'stop' },
+    ]);
+  });
+});
+
 describe('createOllamaProvider.stream: failures after the first chunk (thrown from the events)', () => {
   const first = piece('Hello');
 
@@ -529,6 +617,10 @@ describe('createOllamaProvider.stream: failures after the first chunk (thrown fr
     ],
     ['finish_reason is tool_calls', [first, finishChunk('tool_calls'), DONE]],
     ['content arrives after the finish', [first, finishChunk(), piece('more'), DONE]],
+    [
+      'a refusal arrives after the finish',
+      [first, finishChunk(), piece('', { refusal: 'no' }), DONE],
+    ],
     ['usage arrives before the finish', [first, usageChunk, finishChunk(), DONE]],
     ['usage arrives twice', [first, finishChunk(), usageChunk, usageChunk, DONE]],
     [

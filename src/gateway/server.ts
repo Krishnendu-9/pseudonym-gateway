@@ -126,6 +126,7 @@ export function buildServer(config: ServerConfig, provider: ChatProvider): Fasti
         model: config.model,
         includeUsage,
         restorer: new StreamRestorer(mapping, restoreOptions),
+        refusalRestorer: new StreamRestorer(mapping, restoreOptions),
         onError: (error) => {
           const safe = toGatewayError(error, config.bodyLimit);
           const details = { error: safeErrorDetails(error), code: safe.code };
@@ -141,7 +142,12 @@ export function buildServer(config: ServerConfig, provider: ChatProvider): Fasti
     }
 
     const result = await provider.complete(outbound, controller.signal);
-    const content = restore(result.content, mapping, restoreOptions);
+    // A refusal is model text like content: restored, with restoration
+    // safety, as a text of its own (ADR-041 section 15, decision 1).
+    const content =
+      result.content === null ? null : restore(result.content, mapping, restoreOptions);
+    const refusal =
+      result.refusal === undefined ? undefined : restore(result.refusal, mapping, restoreOptions);
 
     return {
       id: result.id,
@@ -149,7 +155,11 @@ export function buildServer(config: ServerConfig, provider: ChatProvider): Fasti
       created: result.created,
       model: config.model,
       choices: [
-        { index: 0, message: { role: 'assistant', content }, finish_reason: result.finishReason },
+        {
+          index: 0,
+          message: { role: 'assistant', content, ...(refusal === undefined ? {} : { refusal }) },
+          finish_reason: result.finishReason,
+        },
       ],
       ...(result.usage === undefined ? {} : { usage: result.usage }),
     };

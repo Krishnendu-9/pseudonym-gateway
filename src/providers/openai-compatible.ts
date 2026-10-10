@@ -21,9 +21,16 @@
 // fails. Time spent waiting for our own client to read is not counted: the
 // clock only runs while a read from the provider is pending.
 //
-// What a stream must look like: `data: <chunk>` events; `delta.content` a
-// string, empty or left out; one chunk carries `finish_reason`; with
-// `include_usage`, a chunk with `choices: []` and `usage` follows; then
+// A refusal the provider names in `refusal` (ADR-041 section 15, decision
+// 1) is kept as a text of its own beside `content`: `message.refusal` when
+// not streamed, `delta.refusal` pieces when streamed. An empty `refusal`
+// names nothing. An answer that names no refusal and has no content is
+// handled as before (an open decision, section 15).
+//
+// What a stream must look like: `data: <chunk>` events; `delta.content` and
+// `delta.refusal` strings, empty or left out; one chunk carries
+// `finish_reason`; with `include_usage`, a chunk with `choices: []` and
+// `usage` follows; then
 // `data: [DONE]`. A stream that ends before `[DONE]` is a failure, never a
 // short answer (Ollama ends a stream that failed midway without it; see
 // ollama.ts), and an OpenAI-style `data: {"error": …}` event is a failure
@@ -91,7 +98,8 @@ const responseSchema = z.object({
     .array(
       z.object({
         message: z.object({
-          content: z.string(),
+          content: z.string().nullable(),
+          refusal: z.string().nullish(),
           tool_calls: z.array(z.unknown()).max(0).nullish(),
         }),
         finish_reason: finishReason,
@@ -110,6 +118,7 @@ const chunkSchema = z.object({
       z.object({
         delta: z.object({
           content: z.string().nullish(),
+          refusal: z.string().nullish(),
           tool_calls: z.array(z.unknown()).max(0).nullish(),
         }),
         finish_reason: finishReason.nullish(),
@@ -156,6 +165,7 @@ function parseChunk(data: string): Chunk {
 function* chunkEvents(chunk: Chunk): Generator<ProviderStreamEvent> {
   const [choice] = chunk.choices;
   if (choice?.delta.content) yield { type: 'content', text: choice.delta.content };
+  if (choice?.delta.refusal) yield { type: 'refusal', text: choice.delta.refusal };
   if (choice?.finish_reason) yield { type: 'finish', reason: choice.finish_reason };
   if (chunk.usage) yield { type: 'usage', usage: chunk.usage };
 }
@@ -278,10 +288,14 @@ export function createOpenAICompatibleProvider(
       if (!parsed.success) throw new ProviderError('bad_response');
 
       const [choice] = parsed.data.choices;
+      const { content, refusal } = choice!.message;
+      // No content and no refusal named: what that is, is open (section 15).
+      if (content === null && !refusal) throw new ProviderError('bad_response');
       return {
         id: parsed.data.id,
         created: parsed.data.created,
-        content: choice!.message.content,
+        content: refusal && content === '' ? null : content,
+        ...(refusal ? { refusal } : {}),
         finishReason: choice!.finish_reason,
         ...(parsed.data.usage === undefined ? {} : { usage: parsed.data.usage }),
       };

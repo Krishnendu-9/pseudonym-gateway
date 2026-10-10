@@ -272,11 +272,16 @@ function chunk(choices: unknown[], usage: unknown = null): string {
   });
 }
 
-/** The SSE text of a specification-complete stream, with CRLF line ends and keep-alive comments. */
+/**
+ * The SSE text of a specification-complete stream, with CRLF line ends and
+ * keep-alive comments. `refusal` pieces follow the content pieces, each in a
+ * chunk of its own with `delta.refusal` and no `content` (the type's
+ * `delta.refusal?: string | null`).
+ */
 export function fullStream(
   pieces: readonly string[],
   finishReason: string,
-  { includeUsage = true, done = true, errorAfter = -1 } = {},
+  { includeUsage = true, done = true, errorAfter = -1, refusal = [] as readonly string[] } = {},
 ): string {
   const events: string[] = [
     chunk([
@@ -294,6 +299,11 @@ export function fullStream(
       chunk([{ index: 0, delta: { content: text }, logprobs: null, finish_reason: null }]),
     );
   });
+  for (const text of refusal) {
+    events.push(
+      chunk([{ index: 0, delta: { refusal: text }, logprobs: null, finish_reason: null }]),
+    );
+  }
   events.push(chunk([{ index: 0, delta: {}, logprobs: null, finish_reason: finishReason }]));
   if (includeUsage) {
     events.push(
@@ -321,6 +331,8 @@ export type StrictAnswer =
   | {
       readonly kind: 'stream';
       readonly pieces: readonly string[];
+      /** `delta.refusal` pieces, after the content pieces. */
+      readonly refusal?: readonly string[];
       readonly finishReason?: string;
       readonly done?: boolean;
       readonly errorAfter?: number;
@@ -376,6 +388,7 @@ export function strictProvider(
           includeUsage: body.stream_options?.include_usage === true,
           done: answer.done ?? true,
           errorAfter: answer.errorAfter ?? -1,
+          refusal: answer.refusal ?? [],
         }),
       );
     },

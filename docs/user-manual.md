@@ -351,6 +351,17 @@ choice with the restored `content` and `finish_reason`, and `usage`.
 Nothing else from the provider is passed on (a thinking model's reasoning is
 dropped).
 
+**A refusal** the provider names in its own `refusal` field comes back as
+OpenAI sends one: `content: null` and the refusal text, restored like any
+model text (restoration safety included), in `message.refusal`. If the
+provider sent text in `content` as well, both are passed on. The `refusal`
+key is present only on a refusal; OpenAI also sends `refusal: null` on
+ordinary answers, which Pseudonym does not. An answer that names no
+refusal and has empty text is passed on as an empty answer; with
+`content: null` it is a 502 `provider_bad_response`. What either should
+become is an open decision (ADR-041 section 15). Neither
+Ollama nor Gemini has been seen to send a `refusal` field.
+
 Errors use OpenAI's shape, `{"error": {"message", "type", "param", "code"}}`:
 
 | Status | When                                                                                                                                                              |
@@ -463,6 +474,8 @@ OpenAI's `chat.completion.chunk` shape with Pseudonym's model name:
    split across the model's pieces (`[EMA` + `IL_1]`) comes out whole, as
    the real value; text is held back only while it could still become a
    placeholder (at most 16 characters);
+   a refusal the provider names comes as `delta: {"refusal": "…"}` chunks,
+   restored the same way, as a text of its own;
 3. a chunk with `delta: {}` and `finish_reason`;
 4. with `"stream_options": {"include_usage": true}`: every chunk above has
    `"usage": null`, and one more chunk with `"choices": []` carries the

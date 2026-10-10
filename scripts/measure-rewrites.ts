@@ -153,6 +153,13 @@ for (const [i, task] of REWRITE_TASKS.entries()) {
     let finishReason: string;
     try {
       const answer = await provider.complete(request, new AbortController().signal);
+      // A refusal has no answer to classify; it stops the run, as it did
+      // when the adapter still failed on it (ADR-041 section 15, decision 1).
+      if (answer.content === null) {
+        console.error(`${task.id} ${condition}: the model refused; stopped`);
+        save(`${task.id} ${condition}: refused`);
+        process.exit(1);
+      }
       content = answer.content;
       finishReason = answer.finishReason;
     } catch (error) {

@@ -3556,3 +3556,61 @@ otherwise unchanged, and one pair through it gave the same counts (121 /
 outputs (40 full test-run transcripts), every number used here is in this
 section, and the inputs that produce them (the harness, the commit, the
 rule) are what make the comparison repeatable.
+
+## Refusals in OpenAI's shape (2026-10-10, ADR-041 section 15 decision 1, bug-log 70)
+
+**What is tested, and where.**
+
+- `test/integration/strict-provider.test.ts`: the real gateway against the
+  strict fake. It covers all three refusal shapes:
+  - the loud one, `content: null` with `refusal`, the only shape the fake
+    sent before;
+  - non-streamed `content: ""` with `refusal`;
+  - the streamed one, `delta.refusal` pieces.
+
+  Plus restoration safety on a refusal, both streamed and not; the refusal
+  as a text of its own (an unclosed `="` in the content does not keep a
+  placeholder in the refusal); content and a refusal together; and that the
+  restored value is in no log line. A separate block pins today's
+  behaviour for an answer with no content and no refusal named, which is
+  open and not endorsed.
+
+- `test/unit/providers/ollama.test.ts`: the adapter alone. It checks
+  `message.refusal` in each shape; that an empty `refusal` names nothing;
+  that content null with no refusal named is `bad_response`; refusal events
+  in a stream; content and a refusal in one chunk; and a refusal after the
+  finish is `bad_response`.
+- `test/unit/gateway/stream.test.ts`: `sseEvents` with refusal events.
+  Covered: `delta.refusal` chunks with a placeholder split across pieces;
+  the held-back refusal sent at the finish, after the held-back content;
+  restoration safety; and the held-back refusal flushed before the error
+  event when the stream fails.
+
+**Shown failing before the fix.** The strict-provider file was run with the
+new tests and the fake's new streamed shape, against `src/` as it was
+(nothing changed but test files): 6 failed, 62 passed. The streamed test
+failed with `expected '' to be 'I cannot email …'`: the refusal text was
+gone and the client got an empty answer, which is bug 70. The two
+non-streamed shapes failed as `expected 502 to be 200` (the loud one) and
+as an empty `content: ""` message (the quiet one). After the fix, the same
+file, `stream.test.ts` and `ollama.test.ts` passed 167 of 167.
+
+### Mutation checks (`scripts/mutations/refusals.ts`, run 2026-10-10)
+
+Run with `scripts/mutate.ts` against the three files above (167 tests):
+
+| Id   | Mutation                                                      | Failed   |
+| ---- | ------------------------------------------------------------- | -------- |
+| RF1  | a streamed refusal piece is dropped (bug 70 itself)           | 7 of 167 |
+| RF2  | a non-streamed refusal is not passed on                       | 7 of 167 |
+| RF3  | content "" beside a refusal stays "" instead of null          | 2 of 167 |
+| RF4  | content null with a refusal is still bad_response             | 3 of 167 |
+| RF5  | content null with no refusal named passes as an answer        | 6 of 167 |
+| RF6  | a non-streamed refusal is not restored                        | 2 of 167 |
+| RF7  | a non-streamed refusal is restored without restoration safety | 1 of 167 |
+| RF8  | refusal pieces go through the content restorer                | 4 of 167 |
+| RF9  | a streamed refusal is sent as content                         | 7 of 167 |
+| RF10 | the held-back refusal is never sent                           | 3 of 167 |
+
+10 of 10 caught. RF5 is caught by the pins on the open case, so those pins
+can fail. No marker was left, and the source was unchanged afterwards.

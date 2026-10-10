@@ -2898,7 +2898,7 @@ and the longer gap itself says the machine was struggling.
 which runs inside the full suite (where it failed); and the evidence each
 run now writes (a "-" in the process columns of the `.tsv` file).
 
-## 70. A streamed refusal reaches the client as an empty answer that finished normally (2026-10-10, found while writing the Phase 7c options; not fixed, for the user's decision)
+## 70. A streamed refusal reaches the client as an empty answer that finished normally (2026-10-10, found while writing the Phase 7c options; fixed the same day for every refusal the provider names; an answer that names none is still open)
 
 **Symptom:** no real provider has sent a refusal through the gateway
 (none of the 12 Gemini answers or the recorded Ollama stream had one). The
@@ -2931,9 +2931,32 @@ be a string there. The strict fake (ADR-041 section 9) sends a refusal in
 exactly that one shape, so its "no finding against the gateway" did not
 cover the other two.
 
-**Fix:** none yet. Ruled 2026-10-10 (ADR-041 section 15, decision 1):
-option 1e, OpenAI's shape. That ruling is what closes this bug once
-built. **Guarded by:** nothing yet. The strict fake must send the loud
-shape and both quiet ones. A fix tested only against the shape that
-already failed loudly would not have caught this bug, and is not accepted
-as closing it.
+**Fix (2026-10-10):** option 1e, OpenAI's shape, as ruled (ADR-041
+section 15, decision 1). The adapter reads `message.refusal` and
+`delta.refusal`. The gateway answers with `content: null` and the refusal
+text in `refusal`, or `delta.refusal` chunks when streamed. The text is
+restored with restoration safety, by a restorer of its own when streamed.
+
+**Guarded by:**
+
+- the strict fake sending all three shapes (the loud one and both quiet
+  ones), through the real gateway, in `strict-provider.test.ts`;
+- adapter tests in `ollama.test.ts` and `sseEvents` tests in
+  `stream.test.ts`;
+- mutations RF1 to RF10 (`scripts/mutations/refusals.ts`, all caught). RF1
+  (a streamed refusal piece dropped), RF3 (`""` kept beside a refusal) and
+  RF10 (the held-back refusal never sent) each put back one way this bug
+  showed.
+
+The streamed test was shown failing against the code before the fix, with
+the bug's own symptom: an empty refusal where the text should be.
+
+**Not closed:** an answer with no content that names no refusal
+(`content: ""`, or a stream with no text) still reaches the client as an
+empty answer that finished normally. It may be a refusal or an empty
+answer, and 1e does not say which. What it should become is put to the
+user (ADR-041 section 15, "Decision 1 built"). Neither real provider has
+ever sent a `refusal` field (0 of the 12 recorded Gemini answers, 0 in the
+recorded Ollama stream). If either refuses, the unnamed shape may be the
+only one it sends. That is not shown: no refusal from either has been
+recorded.

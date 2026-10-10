@@ -9266,6 +9266,149 @@ provider-error path.
   not endorsed") is replaced by 2c, deliberately. It is the only existing
   test that should change for this.
 
+#### Decision 1 built (2026-10-10); one case put back to the user
+
+**Order.** Built before 2c, at the user's request, because bug 70 ships
+wrong answers today while 2c changes behaviour that is merely unhelpful.
+It conflicts with nothing recorded. The note above that "2c lands first"
+compares 2c with section 13's 4b, which both edit the provider-error path
+(`fromProvider`). 1e changes the 200 path only, so 2c and 4b are
+unaffected. No live call was made.
+
+**What was built.**
+
+- `ProviderChatResult` gains `refusal` (set only when the provider names a
+  refusal with text), and `content` becomes `string | null`. The stream's
+  events gain a `refusal` event (`src/providers/provider.ts`).
+- The adapter reads `message.refusal` and `delta.refusal`
+  (`src/providers/openai-compatible.ts`). Content null with no refusal
+  named is still `bad_response`. A refusal after the finish chunk is out of
+  order, like content.
+- The gateway answers `content: null` with `refusal` set, and streams
+  `delta.refusal` chunks (`src/gateway/server.ts`, `src/gateway/stream.ts`).
+
+**Restoration: yes, on both paths, with restoration safety.**
+
+- Not streamed: the refusal goes through `restore()` with the request's
+  restore options, exactly as `content` does.
+- Streamed: it gets a second `StreamRestorer` on the same mapping.
+  `StreamRestorer` needed no change. It only reads the mapping (`lookup`),
+  and its held-back text and its unsafe-region scanner belong to the
+  instance. So a second instance gives the refusal the same held-back
+  lookahead (a placeholder cut across `delta.refusal` pieces is held until
+  decided) and the same safety rules.
+- The two texts are separate. An unsafe region left open in the content
+  (an unclosed `="`) does not reach the refusal, and the reverse. This is
+  pinned by a test. At the finish, and before an error event, both
+  restorers' held-back text is sent: content first, then refusal.
+
+**Choices the ruling did not settle, made while building (the user may
+overrule any):**
+
+1. **Content and a refusal both set: both passed on, both restored.**
+   Section 15 left this to whoever builds it. Dropping either would lose
+   model output without saying so, and refusing the answer would turn a
+   type-valid response into a 502.
+2. **An empty `refusal` names nothing**, as an empty `delta.content` sends
+   nothing.
+3. **The `refusal` key is present only when a refusal is named.** OpenAI
+   puts `refusal: null` on every message. Adding it to every answer would
+   change every non-refusal response, and that was not asked for. A client
+   that reads `message.refusal` gets `undefined` instead of `null` on an
+   ordinary answer; both are falsy.
+4. **The first stream chunk is unchanged** (`role`, `content: ""`). It goes
+   out before the gateway knows whether a refusal follows. So a client that
+   accumulates a streamed refusal ends with `content: ""` rather than
+   `null`. OpenAI's own first chunk for a refusal stream was not checked.
+5. `scripts/measure-rewrites.ts` still stops at a refusal, as it did when
+   the adapter failed on one, under its own message.
+
+**Proof.** The strict fake now sends all three shapes. The new tests were
+run against the code before the fix: 6 failed. The streamed test failed
+with bug 70's own symptom, an empty refusal where the text should be.
+After the fix, the three test files passed 167 of 167. Mutations RF1 to
+RF10 (`scripts/mutations/refusals.ts`): 10 of 10 caught. Details are in the
+testing guide.
+
+**Put back to the user (rule 6): a 200 that names no refusal and has no
+content.** 1e says what to do when the provider names a refusal. When
+nothing is named, an empty answer may be a refusal or a genuinely empty
+answer. Today, pinned by tests and not endorsed:
+
+- (i) not streamed, `content: ""`: a 200 with empty content (silent);
+- (ii) not streamed, `content: null` and no refusal named: a 502
+  `provider_bad_response` (loud);
+- (iii) streamed with no text: a 200 stream with no text, the finish
+  reason, and `[DONE]` (silent).
+
+The finish reason narrows it:
+
+- `length` with no text says why: the token limit was reached, for example
+  by thinking. Attempt 5's p07 is that shape with some text.
+- `content_filter` says a filter acted.
+- **The ambiguous case is a `stop` with no text.**
+
+**What the recordings say about how often this is the only case.**
+
+- No `refusal` key appears in any of the 12 recorded Gemini answers.
+- The 10 non-streamed answers carry exactly `content`, `extra_content`
+  and `role`.
+- Neither streamed answer contains the string `refusal`, not even the
+  `refusal: null` OpenAI sends on every answer.
+- The recorded Ollama stream has none either.
+- No refusal or block was recorded from either provider (section 13: no
+  `spii` or other block finish).
+
+So neither real provider has been seen to use the field. They may lack it,
+or may omit it when null; a refusal would have to be recorded to tell
+which. If a provider never names a refusal, **every refusal it makes
+arrives as the ambiguous case** (or as a block finish reason, section 8),
+and 1e's path never fires for it. That is likely for both real providers
+and not shown.
+
+Options:
+
+- **A. Keep today's behaviour** (as pinned). (S) is not met when the empty
+  `stop` is in fact a refusal. (ii) and (iii) also disagree: the same
+  answer is a 502 unstreamed and a quiet 200 streamed. Global. No
+  measurement needed.
+- **B. An empty `stop` is an error with a code of its own** (for example
+  `provider_empty_response`, fixed message): a 502 when not streamed, and
+  the stream's error event, with no `[DONE]`, when streamed (the decision
+  can only be made at the finish, after the role chunk). `length` and
+  `content_filter` with no text stay 200s, since they name why.
+  - Loud and true: "the provider sent nothing" is what happened.
+  - A legitimately empty answer (a prompt that allows replying with
+    nothing) becomes an error. OpenAI would return it as an empty 200, so
+    this is not OpenAI-shaped.
+  - A 502 is retried twice by the SDKs (section 13). That is futile if it
+    was a refusal, and useful if the empty answer was a glitch.
+  - Sub-choice: whether (ii) moves to the same new code.
+  - Global. No measurement needed to build it.
+- **C. Synthesise a refusal**: `content: null`, with the gateway's own
+  fixed text in `refusal`. Rejected in substance before it is offered:
+  `refusal` is "the refusal message generated by the model", so the
+  gateway would put its own words in the model's mouth, and would assert a
+  refusal that may not have happened. That is silent wrongness in the
+  other direction. Listed so that its cost is on record.
+- **D. Pass it through and count it.** Count an empty `stop` (a number in
+  the log or in measurement records, never text), with A's behaviour
+  towards the client. The client still cannot tell, so (S) is not met for
+  the client, but the cost becomes visible, as with 3c. Combines with A
+  or B. Global.
+- **E. Decide per provider and model from measurement**: what an empty
+  `stop` means for that provider, and whether it names refusals at all.
+  This needs a recorded refusal or block from each. For Gemini that means
+  sending prompts written to be refused (free-tier terms, human reviewers,
+  section 4), and a `spii` block cannot be provoked under ADR-009.
+  Ollama's source can be read for a `refusal` field without any call.
+
+**Recommendation (the assistant's; not a decision): B for an empty `stop`
+only, combined with D**, and (ii) moved to the same code so that the
+streamed and unstreamed answers agree. It is the only option that never
+lets a refusal pass as an answer. Its cost, an error for a model that
+meant to say nothing, is loud, rare and visible in the counts.
+
 <a id="adr-042"></a>
 
 ## ADR-042: Rule 1 is kept by compliance; the permission deny list is a partial backstop (2026-10-08)

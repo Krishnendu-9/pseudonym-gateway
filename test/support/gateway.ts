@@ -109,6 +109,8 @@ export interface StreamedResponse {
   readonly done: boolean;
   /** Every `delta.content`, joined. */
   readonly content: string;
+  /** Every `delta.refusal`, joined. */
+  readonly refusal: string;
 }
 
 export interface StreamChunk {
@@ -118,7 +120,7 @@ export interface StreamChunk {
   model: string;
   choices: {
     index: number;
-    delta: { role?: string; content?: string };
+    delta: { role?: string; content?: string; refusal?: string };
     finish_reason: string | null;
   }[];
   usage?: unknown;
@@ -151,5 +153,6 @@ export function readStreamed(body: string): StreamedResponse {
     ...(error === undefined ? {} : { error }),
     done: events.at(-1) === '[DONE]',
     content: chunks.map((c) => c.choices[0]?.delta.content ?? '').join(''),
+    refusal: chunks.map((c) => c.choices[0]?.delta.refusal ?? '').join(''),
   };
 }

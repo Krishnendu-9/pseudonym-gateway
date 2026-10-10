@@ -41,11 +41,17 @@ export interface ProviderUsage {
 
 export type FinishReason = 'stop' | 'length' | 'content_filter';
 
-/** The answer, still in placeholders; the gateway restores `content`. */
+/**
+ * The answer, still in placeholders; the gateway restores `content` and
+ * `refusal`. `refusal` is set only when the provider named a refusal with
+ * text (ADR-041 section 15, decision 1); `content` is null only then, and
+ * is null rather than "" when the refusal came without content.
+ */
 export interface ProviderChatResult {
   readonly id: string;
   readonly created: number;
-  readonly content: string;
+  readonly content: string | null;
+  readonly refusal?: string;
   readonly finishReason: FinishReason;
   readonly usage?: ProviderUsage;
 }
@@ -53,6 +59,7 @@ export interface ProviderChatResult {
 /** One piece of a streamed answer, still in placeholders. */
 export type ProviderStreamEvent =
   | { readonly type: 'content'; readonly text: string }
+  | { readonly type: 'refusal'; readonly text: string }
   | { readonly type: 'finish'; readonly reason: FinishReason }
   | { readonly type: 'usage'; readonly usage: ProviderUsage };
 
@@ -62,8 +69,9 @@ export type ProviderStreamEvent =
  * from. Everything that can go wrong before that is a rejection, which the
  * gateway can still answer with an HTTP error status.
  *
- * `events` then yields, in this order: any number of `content` events,
- * exactly one `finish`, at most one `usage`. It ends only once the provider
+ * `events` then yields, in this order: any number of `content` and
+ * `refusal` events (two separate texts, in any interleaving), exactly one
+ * `finish`, at most one `usage`. It ends only once the provider
  * has said the answer is complete; anything else (a cut connection, a
  * malformed chunk, a gap longer than the timeout) is a ProviderError thrown
  * from the iteration.

@@ -4,8 +4,13 @@
 // The events, in OpenAI's `chat.completion.chunk` shape with our model name:
 //  1. a first chunk with `delta: {role: "assistant", content: ""}`;
 //  2. one chunk per piece of restored text: whatever StreamRestorer says is
-//     decided (a piece that decides nothing sends nothing);
-//  3. at `finish`: the restorer's held-back text, then a chunk with
+//     decided (a piece that decides nothing sends nothing); `delta.content`
+//     for the answer, `delta.refusal` for a refusal the provider named
+//     (ADR-041 section 15, decision 1). The two are separate texts, each
+//     with its own restorer, so the held-back lookahead and restoration
+//     safety work on each as on a whole text, and neither's unsafe regions
+//     reach into the other;
+//  3. at `finish`: both restorers' held-back text, then a chunk with
 //     `delta: {}` and the `finish_reason`;
 //  4. with `include_usage`: every chunk above carries `usage: null`, and a
 //     last one with `choices: []` carries the usage (OpenAI's documented
@@ -14,7 +19,7 @@
 //
 // A failure after the stream has started cannot change the HTTP status any
 // more (200 went out with the first byte). What the client has been sent is
-// kept, and the ending says it went wrong: the restorer's held-back text is
+// kept, and the ending says it went wrong: each restorer's held-back text is
 // restored and sent (it is at most MAX_HELD_BACK characters of what the
 // model really wrote, decided as at the end of an answer, exactly as
 // restore() would decide it), then one `data: {"error": …}` event in the
@@ -31,13 +36,19 @@ export interface SseOptions {
   readonly model: string;
   readonly includeUsage: boolean;
   readonly restorer: StreamRestorer;
+  /** For `refusal` events: a second restorer on the same mapping. */
+  readonly refusalRestorer: StreamRestorer;
   /** A failure after the stream started: logs it and returns what to send. */
   readonly onError: (error: unknown) => GatewayError;
 }
 
 interface Choice {
   readonly index: 0;
-  readonly delta: { readonly role?: 'assistant'; readonly content?: string };
+  readonly delta: {
+    readonly role?: 'assistant';
+    readonly content?: string;
+    readonly refusal?: string;
+  };
   readonly finish_reason: string | null;
 }
 
@@ -47,7 +58,7 @@ export async function* sseEvents(
   stream: ProviderStream,
   options: SseOptions,
 ): AsyncGenerator<string> {
-  const { restorer } = options;
+  const { restorer, refusalRestorer } = options;
   const chunk = (choices: readonly Choice[], usage: ProviderUsage | null = null): string =>
     event({
       id: stream.id,
@@ -59,6 +70,14 @@ export async function* sseEvents(
     });
   const content = (text: string): string =>
     chunk([{ index: 0, delta: { content: text }, finish_reason: null }]);
+  const refusal = (text: string): string =>
+    chunk([{ index: 0, delta: { refusal: text }, finish_reason: null }]);
+  function* flush(): Generator<string> {
+    const rest = restorer.end();
+    if (rest !== '') yield content(rest);
+    const refusalRest = refusalRestorer.end();
+    if (refusalRest !== '') yield refusal(refusalRest);
+  }
 
   let ended = false;
   try {
@@ -67,10 +86,12 @@ export async function* sseEvents(
       if (next.type === 'content') {
         const text = restorer.push(next.text);
         if (text !== '') yield content(text);
+      } else if (next.type === 'refusal') {
+        const text = refusalRestorer.push(next.text);
+        if (text !== '') yield refusal(text);
       } else if (next.type === 'finish') {
         ended = true;
-        const rest = restorer.end();
-        if (rest !== '') yield content(rest);
+        yield* flush();
         yield chunk([{ index: 0, delta: {}, finish_reason: next.reason }]);
       } else if (options.includeUsage) {
         yield chunk([], next.usage);
@@ -78,10 +99,7 @@ export async function* sseEvents(
     }
     yield 'data: [DONE]\n\n';
   } catch (error) {
-    if (!ended) {
-      const rest = restorer.end();
-      if (rest !== '') yield content(rest);
-    }
+    if (!ended) yield* flush();
     yield event(options.onError(error).body());
   }
 }
