@@ -2897,3 +2897,41 @@ and the longer gap itself says the machine was struggling.
 **Guarded by:** the sampler's own test of this machine's processes,
 which runs inside the full suite (where it failed); and the evidence each
 run now writes (a "-" in the process columns of the `.tsv` file).
+
+## 70. A streamed refusal reaches the client as an empty answer that finished normally (2026-10-10, found while writing the Phase 7c options; not fixed, for the user's decision)
+
+**Symptom:** no real provider has sent a refusal through the gateway
+(none of the 12 Gemini answers or the recorded Ollama stream had one). The
+case was found by reading the adapter, then run against the real adapter
+(`createOpenAICompatibleProvider`) from a scratch script with a local
+server sending refusals in the shapes OpenAI's Node SDK types define
+(`ChatCompletionChunk` `delta.refusal?: string | null`;
+`ChatCompletionMessage` `content: string | null`, `refusal: string |
+null`, read 2026-10-10):
+
+| Sent by the provider                                                       | What the adapter returned                       |
+| -------------------------------------------------------------------------- | ----------------------------------------------- |
+| stream: `delta.refusal` chunks, no `content`, then `finish_reason: "stop"` | one event, `finish: stop`; no content, no error |
+| not streamed: `content: null`, `refusal` set                               | `bad_response` (a 502, as pinned by the fake)   |
+| not streamed: `content: ""`, `refusal` set                                 | `ok`, content `""`, `finish_reason: "stop"`     |
+
+From reading `src/gateway/stream.ts` (not run end to end): the first case
+becomes a 200 stream with a role chunk, no text, a finish chunk with
+`stop` and `[DONE]`. The client is told the model answered with nothing
+and finished normally, when the model declined. That is the outcome
+ADR-041 section 13 calls the worst: a 200 that makes the client believe
+something happened that did not. Whether any provider sends the third
+shape (`""` with a refusal) was not checked; it is type-valid.
+
+**Root cause:** the adapter's response and chunk schemas
+(`src/providers/openai-compatible.ts`) are plain `z.object`, which drops
+unknown keys, and `refusal` is not one of the known ones. Only the
+non-streamed `content: null` case fails, and only because `content` must
+be a string there. The strict fake (ADR-041 section 9) sends a refusal in
+exactly that one shape, so its "no finding against the gateway" did not
+cover the other two.
+
+**Fix:** none yet. What a refusal should become is ADR-041 section 15,
+decision 1, the user's. Whatever is chosen, the streamed shape must stop
+being silent. **Guarded by:** nothing yet; the strict fake should send all
+three shapes once the decision is made.

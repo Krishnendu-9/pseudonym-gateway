@@ -8795,6 +8795,301 @@ phase, so it is written out here):
      Pacific (07:00 or 08:00 UTC) is before the 18:30 UTC start.
    - Pages change; this is what it said on 2026-10-10.
 
+### 15. Phase 7c: the three deferred decisions (options, 2026-10-10; waits for the user)
+
+Written on 2026-10-10. **Nothing here is decided, and no call to Google was
+made for it.** These are the three decisions deferred in sections 6, 9 and
+11 until 7b had measured. Section 14's three zero-value calls have not run
+(there is no `attempt-6`), but none of these decisions depends on them.
+
+Each option is checked against the three principles behind section 13's
+decision:
+
+- **(S) Silent wrongness is the worst outcome.** A 200 that lets a client
+  believe something happened when it did not is worse than a loud failure.
+- **(B) The adapter never reads provider error bodies**, because they can
+  echo the prompt.
+- **(O) A client that switched its base URL expects OpenAI-shaped
+  behaviour.**
+
+For each decision below, the text says where each principle fits and where
+it does not. "Global" means one behaviour for every provider; "per
+provider" or "per model" means a profile entry (section 6), filled only
+from a measurement.
+
+#### Decision 1: a refusal or null content from the provider
+
+**What happens today, stated plainly.** `complete()` requires
+`message.content` to be a string, so a non-streamed answer with
+`content: null` and `refusal` set fails as `bad_response`. The client gets
+a **502 `provider_bad_response`, "the provider returned an unusable
+response"**: the same code and message as for a provider sending garbage. A
+provider's legitimate refusal is a valid response, not a failure. Today it
+reaches the client as a gateway error, and the client cannot tell "the
+model declined" from "the gateway or provider broke". The official OpenAI
+SDKs retry a 5xx twice by default (section 13), so one refusal costs up to
+three provider calls, and the model will probably refuse each one again.
+
+**Worse, found while writing this (bug-log 70):** the other two refusal
+shapes are not loud at all. A streamed refusal (`delta.refusal` chunks, no
+`content`, then `finish_reason: "stop"`) and a non-streamed `content: ""`
+with `refusal` set both pass the adapter as an **empty answer that finished
+normally**. The plain `z.object` schemas drop `refusal` as an unknown key.
+This was run against the real adapter from a scratch script with a local
+server, not a provider. The streamed case becomes a 200 stream with no
+text. That is (S)'s worst case, and today it applies to streams.
+Whichever option is chosen, it closes this.
+
+**What a refusal's text is.** It is model output on the redacted prompt,
+the same class of text as `content`: it can quote placeholders, never a
+value the provider was not sent. Passing it to the client therefore means
+restoring it, with the same restoration-safety rules as `content`. (B) does
+not apply as written: this is a field of a 200 answer that the adapter
+already parses, not an error body. Its reason (provider text can echo the
+prompt) is the reason restoration exists, and restoration already handles
+it for `content`.
+
+| Option                                                                                                        | What the client sees                           | Can it tell "declined" from "broke"? | (S)                                                                                                                             | (O)                                                                                                                                  | Scope  |
+| ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------ |
+| **1a.** Keep the 502, and make the two silent shapes fail the same way                                        | 502 `provider_bad_response`                    | **No**                               | Loud, but untrue: it says the response was unusable                                                                             | No: OpenAI answers a refusal with a 200                                                                                              | Global |
+| **1b.** The refusal text as `content`, restored, `finish_reason: "stop"`                                      | 200, a sentence of text                        | **Only by reading it**               | **Fails for machine clients**: a JSON-mode or extraction client parses the refusal as the answer and believes the task was done | Half: the 200 matches; the field does not, so a client that checks `refusal` finds `null`                                            | Global |
+| **1c.** An empty assistant message (`content: ""`, `stop`)                                                    | 200, no text                                   | **No**                               | **Fails outright**: this is bug 70's behaviour made deliberate                                                                  | No                                                                                                                                   | Global |
+| **1d.** A distinct error, e.g. `provider_refused`, fixed message, refusal text dropped                        | An error naming a refusal                      | **Yes**, by code                     | Loud and true                                                                                                                   | No: OpenAI gives a 200. Sub-choice: a 4xx (the SDKs do not retry it) or a 5xx with `x-should-retry: false` (the SDKs obey it; below) | Global |
+| **1e.** OpenAI's own shape: `content: null`, `refusal` restored; in a stream, `delta.refusal` chunks restored | 200 with `refusal` set, exactly as from OpenAI | **Yes**, by the field, as on OpenAI  | Loud for any client that reads `refusal`; a client that reads only `content` gets `null`, as it would from OpenAI               | **Yes**                                                                                                                              | Global |
+
+Costs beyond the table:
+
+- **1d** drops the text because every error message the gateway returns
+  is fixed text (`src/gateway/errors.ts`); including model output in an
+  error would break that rule.
+- **1e** is the most work. A refusal joins `content` in `ProviderChatResult`
+  and the stream's events, and a stream needs a second `StreamRestorer`,
+  since a placeholder can be split across `delta.refusal` chunks exactly as
+  across `content` chunks. The streaming no-leak and canary tests would
+  have to cover the second channel.
+- **Not settled by any option:** an answer with both `content` and
+  `refusal` set. The types allow it. Whatever is chosen must say what
+  happens.
+
+**Global or per provider.** All five options act on the specification's
+shape, so they are global. The per-provider part is what a provider calls
+a refusal outside that shape. Gemini's own block reasons (`safety`, `spii`
+and others) arrive, if at all, as finish reasons, and section 8 already
+makes those profile entries filled from measurement.
+
+**New measurements.** None to build any option: the strict fake can send
+all three shapes (it sends one today). To know whether a real provider
+sends `refusal` at all:
+
+- Ollama: its source can be read without a call.
+- Gemini: unmeasured, and hard to measure within this project's rules.
+  Provoking a block means sending Google a prompt written to be refused
+  (free-tier terms, human reviewers, section 4). A `spii` block cannot be
+  provoked at all, because ADR-009 and section 2 forbid sending
+  personal-looking values.
+
+#### Decision 2: mapping a provider 429
+
+**What happens today.** Any provider 4xx or 5xx is a 502 `provider_error`
+with the message "the provider returned an error (status 429)". The
+`Retry-After` header is dropped (pinned by the strict fake). Two facts
+change how the options read:
+
+- **The status number is already disclosed.** The 502's message names the
+  upstream status, so today's mapping already tells the client that the
+  gateway's upstream is rate limited. "What each option reveals" is
+  measured against that baseline, not against nothing.
+- **Today's 502 is retried fast.** `openai-node`'s `shouldRetry` retries
+  408, 409, 429 and every status of 500 or more. The delay comes from
+  `retry-after-ms`, then `retry-after` (seconds or an HTTP date). **A delay
+  over 60 s is ignored** in favour of the default backoff (0.5 s doubling,
+  at most 8 s, 2 retries by default). An `x-should-retry: true|false`
+  header overrides the status either way. This was read from
+  `src/client.ts` on branch `master` on 2026-10-10, through the same
+  summarising fetch tool as section 13's check; only the Node SDK was
+  read. So today a 429 from Google becomes up to three calls within about
+  2 s into an upstream that is already limiting. Whether those extra calls
+  use up allowance is the open question of section 13 (b).
+
+**What Gemini sends with a 429: not known.**
+
+- No 429 has ever been recorded: a 429 stops every run (sections 10 and 11).
+- Google's troubleshooting page (`ai.google.dev/gemini-api/docs/troubleshooting`,
+  "Last updated 2026-10-01 UTC", read 2026-10-10) recommends exponential
+  backoff. It does not say whether a `Retry-After` header is sent or
+  whether the delay is in the body.
+- The 12 recorded 200 answers and the six recorded 400s carry no retry or
+  rate-limit header: no header name or value in any `attempt-*` recording
+  matches "retry", "ratelimit", "rate-limit" or "quota".
+- Whatever Google puts in the body is out of reach by (B).
+
+**The two tensions:**
+
+1. **Truth.** A 429 to the client says "you are rate limited". The
+   gateway's upstream is, on a key every client of the gateway shares. In
+   a deployment with one application in front of the gateway, that is
+   close to true. In a shared one it is false: one client's burst produces
+   429s for the others, which then slow down and look for the cause in
+   their own usage. OpenAI's 429s also come in two kinds with different
+   advice: `rate_limit_exceeded` (wait a moment) and `insufficient_quota`
+   (waiting will not help). The gateway cannot tell Google's per-minute
+   limit from its daily limit without reading the body, so any code it
+   gives is a guess, and so is any wait time. Gemini's daily allowance
+   resets at midnight Pacific (section 14); a retry in seconds is wrong
+   advice for it.
+2. **Disclosure.** Passing on `Retry-After` or rate-limit headers tells the
+   client about the gateway's provider relationship. A delay that counts
+   down to midnight Pacific identifies a Google daily cap; per-minute
+   figures reveal the tier. For Gemini this is probably moot, since nothing
+   suggests it sends such headers. Then passthrough reveals nothing and
+   also gives nothing. A header is not a body, so reading one does not
+   break (B), but it is still provider-chosen text: it would be parsed as
+   a number or date and re-emitted, never copied.
+
+| Option                                                                                                                                    | Client correctness                                                                                                                                                                                                  | What it reveals beyond today                                                                                   | (S)                                                  | (O)                                                                   | Scope                                                        |
+| ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------ |
+| **2a.** Keep the 502                                                                                                                      | Treated as a gateway fault, retried at 0.5 s and 1 s into a limited upstream; operators' "bad gateway" alerts fire for a quota event                                                                                | Nothing                                                                                                        | Loud; true that the upstream failed, vague about why | No: OpenAI would send a 429                                           | Global                                                       |
+| **2b.** 429 passthrough. **b1**: status only, fixed body; **b2**: and `Retry-After` re-emitted when the provider sent one                 | SDKs raise their rate-limit error and retry twice, honouring a `Retry-After` up to 60 s; the client is told _it_ is limited (tension 1); the error code is a guess between the two OpenAI kinds                     | b1: nothing (the number is already in today's message); b2: the provider's timing, if it sends any (tension 2) | Loud, but **misattributed** in a shared deployment   | **Shape yes; meaning no**: OpenAI's 429 is about the caller's own key | b1 global; b2 per provider (only where a provider sends one) |
+| **2c.** 503 with `Retry-After`. **c1**: re-emitted from the provider; **c2**: the gateway's own fixed value (configuration); **c3**: none | SDKs retry twice; with c1 or c2 they wait as told (60 s at most); "the service cannot answer now" is true from the client's side and blames no one; no OpenAI rate-limit error, so code branching on that misses it | c1: as b2; c2: only the gateway's own constant; c3: nothing                                                    | Loud and true                                        | Partly: OpenAI does send 503s for overload, not for quota             | c1 per provider; c2, c3 global                               |
+
+Two things combine with any of them:
+
+- **`x-should-retry: false`**, which stops the OpenAI SDKs from retrying
+  whatever the status. This was read for the Node SDK only, and it is not
+  part of the HTTP standard: other clients ignore it.
+- **Whether to keep the status number in the 502 message.** It is the one
+  disclosure that exists today. Any option can keep it or drop it.
+
+**New measurements.** Only b2 and c1 need one: the headers of a real
+Gemini 429, ideally for both the per-minute and the daily limit. Getting
+one means exceeding a limit on purpose, for example 16 calls within a
+minute against 15 RPM. That needs a new pre-registered run, because today
+a 429 stops a run, and it uses up allowance. 2a, b1, c2 and c3 need no
+measurement. Ollama has no rate limits, so for it the decision is moot
+(not checked whether it can ever answer 429).
+
+#### Decision 3: `extra_content` and `thought_signature`
+
+**What happens today.**
+
+- `extra_content.google.thought_signature` is on **all 12 accepted Gemini
+  answers**: `s1` on `message.extra_content`; `s2` and `s3` on the finish
+  chunk's `delta.extra_content`; the 9 accepted probes of Attempt 5. Its
+  length was 132 characters on most answers, 952 and 1,004 on two
+  (section 13 item 4).
+- The plain `z.object` schemas drop it, so it never reaches the client and
+  is never logged or counted. **That is accidental and untested**: no test
+  opens the `gemini-7b` recordings (only the live-run guard's test names
+  the folder).
+- Two facts limit the options. **The request schema is strict** (ADR-014):
+  a client that sends `extra_content` back on an assistant message gets a
+  400, "unknown field in messages". **The gateway is stateless**: it cannot
+  remember a signature between requests. Any echo must therefore travel
+  through the client.
+
+**The documentation check (2026-10-10): is the signature expected back on
+later turns?**
+
+- **Thought signatures** (`ai.google.dev/gemini-api/docs/generate-content/thought-signatures`,
+  "Last updated 2026-09-04 UTC"):
+  - **Function calls, Gemini 3: mandatory.** "When using Gemini 3 models,
+    you must pass back thought signatures during function calling,
+    otherwise you will get a validation error"; omitting it for the first
+    `functionCall` part of a step "will fail with a 400 error".
+  - **Text answers without a function call: recommended, not enforced.**
+    "Returning these signatures is **recommended** to ensure the model
+    maintains high-quality reasoning" and "The API does **not** strictly
+    enforce validation. You won't receive a blocking error if you omit
+    them, though performance may degrade."
+  - By model: "Gemini 3 will have the signature on the last part if the
+    model generates a thought. Gemini 2.5 won't have a signature in any
+    part."
+  - Its OpenAI-compatibility example shows the signature in
+    `extra_content.google.thought_signature` **on `tool_calls`**, sent back
+    in the same place. A text-only assistant message is not covered.
+  - The Google Gen AI SDKs handle signatures automatically.
+- **OpenAI compatibility** (`ai.google.dev/gemini-api/docs/openai`, "Last
+  updated 2026-09-02 UTC"): one sentence saying Gemini 3 supports thought
+  signatures in chat completions, with a link to the page above. Nothing
+  on returning them.
+- **Thinking guide** (`…/docs/thinking`, "Last updated 2026-10-09 UTC"):
+  "You **MUST** always resend all `thought` blocks exactly as they were
+  received." This is about the **Interactions API** in stateless mode, a
+  different API from the chat-completions endpoint the gateway uses, so
+  it is not applied here.
+
+**What that means for this decision.** For what the gateway supports
+(text messages only; ADR-014 rejects tools), Google's own words are that
+stripping **does not break anything but may degrade reasoning quality on
+later turns**. Google gives no figure, and nothing here measured it. The
+one case where Google says it breaks, function calling on Gemini 3, the
+gateway already refuses. So the decision is about **silent degradation**,
+not failure.
+
+Three observations do not fit the documentation and explain nothing on
+their own:
+
+- Our recordings put the signature on a **text** answer (`message` and the
+  finish chunk's `delta`), a placement the OpenAI-compatibility example
+  does not show.
+- The model, `gemini-3.5-flash-lite`, is neither "2.5" nor "3" as the
+  page names them.
+- The signature appeared on all 12 answers, including the 10 with no
+  hidden thinking tokens, although the page ties it to the model
+  "generat[ing] a thought".
+
+**Limits of the check** (as for section 13's SDK check):
+
+- Pages read through a fetch tool that passes them through a summarising
+  model; the quotes came back marked verbatim and were not re-read raw.
+- Forum threads that appeared in the search were neither read nor relied
+  on.
+- Whether Gemini's endpoint accepts `extra_content` sent back on a
+  text-only assistant message is not documented and not measured.
+- Pages change; this is what they said on 2026-10-10.
+
+**The principles.**
+
+- **(S) fits only weakly.** Stripping never claims anything that did not
+  happen: the client gets the answer the model gave. What is lost is
+  provider-side state the client never asked for, and the cost (if any)
+  lands invisibly on a later turn's quality. A client written for Gemini's
+  compatibility layer that relies on round-tripping would get no error and
+  possibly worse answers.
+- **(B) does not apply as written** (this is a 200 field). Its reason does,
+  in a sharper form, on the way back in: every byte the gateway sends to a
+  provider is today either redacted text, a number or enum value, or
+  dropped (ADR-014). An echoed signature would be a client-supplied opaque
+  string the detectors cannot read. The project brief's rule is to
+  **reject unsupported input rather than forward it unredacted**.
+- **(O) favours stripping**: OpenAI never sends this field, so a client
+  that only changed its base URL expects none.
+
+| Option                                                                                                                                                                                                                                                                         | Cost                                                                                                                                                                                                                                                                                                                                                                                                                            | (S) / (B) / (O)                                                                                               | Scope                                                                | New measurement to build it                                                                                                                                                                                                                                    |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **3a.** Keep stripping, made deliberate: named in the adapter as dropped, documented (README, user manual), and pinned by tests that replay the 12 recorded answers and assert the field reaches neither the client nor a log                                                  | Possible quality loss on later turns for Gemini models that sign text answers, unquantified. `s3` replays as `bad_response` today (usage on every chunk), so its test pins that too, or waits for that fix                                                                                                                                                                                                                      | (S) weak, above; (B) safe; (O) matches                                                                        | Global                                                               | None (offline)                                                                                                                                                                                                                                                 |
+| **3b.** Pass it through to the client (outbound only)                                                                                                                                                                                                                          | Useless on its own: a client that sends it back gets a 400, so Google-aware clients go from "silently degraded" to "loudly broken". The blob is opaque: that it holds no personal value can be argued (Google saw only the redacted text) but not checked                                                                                                                                                                       | (S) loud; (B) n/a; (O) an extra field, not OpenAI's                                                           | Per provider (field path), per model (whether it is sent)            | None to build                                                                                                                                                                                                                                                  |
+| **3c.** Record counts only: present or not, and its length, per answer, in measurement records or as numbers in the log; never the value                                                                                                                                       | Extends the log's fixed field set (method, route, status, timing); a length is a number, not content. Can be combined with 3a                                                                                                                                                                                                                                                                                                   | (S) n/a; (B) safe; (O) invisible to clients                                                                   | Mechanism global, field path per provider                            | None to build. It would feed section 13 item 4's length/thinking hypothesis (n = 2)                                                                                                                                                                            |
+| **3d.** Echo it back where the provider requires it. **d1**: accept it inbound on assistant messages and forward it as given (needs 3b). **d2**: the gateway seals each outbound signature with an HMAC under its own secret and forwards inbound only those whose seal checks | "Where required" is **empty today**: Google requires it only for function calls, which the gateway rejects. For text ("recommended"), d1 opens the first unredacted, unscannable channel to the provider, against the brief's rule. d2 limits that channel to blobs the provider itself issued, statelessly, at the cost of a server secret (configuration, rotation, shared across instances) and new code on the privacy path | (S) avoids the degradation; (B) d1 breaks its reason, d2 bounds it; (O) neither: OpenAI clients never send it | Per provider and per model (2.5 sends none; tools change "required") | Yes: whether Gemini accepts the field back on a text-only assistant message (from both placements); and, to justify it at all, a multi-turn quality measurement with and without it, which is a design of its own. Google's "may degrade" is the only evidence |
+
+**What any option needs regardless:** replay tests over the 12 recordings.
+The present behaviour is unverified until those exist.
+
+#### Recommendations (the assistant's; not decisions)
+
+- **Decision 1: 1e** (OpenAI's shape). It is the only option that is both
+  true about what happened and shaped as OpenAI's clients expect. 1d if
+  the user would rather not add a second restoration channel to streams.
+  1b and 1c fail (S).
+- **Decision 2: 2c2** (503 with the gateway's own fixed `Retry-After`).
+  It tells no client it is the one at fault and discloses only a constant
+  the gateway chose. It still cannot advise correctly about a daily cap,
+  and no option can without reading the body.
+- **Decision 3: 3a with 3c.** Strip deliberately and count. Revisit 3d
+  only if tools are ever supported, or a measurement shows the
+  degradation is real; d1 conflicts with the brief's rule against
+  forwarding input unredacted.
+
 <a id="adr-042"></a>
 
 ## ADR-042: Rule 1 is kept by compliance; the permission deny list is a partial backstop (2026-10-08)
