@@ -11587,3 +11587,349 @@ variable turns it off. It is never inferred from `NODE_ENV`.
 - Compose does not pin the flag to `false`: that would override an
   explicitly named choice, which this ruling makes the one way to turn the
   guard off.
+
+---
+
+<a id="adr-048"></a>
+
+## ADR-048: The results page: where it lives, what it shows, how it stays true (2026-10-10; proposed)
+
+**Status.** Proposed. Nothing is decided, built or stubbed (rule 12). This
+is design work brought forward; it does not change ADR-041 section 3's
+timing. If the page is built, building starts **after Phase 8's last item**
+(the final README), and the page shows **counts only, never message
+content**. [ADR-045](#adr-045) ruled option 5: the page renders the
+committed evaluation results, not live traffic. This ADR settles how.
+
+### Context: the committed results, and how fresh each one is
+
+There are four sources of measured results in the repository today. They
+do not share one guarantee of freshness, and the page has to say so for
+each.
+
+| Source                                                                  | What it holds                                                                                                                                                                                                        | Re-checked by                                                                                                                       | Can it go stale against the code?                                                                                                                                                                                            |
+| ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `eval/baseline.json`                                                    | per type and per shape scores, over-redactions, the echo (ADR-033) and values sent as written (ADR-040), for the generated set and the held-out set; names off; `measuredOn` = the day the counts were last accepted | `npm run eval`, in CI on every push and pull request                                                                                | No, while CI runs: any count that differs fails the run                                                                                                                                                                      |
+| `eval/model-rewrites.json`                                              | 15 tasks, 34 values, each value's fate with the instruction on and off; model, digest, Ollama version, `measuredOn` 2026-10-02                                                                                       | `readme-facts.test.ts` checks that the README's table equals the file; **nothing checks that the file equals today's code**         | Yes. It needs Ollama, CI cannot run it, and the detectors have changed since (PERSON joined `DETECTION_TYPES` in Phase 6b)                                                                                                   |
+| `eval/names-baseline.json` (selected per CPU by `names-baselines.json`) | B+F at 0.9 / 0.6 on the first 1,998 generated messages (hash-pinned): span hashes, recall 501/612 with rows by language, script, form and place, main PERSON 145/153, precision 661/933, words, lookalikes by kind   | `npm run eval:names`, only when someone runs the Names workflow by hand (`workflow_dispatch`; the daily schedule was removed today) | Yes, between manual runs. The file has **no date field**. Its figures hold for one instruction-set group; the other differs by one detection in 933 (ADR-036)                                                                |
+| The held-out names result (41/45, precision 41/46)                      | B+F on the held-out set, run once on 2026-10-03                                                                                                                                                                      | Nothing: frozen by design (ADR-036, "What the held-out measurement froze")                                                          | It cannot be re-measured, so it cannot be refreshed either. It exists **only as prose** (ADR-035, README, user manual); no committed file holds it. The original one-line output survives outside the repository (section 2) |
+
+One more fact about the first row: `history` in `eval/baseline.json`
+records only acceptances of worse counts or a changed dataset, with their
+note. An accepted improvement (`--update` alone) adds no history entry.
+The full sequence of baselines is the file's git history, not the file.
+
+### 1. Where it lives
+
+**Option A: a route served by the gateway** (for example `GET /results`).
+
+- **A new public endpoint on an OpenAI-compatible surface**, the same class
+  of decision `GET /health` was (ADR-037). `/health` earned its place by an
+  operational need: orchestrators and the image's `HEALTHCHECK` call it. A
+  results page has no operational need; nothing in a deployment calls it.
+- The gateway has no authentication, so every client can read it. The
+  content is public anyway, so the cost is surface, not leakage: a route, a
+  content type and headers for HTML, and, because ADR-041 says "off by
+  default", a new `PSEUDONYM_*` flag with its env schema, `wiring.ts`
+  entry, tests and `.env.example` line.
+- **It puts the page inside the Docker image and re-opens ADR-046.** The
+  build context is an allowlist that excludes `eval/` and `docs/`
+  (`.dockerignore`); the runtime stage copies only `package.json`,
+  `node_modules` and `dist/src`; `tsconfig.build.json` compiles `src/`
+  only; and `scripts/docker-smoke.ts` checks that `eval/` is **not** in the
+  image (ci.yml's `docker` job comment says so). Either the result files
+  enter the image (reversing that check and its negative controls), or the
+  page is generated into `src/` (results become source code, and every
+  accepted baseline changes the image).
+- **The smoke check as written would not catch the second route.** It
+  asserts two things about contents: no `eval/`, `test/`, `docs/`,
+  `dev_docs/`, `models/`, `scripts/` or `.git` directory under `/app`, and
+  no path containing `held-out` anywhere in the image. A generated results
+  file under another name (for example a module in `dist/src/`) that
+  carries per-type held-out totals passes both. If A were chosen, the
+  check would need amending to look at what the image's files contain, not
+  only what they are called.
+- Stated fairly, one point in its favour: the page would describe the
+  commit the image was built from, which is the right page for that image.
+  But served from a deployment, it reads as "this deployment's numbers":
+  [ADR-045](#adr-045)'s second trap in a new form, unless every section
+  says otherwise. The image holds no git metadata (`.git/` is excluded), so
+  printing the commit needs a build argument.
+- It is reachable by whoever can reach a gateway, which is usually not the
+  page's readers (people reading the repository).
+
+**Option B: a static file in the repository.**
+
+- **B1, Markdown** (for example `docs/results.md`). GitHub renders it.
+  Tables only; no scripts. Generated by the functions in `eval/report.ts`
+  that already render the README block, and checked by `npm run eval` the
+  same way (section 4). Touches `eval/report.ts`, `eval/run.ts` (a second
+  target file) and `docs/`, which `repo-hygiene.test.ts` already scans.
+  No Docker, CI-workflow or permission change.
+- **B2, HTML in the repository.** GitHub shows an `.html` file as source,
+  not as a page, so a reader would have to download it. On its own it is
+  not a page; it only makes sense with option C.
+- Charts: B1 cannot run scripts. Generated SVG files committed beside it
+  would render as images; whether GitHub's Markdown renders Mermaid chart
+  types was not checked. Counts read well as tables, which is how the
+  README already shows them.
+
+**Option C: GitHub Pages.**
+
+- Rendered HTML; can chart. Pages is turned on in the repository's
+  settings: a remote change, the user's to make (rule 1).
+- **(a) Publishing from `docs/` publishes all of `docs/` as a rendered
+  site**, including `decisions.md`, the bug log, the user manual and the
+  testing guide, not just a results page. The repository is already
+  public, so this changes **discoverability, not exposure**: the same text,
+  now as a website that search engines index as such.
+- **(b) Deployment mechanism: to be confirmed in the repository settings.**
+  It could not be checked from here.
+- A second public place, with its own URL, that must stay true. If a deploy
+  fails, the site keeps showing the last deployed version, and nothing on
+  it says so except its own printed date and commit.
+- Pages can render Markdown, so B1 can become C later without changing the
+  generator.
+
+**Option D (considered): no separate page; the README block is the results
+page.** It already carries every number in `eval/baseline.json` (per type,
+per shape, held-out, echo, sent as written), and the README's model table
+is pinned to `eval/model-rewrites.json` by `readme-facts.test.ts`. What it
+lacks: names off and names on side by side, and the provenance of the
+names figures in one place. **A separate page earns its place only if it
+shows those**; otherwise it is a second copy of the same numbers.
+
+### 2. What it shows
+
+| Section                | Source                         | Granularity                                                                                                           |
+| ---------------------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| Values sent as written | `eval/baseline.json` (ADR-040) | per part (generated main, each shape, held-out as one total), with known-failing parts and their accepted numbers     |
+| Detection scores       | `eval/baseline.json`           | per data type: values, redacted, partly redacted, recall and precision for the right type, F1, over-redactions        |
+| Hard layouts           | `eval/baseline.json`           | per shape (generated set only)                                                                                        |
+| Echo                   | `eval/baseline.json` (ADR-033) | per part, per held-back rule                                                                                          |
+| Model rewrites         | `eval/model-rewrites.json`     | per instruction setting, per fate (restored, held, rewritten, dropped, invented); model, digest, Ollama version, date |
+| Person names, names on | `eval/names-baseline.json`     | recall, rows by language, script, form and place, precision, false positives per 1,000 words, lookalikes by kind      |
+| Person names, held-out | ADR-035 (prose)                | 41/45 and 41/46, as quoted text with its citation (below)                                                             |
+
+**Sent as written leads the page**, because it is the number the promise is
+about and the one live counts could never show (the ADR-045 ruling).
+
+**Nothing finer than the README already publishes.** No case ids, no
+message text, no values (generated values never reach a file anyway,
+ADR-009), no held-out tags, no `NOT`-slot labels from the held-out file
+(bug-log 22). Generated-set lookalike kinds may appear: they are the
+generator's own labels, already printed by `npm run eval` and stored in
+`eval/names-baseline.json`. (The README block itself shows only the
+per-type over-redaction column, no table by kind.)
+
+**The held-out set appears**, because it is published and it is the more
+honest of the two datasets. The page keeps it from becoming a target:
+
+- per-type totals only; if a table by kind is shown, held-out
+  over-redactions are folded into one `lookalike` row
+  (`overRedactionTable(…, 'hidden')`, as `npm run eval` prints them);
+- every held-out row labelled "reporting only, never used for tuning", and
+  one fixed sentence saying the numbers move only when detectors change
+  for reasons measured on the generated set;
+- **no held-out trend over time** (a trend line invites tuning against it),
+  no per-case or per-tag view, and no mention of the author's flags
+  (`--show`, `--by-tag`, `--tags`);
+- the only "reproduce this" instruction is `npm run eval`, which re-measures
+  and compares; it cannot tune anything.
+
+The held-out file is in a public repository, so the page cannot stop anyone
+outside the project from running against it. What it controls is that it
+never frames the held-out numbers as something to improve.
+
+**The held-out names result (41/45, precision 41/46) is a tension, not
+only an absence. Left open.**
+
+- **Where the number comes from.** The original output survives, outside
+  the repository: `2026-10-03-held-out.log` in the Phase 6a runs folder
+  on the author's machine (`D:` drive, beside the other 6a run logs), one
+  line written by `scripts/compare-names.ts --held-out B+F` at 02:46 IST on
+  2026-10-03: "Held-out, B+F at 0.9 / 0.6: PERSON 41/45 (91.1%),
+  precision 41/46 (89.1%)". Checked once against it on 2026-10-10: every
+  copy agrees (ADR-035 and its later mentions, README "41 of 45" and the
+  results table "41/45 (91.1%)" / "41/46 (89.1%)", user manual "41 of 45"
+  twice). Only that summary line was read; the per-case child outputs
+  beside it (`held-out-B.json`, `held-out-F.json`) were not opened. The
+  log is not committed and not in any CI artifact. As of 2026-10-10 it was
+  not backed up as far as this record knows: on that date, if that drive
+  had been lost, the number would have rested on the transcriptions
+  alone.
+- **Against prose alone.** In the repository it exists as three prose
+  copies (ADR-035, the README, the user manual) with no committed source
+  behind them. They agree today, but they can come to disagree and
+  nothing would catch it: the E4 sweep already listed "README prose
+  numbers outside the generated block are checked by nothing". A page
+  would make a fourth copy. That argues for a data file, or at least a
+  text-consistency check that every copy says the same thing.
+- **Against a data file.** A machine-readable held-out number is easier to
+  wire into a gate: a threshold, a comparison, a "did it move" check. The
+  held-out rules forbid exactly that use: it is reporting only, never a
+  target (ADR-021), and this measurement was run once and frozen
+  (ADR-035, ADR-036). A file makes the forbidden use one line of code
+  away. A transcribed file is also still a copy nothing re-derives.
+- **Between them**, a check that the prose copies agree with each other
+  catches disagreement without creating a machine-readable number, but it
+  pins copies to each other, not to a source: if all of them are wrong
+  together, it passes.
+
+This ADR does not choose. Section 2's row (quoted text with its citation
+and the "run once, frozen" label) describes how the page would show it,
+not where the number is kept.
+
+### 3. What "before and after" means now
+
+[ADR-045](#adr-045) ruled out a request shown before and after redaction:
+that is message content. The honest alternative is **names off against
+names on, measured on the same labelled messages**.
+
+**What the evaluation already produces:**
+
+- **Names off: complete.** `eval/baseline.json`, every type, sent as
+  written included: every name in the names shape and every person name in
+  the main cases is sent, by design of a feature that ships disabled.
+- **Names on: detection only, PERSON only.** `eval/names-baseline.json`:
+  names block 501/612, main PERSON 145/153, precision 661/933, on the first
+  1,998 generated messages, through the real gateway and worker.
+
+**Where the two sides line up:** PERSON in the names block (612) and the
+main cases (153) is counted on both sides. The names-on side pins its
+messages by hash; the names-off baseline stores no hash. That the
+names-block messages are byte-identical in both is expected (the generator
+is deterministic and later dataset steps were checked to leave earlier
+cases unchanged) but **not recorded by either file**; a cheap hash check
+would settle it before the two are printed side by side.
+
+**What is missing for a true before and after:**
+
+- (a) **Values sent as written with names on.** The names-on side measures
+  `detect()`, and bugs 58 and 61 showed detected and sent can differ.
+  ADR-040's count with names on is measured nowhere.
+- (b) **The effect of names on on other types** (the name widening over
+  unvalidated values, retyping). ADR-037 measured it once on B's saved
+  spans (9 messages, 62 characters); prose only.
+- (c) **The echo with names on.**
+- (d) **Held-out with names on, beyond 41/45.** Not obtainable: the
+  held-out names measurement was run once and frozen (ADR-035, ADR-036).
+  Measuring a names-on sent count on the held-out set would be a second
+  look at it. The held-out column therefore carries the frozen detection
+  figure only, labelled.
+
+**What would be needed for (a) to (c):** `eval:names` extended to compute
+ADR-040's count, the per-type scores and the echo with the name finder in
+the request path, over the same messages, stored beside the existing
+figures. It needs the model, so it runs only in the manual Names workflow;
+its figures would be per instruction-set group like the rest (the AVX-512
+group differs by one detection, which could move the sent count by one).
+Adding fields to a names baseline is a measurement change under ADR-036's
+discipline, so it would need its own ADR, committed before the first run
+(rule 6). **Without it**, the page's names comparison is at detection
+level only and says in its heading that sent-with-names-on is not
+measured.
+
+### 4. How it stays true
+
+**How the README block does it today.** `eval/baseline.json` holds the
+accepted counts and `measuredOn`. The README block is
+`readmeBlock(baseline)`, character for character. `npm run eval`
+re-measures, fails if any count differs from the baseline (worse needs
+`--accept` with a note, better needs `--update`), and fails if the block
+is not exactly what the baseline renders. CI runs it on every push and
+pull request. So the block cannot drift from the baseline, and the baseline
+cannot silently drift from the code. The printed date is the day the
+counts were **last accepted**, not last checked; read correctly, it says
+"these counts, accepted on that day, re-measured unchanged at every commit
+since". Its limit: the guarantee is "CI fails", not "it cannot be
+published". Whether `main` requires a green run is a repository setting,
+not checked here.
+
+**The page can reuse that mechanism for everything from
+`eval/baseline.json`:** render with the same functions, add the page as a
+second target in `eval/run.ts` (`--update` writes both; the check compares
+both). Same failure, same message, same CI step.
+
+**It cannot reuse it for the other three sources**, because nothing
+re-measures them on a push:
+
+- **Model rewrites:** the page prints the file's date, model, digest and
+  Ollama version, and says it has not been re-measured since and that the
+  detectors have changed since. A `readme-facts`-style test pins the page
+  to the file. The page can only be honest about this staleness, not
+  prevent it.
+- **Names on:** the file has no date. The page prints the provenance
+  strings from `eval/names-baselines.json` (they carry dates and run
+  numbers), the instruction-set caveat, and "re-checked only when the
+  Names workflow is run by hand". Adding a date field would be a baseline
+  format change under ADR-036; reading the date from git would make the
+  generator depend on history outside the tree. Neither is recommended.
+- **Held-out names:** "run once, 2026-10-03, cannot be re-measured".
+
+**So the page carries no single date in its header.** One date would claim
+more freshness than the stalest section has. Each section carries its own
+"as of" line and says what re-checks it.
+
+Per option: B1 inherits the README's mechanism exactly. C deploys the same
+generated content after `npm run eval` passes; a failed deploy leaves the
+last version up, so the page must print its date and commit. A freezes the
+page into the image at build time: true for that image, behind `main`
+after any later baseline change.
+
+### 5. What each option needs
+
+| Option                  | Docker image                                                                                                                                                                                                                                                                                        | CI gate                                                                                                                                      | README                                                                                       |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| A, gateway route        | new contents (result files or a generated module), allowlist and build changes, new negative controls; a flag. The smoke check would need amending: as written it checks directory names and `held-out` in paths, so a generated results file under another name carrying held-out totals passes it | smoke runs the route with the flag on and off; `npm run eval` must also cover the served copy                                                | the endpoint documented beside `/health`; one more unauthenticated route in the threat model |
+| B1, Markdown in `docs/` | none (`docs/` is excluded from the build context)                                                                                                                                                                                                                                                   | none new: `npm run eval` checks one more file                                                                                                | a link to the page; the generated block stays as it is                                       |
+| C, GitHub Pages         | none                                                                                                                                                                                                                                                                                                | the Pages setting (the user's); deployment mechanism to be confirmed in the repository settings; publishing from `docs/` publishes all of it | a link to the URL, and that it can lag `main` if a deploy fails                              |
+| D, no page              | none                                                                                                                                                                                                                                                                                                | none                                                                                                                                         | none                                                                                         |
+
+### Recommendation (the assistant's; not a decision)
+
+A separate page earns its place only by carrying the names-off/names-on
+comparison (option D above), and the honest version of that comparison,
+values sent as written with names on, is not measured: section 3 says it
+needs its own measurement ADR, committed before the first run. A page
+built on the detection-level comparison alone would set `detect()` beside
+"sent as written", the gap bugs 58 and 61 showed, so it is not offered as
+a fourth path. That leaves three paths:
+
+1. **D now.** The README's generated block is the results page. Nothing is
+   built.
+2. **A measurement ADR first, then B1.** Pre-register and run the names-on
+   measurement of section 3 (sent as written, per-type scores, echo, over
+   the same messages, in the manual Names workflow). Then a generated
+   `docs/results.md`, rendered by `eval/report.ts` and checked by
+   `npm run eval` exactly as the README block is: no image change, no
+   endpoint, no flag, and the one freshness mechanism the project has
+   already proved. C can later publish the same file if a rendered site is
+   wanted, once its deployment mechanism is confirmed in the repository
+   settings.
+3. **A.** A gateway route. Like B1, it needs path 2's measurement to show
+   more than the names-on breakdown (below); it re-opens ADR-046's image contents, needs
+   the smoke check amended (section 1), and serves the page to the wrong
+   readers.
+
+**Available and worth building are different claims.** Every option is
+available without a further measurement: D needs nothing, and A and B1
+could be built today. **Only D is worth choosing without one**, because
+the only thing a page built today could add, the names-on breakdown
+below, is not re-checked on a push and has no names-off side to set it
+against. Checked on 2026-10-10:
+the README already carries `eval/model-rewrites.json` (its table, pinned
+to the file by `readme-facts.test.ts`) and every number in
+`eval/baseline.json`. What a page built today could add is the names-on
+breakdown in `eval/names-baseline.json`: recall by language, script, form
+and place, and lookalikes by kind. The README publishes only the totals
+(501/612, 661/933), main PERSON 145/153 and the lower-case row (3 of 59).
+That breakdown is detection-level, names on only, with no names-off side
+to set it against, and re-checked only when the Names workflow is run by
+hand.
+
+**Recommended: D now; path 2 if and when the names-on measurement is
+wanted for its own sake.** The measurement is the real decision: it is
+what would make a page worth having, and it is worth deciding on its own
+merits (it measures the promise with names on), not as a step towards a
+page. A is not recommended under any path.
