@@ -3059,3 +3059,42 @@ measures (unpacked, compressed or disk usage). The compressed figure is
 disk usage minus the summed layer sizes. It was checked against a separate
 measure, the size of the `docker save` archive: 200,253,440 bytes, which is
 the compressed layers plus about 20 KB of tar framing.
+
+## 75. Every Gemini stream with usage fails, though Gemini answered (2026-10-11, surfaced when ADR-041 decision A made Gemini a product provider; not fixed yet)
+
+**Symptom:** a streamed request with `stream_options.include_usage: true`
+to Gemini always ends as a 502 `provider_bad_response` (streamed, as the
+stream's error event), although Gemini answered fully. First seen in the
+recording `test/fixtures/gemini-7b/attempt-4/s3` (2026-10-07), when Gemini
+was only being measured. It became a product bug when ADR-041 section 16's
+decision A made `gemini` a provider a deployment can choose (`6398978`,
+2026-10-11). A stream without `include_usage` works (s2), and so does a
+request that is not streamed. Found while building that part: the
+assistant flagged the replay test's pinned failure as something real
+clients would now hit.
+
+**Root cause:** the adapter's stream order check
+(`src/providers/openai-compatible.ts`) accepts `usage` only after the
+finish, and only once. That is OpenAI's documented form, which ADR-019
+records: `usage: null` on every chunk, then one `choices: []` chunk that
+carries the usage. Ollama follows it. Gemini does not: it sends `usage` on
+every chunk, the finish chunk included, as running totals (total tokens
+31, 48, 50, 50 in s3), and no usage-only chunk. The first chunk's `usage`
+comes before the finish, so the adapter rejects the whole stream.
+
+**Why it was not a bug before:** while Gemini was only measured, the
+failure was a finding about the provider, and
+`test/integration/gemini-recordings.test.ts` pins it as recorded. Once a
+deployment can choose Gemini, the same pin asserts that a real client gets
+a 502 for a usable answer.
+
+**Fix (ruled 2026-10-11, not built):** ADR-041 section 16, the amendment
+on part 1's open items, item 1. Tolerate usage on every chunk and take the
+last chunk that carries it. If the counts ever go down from one chunk to
+the next, log at `warn` with no bodies and still take the last. Never fail
+the request over usage numbers. The client still gets one usage chunk
+after the finish (ADR-019). Its own step, after part 2.
+
+**Guarded by:** nothing yet. Today the replay test's s3 pin asserts the
+bug. The fix changes it to assert the restored answer and the last usage;
+this entry is completed then.
