@@ -26,7 +26,7 @@
 import { Readable } from 'node:stream';
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
 import type { ModelRefusals } from '../providers/openai-compatible.js';
-import type { ChatProvider, DroppedExtras } from '../providers/provider.js';
+import type { ChatProvider, DroppedExtras, UsageCount } from '../providers/provider.js';
 import { PlaceholderMapping } from '../redaction/mapping.js';
 import { restore, StreamRestorer } from '../redaction/restore.js';
 import { GatewayError, isProviderRejection, safeErrorDetails, toGatewayError } from './errors.js';
@@ -86,6 +86,23 @@ function logDropped(log: FastifyBaseLogger, dropped: DroppedExtras | undefined):
     },
     'provider extra content dropped',
   );
+}
+
+/**
+ * One `warn` line for a stream whose usage counts went down from one chunk
+ * to the next (bug-log 75; ADR-041 section 16): the last usage was passed on
+ * anyway, never a failure. The provider's name and which counts went down,
+ * by name (`prompt`, `completion`, `total`): never their values, which
+ * would weakly track the length of the input, and never a body.
+ */
+function logUsageDecreased(
+  log: FastifyBaseLogger,
+  provider: string,
+  decreased: readonly UsageCount[] | undefined,
+): void {
+  if (decreased !== undefined && decreased.length > 0) {
+    log.warn({ provider, decreased }, 'provider usage counts decreased');
+  }
 }
 
 /** Yields `events`, then runs `done` however the stream ends. */
@@ -183,7 +200,14 @@ export function buildServer(config: ServerConfig, provider: ChatProvider): Fasti
       return reply
         .header('content-type', 'text/event-stream; charset=utf-8')
         .header('cache-control', 'no-cache')
-        .send(Readable.from(thenRun(events, () => logDropped(request.log, stream.dropped?.()))));
+        .send(
+          Readable.from(
+            thenRun(events, () => {
+              logDropped(request.log, stream.dropped?.());
+              logUsageDecreased(request.log, config.providerName, stream.usageDecreased?.());
+            }),
+          ),
+        );
     }
 
     const result = await provider.complete(outbound, controller.signal);

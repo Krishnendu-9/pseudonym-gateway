@@ -672,6 +672,188 @@ describe('createOllamaProvider.stream: a refusal named in delta.refusal', () => 
   });
 });
 
+// Bug-log 75; ADR-041 section 16, the amendment on part 1's open items, item
+// 1. Usage may come on any chunk, before or after the finish, any number of
+// times (Gemini sends running totals on every chunk); the last one is passed
+// on, once, after the finish. A count that goes down is reported, never a
+// failure. The first two tests were bad_response rows until the fix.
+describe('createOllamaProvider.stream: usage on any chunk (bug 75)', () => {
+  const counts = (prompt: number, completion: number, total: number) => ({
+    prompt_tokens: prompt,
+    completion_tokens: completion,
+    total_tokens: total,
+  });
+  type Counts = ReturnType<typeof counts>;
+  const pieceWithUsage = (content: string, usage: Counts): string =>
+    sseData(streamChunk([{ index: 0, delta: { content }, finish_reason: null }], { usage }));
+  const finishWithUsage = (usage: Counts): string =>
+    sseData(streamChunk([{ index: 0, delta: {}, finish_reason: 'stop' }], { usage }));
+  const usageOnly = (usage: Counts): string => sseData(streamChunk([], { usage }));
+
+  it('usage before the finish, and none after it: passed on after the finish', async () => {
+    mock.respondWith(streamed([piece('Hello'), usageChunk, finishChunk(), DONE]));
+    const stream = await openStream({}, undefined, true);
+    expect(await collect(stream)).toEqual([
+      { type: 'content', text: 'Hello' },
+      { type: 'finish', reason: 'stop' },
+      { type: 'usage', usage: STREAM_USAGE },
+    ]);
+    expect(stream.usageDecreased?.()).toEqual([]);
+  });
+
+  it('usage twice after the finish: only the last is passed on', async () => {
+    mock.respondWith(
+      streamed([piece('Hello'), finishChunk(), usageChunk, usageOnly(counts(12, 9, 21)), DONE]),
+    );
+    expect(await collect(await openStream({}, undefined, true))).toEqual([
+      { type: 'content', text: 'Hello' },
+      { type: 'finish', reason: 'stop' },
+      { type: 'usage', usage: counts(12, 9, 21) },
+    ]);
+  });
+
+  it("Gemini's shape (attempt-4/s3's counts): running totals on every chunk, the finish chunk included, no usage-only chunk", async () => {
+    mock.respondWith(
+      streamed([
+        pieceWithUsage('The refund', counts(29, 2, 31)),
+        pieceWithUsage(' for card [CARD_1]', counts(29, 19, 48)),
+        pieceWithUsage(' [EMAIL_1].', counts(29, 21, 50)),
+        finishWithUsage(counts(29, 21, 50)),
+        DONE,
+      ]),
+    );
+    const stream = await openStream({}, undefined, true);
+    expect(await collect(stream)).toEqual([
+      { type: 'content', text: 'The refund' },
+      { type: 'content', text: ' for card [CARD_1]' },
+      { type: 'content', text: ' [EMAIL_1].' },
+      { type: 'finish', reason: 'stop' },
+      { type: 'usage', usage: counts(29, 21, 50) },
+    ]);
+    expect(stream.usageDecreased?.()).toEqual([]);
+  });
+
+  it('usage on the content chunks and none on the finish chunk: the last one, after the finish', async () => {
+    mock.respondWith(
+      streamed([
+        pieceWithUsage('a', counts(5, 1, 6)),
+        pieceWithUsage('b', counts(5, 2, 7)),
+        finishChunk(),
+        DONE,
+      ]),
+    );
+    expect(await collect(await openStream({}, undefined, true))).toEqual([
+      { type: 'content', text: 'a' },
+      { type: 'content', text: 'b' },
+      { type: 'finish', reason: 'stop' },
+      { type: 'usage', usage: counts(5, 2, 7) },
+    ]);
+  });
+
+  it.each([
+    ['prompt_tokens', counts(29, 2, 31), counts(28, 19, 47), 'prompt'],
+    ['completion_tokens', counts(29, 19, 48), counts(29, 2, 49), 'completion'],
+    ['total_tokens', counts(29, 2, 31), counts(29, 19, 30), 'total'],
+  ])(
+    '%s goes down: never a failure, the last usage still passed on, and that count named',
+    async (_count, before, after, name) => {
+      mock.respondWith(
+        streamed([pieceWithUsage('a', before), pieceWithUsage('b', after), finishChunk(), DONE]),
+      );
+      const stream = await openStream({}, undefined, true);
+      expect(await collect(stream)).toEqual([
+        { type: 'content', text: 'a' },
+        { type: 'content', text: 'b' },
+        { type: 'finish', reason: 'stop' },
+        { type: 'usage', usage: after },
+      ]);
+      expect(stream.usageDecreased?.()).toEqual([name]);
+    },
+  );
+
+  it('the names come in the order prompt, completion, total, not in the order seen', async () => {
+    mock.respondWith(
+      streamed([
+        pieceWithUsage('a', counts(5, 5, 10)),
+        pieceWithUsage('b', counts(5, 5, 9)),
+        pieceWithUsage('c', counts(4, 6, 10)),
+        finishChunk(),
+        DONE,
+      ]),
+    );
+    const stream = await openStream({}, undefined, true);
+    await collect(stream);
+    expect(stream.usageDecreased?.()).toEqual(['prompt', 'total']);
+  });
+
+  it('equal counts are not a decrease (s3 ends on such a plateau)', async () => {
+    mock.respondWith(
+      streamed([
+        pieceWithUsage('a', counts(29, 21, 50)),
+        finishWithUsage(counts(29, 21, 50)),
+        DONE,
+      ]),
+    );
+    const stream = await openStream({}, undefined, true);
+    await collect(stream);
+    expect(stream.usageDecreased?.()).toEqual([]);
+  });
+
+  it('a decrease is remembered: down and then up again is still reported', async () => {
+    mock.respondWith(
+      streamed([
+        pieceWithUsage('a', counts(10, 5, 15)),
+        pieceWithUsage('b', counts(10, 3, 13)),
+        finishWithUsage(counts(10, 9, 19)),
+        DONE,
+      ]),
+    );
+    const stream = await openStream({}, undefined, true);
+    const events = await collect(stream);
+    expect(events.at(-1)).toEqual({ type: 'usage', usage: counts(10, 9, 19) });
+    expect(stream.usageDecreased?.()).toEqual(['completion', 'total']);
+  });
+
+  it('no usage at all: no usage event, and no decrease', async () => {
+    mock.respondWith(streamed(ollamaStreamEvents(['a'])));
+    const stream = await openStream({}, undefined, true);
+    expect((await collect(stream)).map((e) => e.type)).toEqual(['content', 'finish']);
+    expect(stream.usageDecreased?.()).toEqual([]);
+  });
+
+  it('a stream that fails after its usage arrived passes no usage on', async () => {
+    mock.respondWith(
+      streamed([pieceWithUsage('Hello', counts(5, 1, 6)), finishWithUsage(counts(5, 1, 6))]),
+    );
+    const { events, error } = await midStreamFailure(await openStream({}, undefined, true));
+    expect(events).toEqual([
+      { type: 'content', text: 'Hello' },
+      { type: 'finish', reason: 'stop' },
+    ]);
+    expect(error.failure).toBe('bad_response');
+  });
+
+  it('[DONE] after usage but with no finish fails, and passes no usage on', async () => {
+    mock.respondWith(streamed([pieceWithUsage('Hello', counts(5, 1, 6)), DONE]));
+    const { events, error } = await midStreamFailure(await openStream({}, undefined, true));
+    expect(events).toEqual([{ type: 'content', text: 'Hello' }]);
+    expect(error.failure).toBe('bad_response');
+  });
+
+  it('content after the finish still fails when it carries usage', async () => {
+    mock.respondWith(
+      streamed([
+        piece('Hello'),
+        finishWithUsage(counts(5, 1, 6)),
+        pieceWithUsage('more', counts(5, 2, 7)),
+        DONE,
+      ]),
+    );
+    const { error } = await midStreamFailure(await openStream({}, undefined, true));
+    expect(error.failure).toBe('bad_response');
+  });
+});
+
 describe('createOllamaProvider.stream: failures after the first chunk (thrown from the events)', () => {
   const first = piece('Hello');
 
@@ -694,8 +876,6 @@ describe('createOllamaProvider.stream: failures after the first chunk (thrown fr
       'a refusal arrives after the finish',
       [first, finishChunk(), piece('', { refusal: 'no' }), DONE],
     ],
-    ['usage arrives before the finish', [first, usageChunk, finishChunk(), DONE]],
-    ['usage arrives twice', [first, finishChunk(), usageChunk, usageChunk, DONE]],
     [
       'a chunk has two choices',
       [

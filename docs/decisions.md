@@ -10658,6 +10658,12 @@ reviewers). _Corrected 2026-10-11, after commit `a91af20`: this first said
 "section 2" only; section 2 states the first point and points to the quote,
 and the quote and the human reviewers are in section 4._
 
+_Added 2026-10-11, with bug 75's fix: a second breaking change, beside F's.
+A stream in which `usage` arrives before the finish, or more than once,
+used to fail with `provider_bad_response`; it now succeeds, for every
+provider, not only Gemini (bug-log 75; "Bug 75 fixed", below). The README
+must tell someone upgrading that requests which used to fail now succeed._
+
 **The two error codes, checked against OpenAI's documentation
 (2026-10-11).** `unsupported_parameter` and `unsupported_value` were
 proposed from memory. **Neither appears in OpenAI's documentation**:
@@ -11013,6 +11019,66 @@ B's warning, as ruled above.
    carrying a parameter the provider permanently refuses can never succeed,
    so every retry is wasted. The 400 tells the client to change the
    request, which is the only thing that can help.
+
+#### Bug 75 fixed (2026-10-11): usage on any chunk, the last one passed on
+
+**Built as ruled** (the amendment on part 1's open items, item 1; no call
+to any provider).
+
+- **The adapter** (`streamEvents` in `src/providers/openai-compatible.ts`)
+  accepts `usage` on any chunk, before or after the finish, any number of
+  times. It keeps the last and yields it once, after the provider's
+  `[DONE]`. `ProviderStream`'s promise of "at most one `usage`" therefore
+  still holds, and `src/gateway/stream.ts` is unchanged: the client still
+  gets one `choices: []` usage chunk after the finish (ADR-019). A stream
+  that fails, `[DONE]` with no finish included, passes no usage on.
+  Content or a refusal after the finish is still `bad_response`.
+- **Counts that go down.** If any of the three counts is lower than on the
+  previous chunk that carried usage, `ProviderStream.usageDecreased()`
+  names it, and a name once recorded stays after a later rise. The gateway
+  writes one `warn` line per such stream, "provider usage counts
+  decreased", with `provider` (the profile name) and `decreased`: which
+  counts went down, by name only (`prompt`, `completion`, `total`, always in
+  that order). **The values are never logged** (the user's ruling, same
+  day): the names tell an operator what to look at and carry nothing about
+  content, where the values would weakly track the length of the input. No
+  bodies. The line is written when the stream ends, beside the
+  `extra_content` line, and also when the client did not ask for usage,
+  since the provider's numbers were odd either way (the user confirmed
+  this). Equal counts are not a decrease (s3 ends on 50, 50).
+- **A breaking change, for every provider.** A stream with `usage` before
+  the finish, or more than once, used to fail with `provider_bad_response`
+  and now succeeds. Added to this section's list of what the README must
+  say, beside F's.
+- **What the bug was hiding.** s3's dropped `extra_content` count went from
+  0 to 1: the stream used to fail before the finish chunk that carries it,
+  so on this recording the streamed count-and-drop path never ran until the
+  fix (it was tested on s2).
+- **OpenAI's documented shape is unchanged, shown by test.** A new test in
+  `test/integration/strict-provider.test.ts` pins every event the client
+  gets for the strict fake's stream (`usage: null` on every chunk, then one
+  `choices: []` usage chunk). It was run on the code before the fix and
+  passed, and passes after it. The usage event's position among the
+  adapter's events did not move: OpenAI's usage chunk is the last before
+  `[DONE]` in any case.
+- **Existing assertions changed, each because of the fix:** the two s3
+  replays in `test/integration/gemini-recordings.test.ts` asserted the
+  `bad_response` failure and that nothing was counted; they now assert the
+  answer, the last usage, and one counted `extra_content`. Two rows of the
+  "failures after the first chunk" table in
+  `test/unit/providers/ollama.test.ts` ("usage arrives before the finish",
+  "usage arrives twice") asserted `bad_response`; they are now successful
+  streams in the new "usage on any chunk (bug 75)" block.
+- **Mutations:** `scripts/mutations/streaming-usage.ts`, 21 of 21 caught
+  against the final code. SU1 and SU2 put back the bug's two halves (usage
+  before the finish, usage twice); SU4 the forbidden failure over counts
+  that go down; SU6 (the held usage yielded before the missing-finish
+  check) and SU20 (the names in the order seen) are each caught by the one
+  test written for it; SU18 to SU21 check the names in the warn line, SU21
+  that no value takes a name's place. The four lists that mutate the same
+  files were re-run against the first version of the fix, before the names
+  were added: refusals 17 of 17, extra-content 12 of 12, option3-4b 26 of
+  26, rate-limit 8 of 8; none mutates the lines the names changed.
 
 <a id="adr-042"></a>
 

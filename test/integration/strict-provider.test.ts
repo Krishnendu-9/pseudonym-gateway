@@ -241,6 +241,45 @@ describe('every answer the specification allows is handled as decided', () => {
     expect(usage).toHaveLength(1);
   });
 
+  // OpenAI's documented form (ADR-019): usage: null on every chunk, then one
+  // choices: [] chunk carrying the usage. Written before bug 75's fix and run
+  // on the code before it, so it pins that the fix left this shape's output
+  // exactly as it was, event for event.
+  it("OpenAI's documented usage shape: every event the client gets, exactly; no warn line", async () => {
+    const { g, strict } = await againstStrict();
+    strict.answer = { kind: 'stream', pieces: ['Hel', 'lo', ' there.'] };
+    const response = await send(g, chat({ stream: true, stream_options: { include_usage: true } }));
+    const base = {
+      id: 'chatcmpl-strict-stream',
+      object: 'chat.completion.chunk',
+      created: 1_790_000_300,
+      model: TEST_MODEL,
+    };
+    const piece = (content: string) => ({
+      ...base,
+      choices: [{ index: 0, delta: { content }, finish_reason: null }],
+      usage: null,
+    });
+    expect(readStreamed(response.body).events).toEqual([
+      {
+        ...base,
+        choices: [{ index: 0, delta: { role: 'assistant', content: '' }, finish_reason: null }],
+        usage: null,
+      },
+      piece('Hel'),
+      piece('lo'),
+      piece(' there.'),
+      { ...base, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }], usage: null },
+      {
+        ...base,
+        choices: [],
+        usage: { prompt_tokens: 11, completion_tokens: 3, total_tokens: 14 },
+      },
+      '[DONE]',
+    ]);
+    expect(g.logs.some((line) => (JSON.parse(line) as { level: number }).level >= 40)).toBe(false);
+  });
+
   it('finish "length" with empty content: an empty answer, finish length', async () => {
     const { g, strict } = await againstStrict();
     strict.answer = { kind: 'complete', content: '', finishReason: 'length' };

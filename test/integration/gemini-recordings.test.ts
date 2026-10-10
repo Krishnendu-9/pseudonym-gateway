@@ -79,6 +79,8 @@ const NON_STREAMED: readonly Recording[] = [
 ];
 const S2 = load('attempt-4', 's2');
 const S3 = load('attempt-4', 's3');
+/** The usage on s3's last two chunks (its four totals: 31, 48, 50, 50). */
+const S3_LAST_USAGE = { prompt_tokens: 29, completion_tokens: 21, total_tokens: 50 };
 
 /** True if any 16-character stretch of any signature appears in `text`. */
 function holdsSignature(text: string, signatures: readonly string[]): boolean {
@@ -116,6 +118,8 @@ const serve =
   };
 
 const EMAIL = 'asha.rao@example.com';
+/** s3's answer with this request's mapping: [EMAIL_1] restored; [CARD_1] is not in it. */
+const S3_RESTORED = `The refund for card [CARD_1] has been successfully processed and sent to ${EMAIL}.`;
 const DROPPED_MESSAGE = 'provider extra content dropped';
 
 describe('the recordings are the 12 answers measured', () => {
@@ -192,22 +196,24 @@ describe('the adapter, replaying each recording', () => {
     });
   });
 
-  it('attempt-4/s3, streamed: fails as recorded (usage on every chunk) before the extra_content chunk, so nothing is counted', async () => {
+  // Usage on every chunk, as running totals (bug-log 75): until the fix this
+  // replay failed with bad_response at the first chunk.
+  it('attempt-4/s3, streamed with usage: content, the finish, then the last usage once; the drop counted with its length', async () => {
     mock = await startMockProvider();
     mock.respondWith(serve(S3));
     const stream = await adapter().stream(REQUEST, new AbortController().signal, {
       includeUsage: true,
     });
-    const failure = await (async () => {
-      try {
-        for await (const _event of stream.events) void _event;
-      } catch (error) {
-        return error;
-      }
-      return undefined;
-    })();
-    expect(failure).toMatchObject({ failure: 'bad_response' });
-    expect(printable(stream.dropped?.())).toEqual({ extraContent: 0, thoughtSignatureLengths: [] });
+    const events: ProviderStreamEvent[] = [];
+    for await (const event of stream.events) events.push(event);
+    expect(events.map((e) => e.type)).toEqual(['content', 'content', 'content', 'finish', 'usage']);
+    expect(events.at(-1)).toEqual({ type: 'usage', usage: S3_LAST_USAGE });
+    expect(stream.usageDecreased?.()).toEqual([]);
+    expect(holdsSignature(JSON.stringify(events), S3.signatures)).toBe(false);
+    expect(printable(stream.dropped?.())).toEqual({
+      extraContent: 1,
+      thoughtSignatureLengths: [S3.signatures[0]!.length],
+    });
   });
 });
 
@@ -291,14 +297,45 @@ describe('the gateway, replaying each recording', () => {
     expect(logsClean(gateway, S2.signatures)).toBe(true);
   });
 
-  it('attempt-4/s3, streamed: the recorded failure, nothing of the signature anywhere, nothing counted', async () => {
+  // Gemini sent usage on every chunk although this client did not ask for it.
+  // Until the fix (bug-log 75) this replay ended in a provider_bad_response
+  // error event, and nothing was counted.
+  it('attempt-4/s3, streamed: the answer restored, no usage asked for so none sent; one log line with the count and the length', async () => {
     gateway = await startTestGateway();
     gateway.provider.respondWith(serve(S3));
     const response = await post(gateway, request({ stream: true }));
     const streamed = readStreamed(response.body);
-    expect(streamed.error?.error.code).toBe('provider_bad_response');
+    expect(streamed.done).toBe(true);
+    expect(streamed.error).toBeUndefined();
+    expect(streamed.content).toBe(S3_RESTORED);
+    expect(streamed.chunks.every((c) => !('usage' in c))).toBe(true);
+    expect(response.body.includes('extra_content')).toBe(false);
     expect(holdsSignature(response.body, S3.signatures)).toBe(false);
-    expect(droppedLines(gateway)).toEqual([]);
+    expect(droppedLines(gateway)).toEqual([
+      {
+        level: 30,
+        counts: { extraContent: 1, thoughtSignatureLengths: [S3.signatures[0]!.length] },
+      },
+    ]);
+    expect(logsClean(gateway, S3.signatures)).toBe(true);
+  });
+
+  it('attempt-4/s3, streamed with include_usage: one usage chunk, the last counts, after the finish; no warn line', async () => {
+    gateway = await startTestGateway();
+    gateway.provider.respondWith(serve(S3));
+    const response = await post(
+      gateway,
+      request({ stream: true, stream_options: { include_usage: true } }),
+    );
+    const streamed = readStreamed(response.body);
+    expect(streamed.done).toBe(true);
+    expect(streamed.content).toBe(S3_RESTORED);
+    expect(streamed.chunks.at(-1)).toMatchObject({ choices: [], usage: S3_LAST_USAGE });
+    expect(streamed.chunks.at(-2)?.choices[0]?.finish_reason).toBe('stop');
+    expect(streamed.chunks.slice(0, -1).every((c) => c.usage === null)).toBe(true);
+    expect(gateway.logs.some((line) => (JSON.parse(line) as { level: number }).level === 40)).toBe(
+      false,
+    );
     expect(logsClean(gateway, S3.signatures)).toBe(true);
   });
 });

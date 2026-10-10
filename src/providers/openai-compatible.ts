@@ -41,9 +41,10 @@
 //
 // What a stream must look like: `data: <chunk>` events; `delta.content` and
 // `delta.refusal` strings, empty or left out; one chunk carries
-// `finish_reason`; with `include_usage`, a chunk with `choices: []` and
-// `usage` follows; then
-// `data: [DONE]`. A stream that ends before `[DONE]` is a failure, never a
+// `finish_reason`; then `data: [DONE]`. `usage` may be on any chunk, any
+// number of times: OpenAI's form is one `choices: []` chunk after the
+// finish, Gemini's is running totals on every chunk (bug-log 75); the last
+// one is passed on. A stream that ends before `[DONE]` is a failure, never a
 // short answer (Ollama ends a stream that failed midway without it; see
 // ollama.ts), and an OpenAI-style `data: {"error": …}` event is a failure
 // too.
@@ -58,7 +59,9 @@ import type {
   ProviderFailure,
   ProviderStream,
   ProviderStreamEvent,
+  ProviderUsage,
   StreamOptions,
+  UsageCount,
 } from './provider.js';
 import { ProviderError } from './provider.js';
 import { SseParser } from './sse.js';
@@ -276,36 +279,70 @@ async function* readChunks(
   }
 }
 
+/** Each usage count's name and its field, in the order they are reported. */
+const USAGE_COUNTS = [
+  ['prompt', 'prompt_tokens'],
+  ['completion', 'completion_tokens'],
+  ['total', 'total_tokens'],
+] as const satisfies readonly (readonly [UsageCount, keyof ProviderUsage])[];
+
+/** Which counts went down across a stream's chunks, by name. */
+interface UsageSeen {
+  readonly decreased: Set<UsageCount>;
+}
+
+/** Adds to `into` the name of every count that is lower in `next` than in `previous`. */
+function noteDecreases(into: Set<UsageCount>, previous: ProviderUsage, next: ProviderUsage): void {
+  for (const [name, field] of USAGE_COUNTS) if (next[field] < previous[field]) into.add(name);
+}
+
+/** The names in `seen`, in USAGE_COUNTS order. */
+const decreasedNames = (seen: UsageSeen): UsageCount[] =>
+  USAGE_COUNTS.map(([name]) => name).filter((name) => seen.decreased.has(name));
+
 /**
  * Turns chunks into events, enforcing the order ProviderStream promises,
  * and counts each chunk's `extra_content` into `dropped`.
+ *
+ * Usage may come on any chunk, any number of times (bug-log 75; ADR-041
+ * section 16, the amendment on part 1's open items, item 1): Gemini sends
+ * running totals on every chunk, the finish chunk included, and no
+ * usage-only chunk. The last usage is kept and yielded once, after the
+ * provider's `[DONE]`, so a stream that fails passes none on. Counts that go
+ * down from one usage to the next are recorded in `usageSeen` by name, never
+ * a failure.
  */
 async function* streamEvents(
   first: Chunk,
   rest: AsyncGenerator<Chunk>,
   dropped: Tally,
+  usageSeen: UsageSeen,
 ): AsyncGenerator<ProviderStreamEvent> {
   let finished = false;
-  let usage = false;
+  let usage: ProviderUsage | undefined;
   let text = false;
   try {
     for (let chunk: Chunk | undefined = first; chunk !== undefined;) {
       tally(dropped, chunk.choices[0]?.delta.extra_content);
       for (const event of chunkEvents(chunk)) {
-        const outOfOrder = event.type === 'usage' ? !finished || usage : finished;
-        if (outOfOrder) throw new ProviderError('bad_response');
+        if (event.type === 'usage') {
+          if (usage !== undefined) noteDecreases(usageSeen.decreased, usage, event.usage);
+          usage = event.usage;
+          continue;
+        }
+        if (finished) throw new ProviderError('bad_response');
         if (event.type === 'content' || event.type === 'refusal') text = true;
         if (event.type === 'finish' && event.reason === 'stop' && !text) {
           throw new ProviderError('empty_response');
         }
         if (event.type === 'finish') finished = true;
-        if (event.type === 'usage') usage = true;
         yield event;
       }
       const next = await rest.next();
       chunk = next.done ? undefined : next.value;
     }
     if (!finished) throw new ProviderError('bad_response');
+    if (usage !== undefined) yield { type: 'usage', usage };
   } finally {
     await rest.return(undefined);
   }
@@ -431,11 +468,13 @@ export function createOpenAICompatibleProvider(
       const first = await chunks.next();
       if (first.done) throw new ProviderError('bad_response');
       const dropped = emptyTally();
+      const usageSeen: UsageSeen = { decreased: new Set() };
       return {
         id: first.value.id,
         created: first.value.created,
-        events: streamEvents(first.value, chunks, dropped),
+        events: streamEvents(first.value, chunks, dropped, usageSeen),
         dropped: () => snapshot(dropped),
+        usageDecreased: () => decreasedNames(usageSeen),
       };
     },
   };

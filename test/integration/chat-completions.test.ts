@@ -27,6 +27,7 @@ import {
   sseData,
   STREAM_ID,
   STREAM_USAGE,
+  streamChunk,
   streamed,
   type Responder,
   SUCCESS_DEADLINE_MS,
@@ -726,6 +727,121 @@ describe('streaming (ADR-019)', () => {
     expect(chunks.at(-1)).toMatchObject({ choices: [], usage: STREAM_USAGE });
     expect(chunks.slice(0, -1).every((c) => c.usage === null)).toBe(true);
     expect(done).toBe(true);
+  });
+
+  // Bug-log 75: usage on any chunk is taken, the last one wins, and counts
+  // that go down are logged once at warn, never a failure.
+  describe('usage counts that go down (bug 75)', () => {
+    const counts = (prompt: number, completion: number, total: number) => ({
+      prompt_tokens: prompt,
+      completion_tokens: completion,
+      total_tokens: total,
+    });
+    const pieceWithUsage = (content: string, usage: ReturnType<typeof counts>): string =>
+      sseData(streamChunk([{ index: 0, delta: { content }, finish_reason: null }], { usage }));
+    const finish = sseData(streamChunk([{ index: 0, delta: {}, finish_reason: 'stop' }]));
+    const DONE = sseData('[DONE]');
+    const WARN = 'provider usage counts decreased';
+    const warnLines = (g: TestGateway): Record<string, unknown>[] =>
+      g.logs
+        .map((line) => JSON.parse(line) as Record<string, unknown>)
+        .filter((line) => line.msg === WARN);
+
+    it('the stream still succeeds with the last usage; one warn line, the provider and the counts by name, nothing else', async () => {
+      gateway = await startTestGateway();
+      gateway.provider.respondWith(
+        streamed([
+          pieceWithUsage('Refund to ', counts(20, 3, 23)),
+          pieceWithUsage('[CARD_1]', counts(20, 1, 21)),
+          pieceWithUsage('.', counts(20, 2, 22)),
+          finish,
+          DONE,
+        ]),
+      );
+      const response = await post(gateway, {
+        ...streamBody(`Card ${CARD}`),
+        stream_options: { include_usage: true },
+      });
+      expect(response.statusCode).toBe(200);
+      const result = readStreamed(response.body);
+      expect(result.done).toBe(true);
+      expect(result.error).toBeUndefined();
+      expect(result.content).toBe(`Refund to ${CARD}.`);
+      expect(result.chunks.at(-1)).toMatchObject({ choices: [], usage: counts(20, 2, 22) });
+      const lines = warnLines(gateway);
+      expect(lines).toHaveLength(1);
+      // Completion went 3 → 1 and total 23 → 21; the prompt never moved. The
+      // names only: the values would weakly track the length of the input.
+      expect(lines[0]).toMatchObject({
+        level: 40,
+        provider: 'ollama',
+        decreased: ['completion', 'total'],
+      });
+      expect(Object.keys(lines[0]!).sort()).toEqual(
+        ['decreased', 'hostname', 'level', 'msg', 'pid', 'provider', 'reqId', 'time'].sort(),
+      );
+      const all = gateway.logs.join('');
+      expect(all).not.toContain('4111');
+      expect(all).not.toContain('Refund');
+      expect(all).not.toContain('CARD_1');
+    });
+
+    it('logged once however many times the counts go down', async () => {
+      gateway = await startTestGateway();
+      gateway.provider.respondWith(
+        streamed([
+          pieceWithUsage('a', counts(9, 5, 14)),
+          pieceWithUsage('b', counts(8, 4, 12)),
+          pieceWithUsage('c', counts(7, 3, 10)),
+          finish,
+          DONE,
+        ]),
+      );
+      const response = await post(gateway, {
+        ...streamBody('hi'),
+        stream_options: { include_usage: true },
+      });
+      expect(readStreamed(response.body).done).toBe(true);
+      const lines = warnLines(gateway);
+      expect(lines).toHaveLength(1);
+      expect(lines[0]!.decreased).toEqual(['prompt', 'completion', 'total']);
+    });
+
+    it('also when the client did not ask for usage: no usage sent, still one warn line', async () => {
+      gateway = await startTestGateway();
+      gateway.provider.respondWith(
+        streamed([
+          pieceWithUsage('a', counts(9, 5, 14)),
+          pieceWithUsage('b', counts(9, 4, 13)),
+          finish,
+          DONE,
+        ]),
+      );
+      const result = readStreamed((await post(gateway, streamBody('hi'))).body);
+      expect(result.done).toBe(true);
+      expect(result.chunks.every((c) => !('usage' in c))).toBe(true);
+      const lines = warnLines(gateway);
+      expect(lines).toHaveLength(1);
+      expect(lines[0]!.decreased).toEqual(['completion', 'total']);
+    });
+
+    it('counts that never go down: no warn line', async () => {
+      gateway = await startTestGateway();
+      gateway.provider.respondWith(
+        streamed([
+          pieceWithUsage('a', counts(9, 1, 10)),
+          pieceWithUsage('b', counts(9, 1, 10)),
+          finish,
+          DONE,
+        ]),
+      );
+      const response = await post(gateway, {
+        ...streamBody('hi'),
+        stream_options: { include_usage: true },
+      });
+      expect(readStreamed(response.body).done).toBe(true);
+      expect(warnLines(gateway)).toEqual([]);
+    });
   });
 
   it.each<[string, Responder, number, string, number?]>([

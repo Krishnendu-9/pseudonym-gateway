@@ -88,7 +88,8 @@ export type ProviderStreamEvent =
  *
  * `events` then yields, in this order: any number of `content` and
  * `refusal` events (two separate texts, in any interleaving), exactly one
- * `finish`, at most one `usage`. It ends only once the provider
+ * `finish`, at most one `usage`: the last the provider sent, on whichever
+ * chunk (bug-log 75). It ends only once the provider
  * has said the answer is complete; anything else (a cut connection, a
  * malformed chunk, a gap longer than the timeout) is a ProviderError thrown
  * from the iteration.
@@ -99,7 +100,17 @@ export interface ProviderStream {
   readonly events: AsyncIterable<ProviderStreamEvent>;
   /** What the chunks read so far carried in `extra_content`, as numbers only. */
   readonly dropped?: () => DroppedExtras;
+  /**
+   * Which usage counts went down from one chunk that carried usage to the
+   * next, in the chunks read so far, by name only and always in the order
+   * prompt, completion, total; empty if none did (bug-log 75). The last
+   * usage is passed on either way.
+   */
+  readonly usageDecreased?: () => readonly UsageCount[];
 }
+
+/** A usage count by name: `prompt_tokens`, `completion_tokens`, `total_tokens`. */
+export type UsageCount = 'prompt' | 'completion' | 'total';
 
 export interface StreamOptions {
   /** Ask the provider for token usage at the end of the stream. */

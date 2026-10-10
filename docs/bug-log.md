@@ -3060,7 +3060,7 @@ disk usage minus the summed layer sizes. It was checked against a separate
 measure, the size of the `docker save` archive: 200,253,440 bytes, which is
 the compressed layers plus about 20 KB of tar framing.
 
-## 75. Every Gemini stream with usage fails, though Gemini answered (2026-10-11, surfaced when ADR-041 decision A made Gemini a product provider; not fixed yet)
+## 75. Every Gemini stream with usage fails, though Gemini answered (2026-10-11, surfaced when ADR-041 decision A made Gemini a product provider; fixed the same day)
 
 **Symptom:** a streamed request with `stream_options.include_usage: true`
 to Gemini always ends as a 502 `provider_bad_response` (streamed, as the
@@ -3088,13 +3088,57 @@ failure was a finding about the provider, and
 deployment can choose Gemini, the same pin asserts that a real client gets
 a 502 for a usable answer.
 
-**Fix (ruled 2026-10-11, not built):** ADR-041 section 16, the amendment
-on part 1's open items, item 1. Tolerate usage on every chunk and take the
-last chunk that carries it. If the counts ever go down from one chunk to
-the next, log at `warn` with no bodies and still take the last. Never fail
-the request over usage numbers. The client still gets one usage chunk
-after the finish (ADR-019). Its own step, after part 2.
+**Fix (ruled and built 2026-10-11):** ADR-041 section 16, the amendment
+on part 1's open items, item 1 (ADR-041 "Bug 75 fixed" records the build).
+The adapter's stream accepts `usage` on any chunk, before or after the
+finish, any number of times. It keeps the last and yields it once, after
+the provider's `[DONE]`, so `ProviderStream` still promises at most one
+`usage` and the gateway's stream code is unchanged. A stream that fails
+passes no usage on. If any of the three counts goes down from one chunk
+that carries usage to the next, the stream names it (`usageDecreased()`),
+and the gateway writes one `warn` line, "provider usage counts decreased",
+with the provider's name and which counts went down, by name only
+(`prompt`, `completion`, `total`, always in that order). The names tell an
+operator what to look at and carry nothing about content; the values would
+weakly track the length of the input, so they are never logged. The line is
+written also when the client did not ask for usage. The last usage is still
+passed on, and the request never fails over usage numbers.
 
-**Guarded by:** nothing yet. Today the replay test's s3 pin asserts the
-bug. The fix changes it to assert the restored answer and the last usage;
-this entry is completed then.
+**A breaking change, for every provider, not only Gemini.** A stream in
+which `usage` arrives before the finish, or more than once, used to fail
+with `provider_bad_response` (streamed, as the error event); it now
+succeeds. Someone upgrading should expect requests that used to fail to
+succeed. It is the second breaking change in Phase 7c, after a provider
+HTTP 400 becoming a 400 instead of a 502 (ADR-041 section 16, F), and it
+goes beside that one in ADR-041's list of what the README must say when it
+is written.
+
+**The bug was hiding a second thing.** In the s3 replay the dropped
+`extra_content` count went from 0 to 1. The stream used to fail at its
+first chunk, before the finish chunk that carries `extra_content`, so on
+this recording the code that counts and drops `extra_content` in a stream
+never ran until the fix. It was tested on s2, which has no usage; s3 now
+exercises it too.
+
+**Guarded by:** the s3 replay in
+`test/integration/gemini-recordings.test.ts`, which now asserts the answer:
+through the adapter, content, the finish and then one usage, the last
+(prompt 29, completion 21, total 50); through the gateway, the restored
+answer with no usage chunk when none was asked for, and with
+`include_usage` one usage chunk after the finish carrying those counts and
+no warn line. Both replays now also count the dropped `extra_content`,
+which the failure used to stop before reaching. Beside it:
+`test/unit/providers/ollama.test.ts` "usage on any chunk (bug 75)"
+(Gemini's shape, usage before the finish, usage twice, each count going
+down and named on its own, the names in a fixed order, equal counts not a
+decrease, a decrease remembered after a rise, a failed stream passing no
+usage on); `test/integration/chat-completions.test.ts` "usage counts that
+go down (bug 75)" (the warn path end to end: the stream succeeds, one warn
+line whose keys are exactly the logger's own plus `provider` and
+`decreased`, the right names in it, once however many decreases, none when
+the counts never go down); and an exact test of OpenAI's documented shape
+in `test/integration/strict-provider.test.ts`, run on the code before the
+fix and after, which pins that output as unchanged event for event.
+Mutations: `scripts/mutations/streaming-usage.ts`, 21 of 21 caught, SU1
+and SU2 (the bug itself) by 17 and 16 tests; SU18 to SU21 check the
+names in the warn line, SU21 that no value takes a name's place.
