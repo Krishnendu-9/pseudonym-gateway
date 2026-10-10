@@ -185,6 +185,7 @@ const provider: ChatProvider = {
 const app = buildServer(
   {
     model: 'eval-names',
+    providerName: 'eval',
     bodyLimit: 4 * 2 ** 20,
     restoreInUnsafeRegions: false,
     placeholderInstruction: false,

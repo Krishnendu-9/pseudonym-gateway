@@ -3,7 +3,8 @@
 //
 // A request's life: Fastify parses the JSON body (application/json only,
 // capped at the body limit) -> parseChatRequest() applies the allowlist ->
-// with names on, the name finder finds person names in every piece of
+// the model is checked, then any field the provider was measured refusing
+// (option 3, refusals.ts) -> with names on, the name finder finds person names in every piece of
 // client text, or the request is refused (ADR-037) ->
 // one PlaceholderMapping is created -> redactRequest() redacts every piece of
 // client text into it -> the provider answers in placeholders -> restoration
@@ -24,13 +25,15 @@
 
 import { Readable } from 'node:stream';
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
+import type { ModelRefusals } from '../providers/openai-compatible.js';
 import type { ChatProvider, DroppedExtras } from '../providers/provider.js';
 import { PlaceholderMapping } from '../redaction/mapping.js';
 import { restore, StreamRestorer } from '../redaction/restore.js';
-import { GatewayError, safeErrorDetails, toGatewayError } from './errors.js';
+import { GatewayError, isProviderRejection, safeErrorDetails, toGatewayError } from './errors.js';
 import { loggerOptions, type LogStream } from './logging.js';
 import type { NameSpans } from '../redaction/redact.js';
 import { redactRequest, requestTexts } from './redact-request.js';
+import { refusedParameter } from './refusals.js';
 import { parseChatRequest } from './schema.js';
 import { sseEvents } from './stream.js';
 
@@ -48,6 +51,13 @@ export interface NameFinder {
 export interface ServerConfig {
   /** The one model requests must name (ADR-014). */
   readonly model: string;
+  /** The provider's profile name, for log lines about the provider. */
+  readonly providerName: string;
+  /**
+   * What the provider was measured refusing for this model (ADR-041 section
+   * 16, option 3). Absent: nothing is refused before sending.
+   */
+  readonly refusals?: ModelRefusals;
   readonly bodyLimit: number;
   readonly restoreInUnsafeRegions: boolean;
   readonly placeholderInstruction: boolean;
@@ -100,7 +110,12 @@ export function buildServer(config: ServerConfig, provider: ChatProvider): Fasti
     const safe = toGatewayError(error, config.bodyLimit);
     const details = { error: safeErrorDetails(error), statusCode: safe.statusCode };
     if (safe.statusCode >= 500) request.log.error(details, 'request failed');
-    else request.log.info(details, 'request rejected');
+    else if (isProviderRejection(error)) {
+      request.log.warn(
+        { ...details, provider: config.providerName },
+        'provider rejected the request',
+      );
+    } else request.log.info(details, 'request rejected');
     return reply.code(safe.statusCode).headers(safe.headers).send(safe.body());
   });
 
@@ -126,6 +141,10 @@ export function buildServer(config: ServerConfig, provider: ChatProvider): Fasti
         'model does not match the model this gateway is configured to use',
       );
     }
+    // Option 3: a measured refusal is refused here, before names, redaction
+    // or the provider, so such a request sends nothing (ADR-041 section 16).
+    const refused = refusedParameter(chat, config.refusals);
+    if (refused !== undefined) throw refused;
 
     // A client that disconnects should not keep a provider call running, nor
     // a place in the name queue.

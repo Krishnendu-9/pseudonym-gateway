@@ -6,10 +6,12 @@ import { describe, expect, it } from 'vitest';
 import { loadEnv } from '../../../src/config/env.js';
 import {
   chatProvider,
+  modelNameWarning,
   nameOptions,
   providerConfig,
   serverConfig,
 } from '../../../src/config/wiring.js';
+import { GEMINI_PROFILE } from '../../../src/providers/gemini.js';
 
 const env = loadEnv({
   LOG_LEVEL: 'warn',
@@ -73,8 +75,11 @@ describe('chatProvider', () => {
 
 describe('serverConfig', () => {
   it('takes each setting from its own variable', () => {
+    // providerName added with option 3 and 4b (ADR-041 section 16); Ollama
+    // has no measured refusals, so there is no `refusals` key.
     expect(serverConfig(env)).toEqual({
       model: 'qwen3:8b',
+      providerName: 'ollama',
       bodyLimit: 1002,
       restoreInUnsafeRegions: true,
       placeholderInstruction: false,
@@ -91,6 +96,57 @@ describe('serverConfig', () => {
       }),
     );
     expect([config.restoreInUnsafeRegions, config.placeholderInstruction]).toEqual([false, true]);
+  });
+});
+
+// ADR-041 section 16: K1 (exact provider, exact model) and decision B.
+describe('refusals and the models/ warning', () => {
+  const gemini = (model: string) =>
+    loadEnv({
+      PSEUDONYM_PROVIDER: 'gemini',
+      PSEUDONYM_MODEL: model,
+      PSEUDONYM_PROVIDER_API_KEY: 'gemini-key',
+    });
+
+  it("gemini with the measured model: Gemini's entries for it, and no warning", () => {
+    const config = serverConfig(gemini('gemini-3.5-flash-lite'));
+    expect(config.providerName).toBe('gemini');
+    expect(config.refusals).toBe(GEMINI_PROFILE.refusals!['gemini-3.5-flash-lite']);
+    expect(modelNameWarning(gemini('gemini-3.5-flash-lite'))).toBeUndefined();
+  });
+
+  it('the model name must match exactly: case and a models/ prefix both miss', () => {
+    for (const model of [
+      'Gemini-3.5-Flash-Lite',
+      'models/gemini-3.5-flash-lite',
+      'gemini-3.5-flash',
+    ]) {
+      expect([model, serverConfig(gemini(model)).refusals]).toEqual([model, undefined]);
+    }
+  });
+
+  it('the same model name under another provider gets nothing (the provider is part of the key)', () => {
+    const ollama = loadEnv({ PSEUDONYM_MODEL: 'gemini-3.5-flash-lite' });
+    expect(serverConfig(ollama).refusals).toBeUndefined();
+    expect(modelNameWarning(ollama)).toBeUndefined();
+  });
+
+  it('a model name that is a built-in object property is not an entry', () => {
+    for (const model of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+      expect([model, serverConfig(gemini(model)).refusals]).toEqual([model, undefined]);
+    }
+  });
+
+  it('warns when the model differs only by a leading models/, either way round, naming both', () => {
+    const warning = modelNameWarning(gemini('models/gemini-3.5-flash-lite'));
+    expect(warning).toBe(
+      'PSEUDONYM_MODEL "models/gemini-3.5-flash-lite" differs only by a leading "models/" from ' +
+        '"gemini-3.5-flash-lite", which the gemini profile has measured refusals for; ' +
+        'requests for this model are not checked against them before sending',
+    );
+    expect(modelNameWarning(gemini('gemini-3.5-flash'))).toBeUndefined();
+    expect(modelNameWarning(gemini('models/gemini-3.5-flash'))).toBeUndefined();
+    expect(modelNameWarning(gemini('models/models/gemini-3.5-flash-lite'))).toBeUndefined();
   });
 });
 

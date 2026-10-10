@@ -9,6 +9,7 @@ import { GEMINI_PROFILE } from '../providers/gemini.js';
 import { OLLAMA_PROFILE } from '../providers/ollama.js';
 import {
   createOpenAICompatibleProvider,
+  type ModelRefusals,
   type OpenAICompatibleConfig,
   type ProviderProfile,
 } from '../providers/openai-compatible.js';
@@ -36,9 +37,50 @@ export function providerConfig(env: Env): OpenAICompatibleConfig {
   };
 }
 
+/**
+ * What the configured provider was measured refusing for the configured
+ * model: exact provider, exact model name (ADR-041 section 16, K1). A model
+ * with no entry has none, and a provider's refusal of it reaches the client
+ * as 4b's 400.
+ */
+function modelRefusals(env: Env): ModelRefusals | undefined {
+  const refusals = PROFILES[env.PSEUDONYM_PROVIDER].refusals;
+  return refusals !== undefined && Object.hasOwn(refusals, env.PSEUDONYM_MODEL)
+    ? refusals[env.PSEUDONYM_MODEL]
+    : undefined;
+}
+
+const PREFIX = 'models/';
+const withoutPrefix = (model: string): string =>
+  model.startsWith(PREFIX) ? model.slice(PREFIX.length) : model;
+
+/**
+ * A start-up warning when the configured model has no measured refusals but
+ * differs only by a leading `models/` from a model that does (ADR-041
+ * section 16, decision B). Falling through to 4b is correct, but could not be
+ * noticed otherwise. Names both models: configuration, not request content.
+ */
+export function modelNameWarning(env: Env): string | undefined {
+  const profile = PROFILES[env.PSEUDONYM_PROVIDER];
+  const model = env.PSEUDONYM_MODEL;
+  if (modelRefusals(env) !== undefined) return undefined;
+  const near = Object.keys(profile.refusals ?? {}).find(
+    (known) => known !== model && withoutPrefix(known) === withoutPrefix(model),
+  );
+  if (near === undefined) return undefined;
+  return (
+    `PSEUDONYM_MODEL ${JSON.stringify(model)} differs only by a leading "models/" from ` +
+    `${JSON.stringify(near)}, which the ${profile.name} profile has measured refusals for; ` +
+    'requests for this model are not checked against them before sending'
+  );
+}
+
 export function serverConfig(env: Env): ServerConfig {
+  const refusals = modelRefusals(env);
   return {
     model: env.PSEUDONYM_MODEL,
+    providerName: PROFILES[env.PSEUDONYM_PROVIDER].name,
+    ...(refusals === undefined ? {} : { refusals }),
     bodyLimit: env.PSEUDONYM_MAX_BODY_BYTES,
     restoreInUnsafeRegions: env.PSEUDONYM_RESTORE_IN_UNSAFE_REGIONS,
     placeholderInstruction: env.PSEUDONYM_PLACEHOLDER_INSTRUCTION,

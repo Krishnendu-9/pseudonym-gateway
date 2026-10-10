@@ -89,7 +89,40 @@ export interface OpenAICompatibleConfig {
 export interface ProviderProfile {
   /** Names the provider in logs. */
   readonly name: string;
+  /**
+   * Fields and values the provider was measured refusing, keyed by the
+   * exact model name (ADR-041 section 16, decisions B and C). The gateway
+   * refuses them itself before sending anything (option 3).
+   */
+  readonly refusals?: Readonly<Record<string, ModelRefusals>>;
 }
+
+/** The request fields a refusal can be recorded for. */
+export const REFUSABLE_FIELDS = [
+  'seed',
+  'frequency_penalty',
+  'presence_penalty',
+  'reasoning_effort',
+] as const;
+export type RefusableField = (typeof REFUSABLE_FIELDS)[number];
+
+/**
+ * One measured refusal, in one of three kinds (ADR-041 section 16, decision
+ * C): refused at any value, refused unless the value is 0, or refused at the
+ * listed values. Data only. `probes` names the recordings it rests on
+ * (`attempt-N/id`, under test/fixtures/gemini-7b/).
+ */
+export type RefusalRule =
+  | { readonly kind: 'any'; readonly probes: readonly string[] }
+  | { readonly kind: 'nonzero'; readonly probes: readonly string[] }
+  | {
+      readonly kind: 'values';
+      readonly values: readonly (string | number)[];
+      readonly probes: readonly string[];
+    };
+
+/** Every measured refusal for one model. */
+export type ModelRefusals = Readonly<Partial<Record<RefusableField, RefusalRule>>>;
 
 /** No single streamed event may be larger than this (ADR-020). Ollama's
  * chunks are a few hundred bytes. This, not `maxStreamBytes`, is what bounds

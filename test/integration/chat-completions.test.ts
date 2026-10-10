@@ -490,8 +490,9 @@ describe('request errors (OpenAI error shape)', () => {
 });
 
 describe('provider failures', () => {
+  // 400 left this table for 4b (ADR-041 sections 13 and 15): its own block
+  // below.
   it.each([
-    [400, 502, 'provider_error'],
     [404, 502, 'provider_error'],
     [500, 502, 'provider_error'],
     [503, 502, 'provider_error'],
@@ -538,6 +539,82 @@ describe('provider failures', () => {
     gateway.provider.respondWith(() => undefined);
     const response = await post(gateway, chatBody('hi'));
     expect(response.statusCode).toBe(504);
+  });
+});
+
+// Option 4b (ADR-041 sections 13, 15 and 16, decision F): any provider HTTP
+// 400 is a 400 to the client, its body never read, logged at warn with the
+// provider's name. Until 4b this was a 502 provider_error.
+describe('a provider 400 (4b)', () => {
+  const rejected = {
+    message: 'the provider rejected the request',
+    type: 'invalid_request_error',
+    param: null,
+    code: 'provider_rejected_request',
+  };
+  const answer400 =
+    (body: string): Responder =>
+    (_req, res) => {
+      res.writeHead(400, { 'content-type': 'application/json' });
+      res.end(body);
+    };
+  const warnLines = (g: TestGateway): Record<string, unknown>[] =>
+    g.logs
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .filter((entry) => entry.msg === 'provider rejected the request');
+
+  it('not streamed: a 400 with a fixed body, the provider body never forwarded', async () => {
+    gateway = await startTestGateway();
+    gateway.provider.respondWith(answer400('{"error":{"message":"upstream said something"}}'));
+    const response = await post(gateway, chatBody('hi'));
+    expect(response.statusCode).toBe(400);
+    expect(response.headers['retry-after']).toBeUndefined();
+    expect((JSON.parse(response.body) as { error: unknown }).error).toEqual(rejected);
+    expect(response.body).not.toContain('upstream said');
+  });
+
+  it('streamed: the same 400, before any event (a provider 400 comes before the first chunk)', async () => {
+    gateway = await startTestGateway();
+    gateway.provider.respondWith(answer400('{"error":{"message":"upstream said something"}}'));
+    const response = await post(gateway, { ...chatBody('hi'), stream: true });
+    expect(response.statusCode).toBe(400);
+    expect(response.headers['content-type']).toMatch(/^application\/json/);
+    expect((JSON.parse(response.body) as { error: unknown }).error).toEqual(rejected);
+  });
+
+  it("logged once at warn, with the provider's name and the status, nothing of either body", async () => {
+    gateway = await startTestGateway();
+    gateway.provider.respondWith(answer400('{"error":{"message":"upstream said something"}}'));
+    await post(gateway, chatBody('Card 4111 1111 1111 1111'));
+    const lines = warnLines(gateway);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({
+      level: 40,
+      provider: 'ollama',
+      statusCode: 400,
+      error: { name: 'ProviderError', failure: 'http', status: 400 },
+    });
+    const all = gateway.logs.join('');
+    expect(all).not.toContain('upstream said');
+    expect(all).not.toContain('4111');
+    expect(gateway.logs.join('')).not.toContain('"msg":"request rejected"');
+  });
+
+  // The breaking change ADR-041 section 16 (F) records: Ollama answers a
+  // request over its context with HTTP 400 (bug-log 55, Ollama 0.35.1).
+  // That was a 502 until 4b; it is a 400 now. Through the Ollama adapter.
+  it("Ollama's over-context answer (HTTP 400) → 400, no longer 502", async () => {
+    gateway = await startTestGateway();
+    gateway.provider.respondWith(
+      answer400(
+        '{"error":{"message":"the input length exceeds the context length","type":"invalid_request_error"}}',
+      ),
+    );
+    const response = await post(gateway, chatBody('a long request'));
+    expect(response.statusCode).toBe(400);
+    expect((JSON.parse(response.body) as { error: { code: string } }).error.code).toBe(
+      'provider_rejected_request',
+    );
   });
 });
 

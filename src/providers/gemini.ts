@@ -4,15 +4,33 @@
 // it (test/fixtures/gemini-7b/). The adapter is openai-compatible.ts; this is
 // Gemini's profile.
 //
-// What Gemini does that the profile does not express yet, measured:
-// - It refuses some fields and values (ADR-041 sections 13 and 14). The
-//   gateway does not check them before sending yet; ADR-041 section 16's
-//   option 3 adds that, keyed by model.
-// - With `stream_options.include_usage`, it sends `usage` on every chunk, so
-//   the adapter rejects the stream (attempt-4/s3, pinned in
-//   test/integration/gemini-recordings.test.ts).
+// Its refusals are measured, never read from documentation, and keyed by
+// the exact model name (ADR-041 section 16, decisions B and C). Each entry
+// names the recordings it rests on, and gemini-profile.test.ts checks every
+// one against its recording. `reasoning_effort: "none"` is not listed:
+// p09's refusal was attributed by elimination only, and Google's own
+// messages list `none` as valid (decision D); the registered s1/p09 pair
+// settles it.
+//
+// Measured and not expressed here, because it is not a refusal: with
+// `stream_options.include_usage`, Gemini sends `usage` on every chunk and the
+// adapter rejects the stream (bug-log 75, to be fixed in the adapter).
 
 import type { ProviderProfile } from './openai-compatible.js';
 
-/** Gemini's profile: its name. */
-export const GEMINI_PROFILE: ProviderProfile = { name: 'gemini' };
+/** Gemini's profile: its name and its measured refusals. */
+export const GEMINI_PROFILE: ProviderProfile = {
+  name: 'gemini',
+  refusals: {
+    'gemini-3.5-flash-lite': {
+      seed: { kind: 'any', probes: ['attempt-5/p03', 'attempt-6/p16'] },
+      frequency_penalty: { kind: 'any', probes: ['attempt-5/p04', 'attempt-6/p17'] },
+      presence_penalty: { kind: 'nonzero', probes: ['attempt-5/p05', 'attempt-6/p18'] },
+      reasoning_effort: {
+        kind: 'values',
+        values: ['xhigh', 'max'],
+        probes: ['attempt-5/p14', 'attempt-5/p15'],
+      },
+    },
+  },
+};

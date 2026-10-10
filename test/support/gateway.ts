@@ -44,6 +44,7 @@ export async function startTestGateway(
   const app = buildServer(
     {
       model: TEST_MODEL,
+      providerName: 'ollama',
       bodyLimit: 262_144,
       restoreInUnsafeRegions: false,
       placeholderInstruction: false,

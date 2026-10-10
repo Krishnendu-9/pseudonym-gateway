@@ -276,8 +276,9 @@ describe('canary: provider failures never echo a value', () => {
   // a provider's error body or a parse error's message would be caught.
   const cases: [string, number, Responder, number?][] = [
     [
+      // A 400 since option 4b (ADR-041 sections 13 and 15); a 502 before.
       'provider 400 echoing the request and canaries',
-      502,
+      400,
       (req, res) => {
         res.writeHead(400, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ error: { message: `bad request: ${req.body} ${ALL}` } }));
@@ -472,8 +473,9 @@ describe('canary: streaming (ADR-019)', () => {
   // Failures before the first chunk: an ordinary HTTP error.
   const before: [string, number, Responder, { timeoutMs?: number; maxStreamBytes?: number }?][] = [
     [
+      // A 400 since option 4b (ADR-041 sections 13 and 15); a 502 before.
       'provider 400 echoing the request and canaries',
-      502,
+      400,
       (req, res) => {
         res.writeHead(400, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ error: { message: echo(req) } }));

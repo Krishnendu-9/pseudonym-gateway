@@ -18,7 +18,7 @@ export interface ErrorBody {
     readonly type: ErrorType;
     // The field a request was refused for (ADR-041 section 16, decision G),
     // taken only from the gateway's own constants, never from the request.
-    // Null for every error the gateway has today.
+    // Null for every error but option 3's.
     readonly param: string | null;
     readonly code: string;
   };
@@ -40,16 +40,20 @@ export class GatewayError extends Error {
   readonly code: string;
   /** Response headers this error sets (fixed values written here, never a provider's). */
   readonly headers: Readonly<Record<string, string>>;
+  /** The refused field (option 3 only), from the gateway's own constants. */
+  readonly param: string | null;
 
   constructor(
     statusCode: number,
     code: string,
     message: string,
     headers: Readonly<Record<string, string>> = {},
+    param: string | null = null,
   ) {
     super(message);
     this.name = 'GatewayError';
     this.headers = headers;
+    this.param = param;
     this.statusCode = statusCode;
     this.type =
       statusCode === 404
@@ -61,7 +65,9 @@ export class GatewayError extends Error {
   }
 
   body(): ErrorBody {
-    return { error: { message: this.message, type: this.type, param: null, code: this.code } };
+    return {
+      error: { message: this.message, type: this.type, param: this.param, code: this.code },
+    };
   }
 }
 
@@ -149,7 +155,19 @@ function fromProvider(error: ProviderError): GatewayError {
           { 'retry-after': String(PROVIDER_RETRY_AFTER_SECONDS) },
         );
       }
-      // Deliberately 502 even for any other provider 4xx (ADR-014): the
+      // A provider 400 says the request as sent was refused: a 400, never
+      // retried by OpenAI's SDKs (ADR-041 section 13, option 4b). Only 400,
+      // never any 4xx (section 15): a 429 is above, and every other status
+      // stays a 502 below. The body is not read, so the field is unknown and
+      // `param` stays null.
+      if (error.status === 400) {
+        return new GatewayError(
+          400,
+          'provider_rejected_request',
+          'the provider rejected the request',
+        );
+      }
+      // Deliberately 502 for any other provider status (ADR-014): the
       // provider's body can echo the prompt, so it is never forwarded; the
       // status number alone is safe.
       return new GatewayError(
@@ -188,6 +206,10 @@ function fromProvider(error: ProviderError): GatewayError {
       return new GatewayError(502, 'provider_unavailable', 'the provider could not be reached');
   }
 }
+
+/** A provider HTTP 400 (option 4b): logged at `warn`, since a run of them can be a gateway bug. */
+export const isProviderRejection = (error: unknown): boolean =>
+  error instanceof ProviderError && error.failure === 'http' && error.status === 400;
 
 /** Maps any thrown value to an error that is safe to return. */
 export function toGatewayError(error: unknown, bodyLimit: number): GatewayError {

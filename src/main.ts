@@ -6,7 +6,13 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadEnv } from './config/env.js';
-import { chatProvider, nameFinder, nameOptions, serverConfig } from './config/wiring.js';
+import {
+  chatProvider,
+  modelNameWarning,
+  nameFinder,
+  nameOptions,
+  serverConfig,
+} from './config/wiring.js';
 import { safeErrorDetails } from './gateway/errors.js';
 import { buildServer } from './gateway/server.js';
 import { startupHardening } from './hardening.js';
@@ -58,6 +64,11 @@ if (hardening === undefined) {
     process.exit(1);
   }
 }
+
+// A model one `models/` away from one with measured refusals (ADR-041
+// section 16, decision B): it starts, but its refusals are not checked.
+const modelWarning = modelNameWarning(env);
+if (modelWarning !== undefined) process.stderr.write(`provider warning: ${modelWarning}\n`);
 
 // Names on: the gateway starts only with a name list that matches its pinned
 // hash, model files that match theirs, and a model that loads in its worker

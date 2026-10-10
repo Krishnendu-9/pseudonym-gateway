@@ -87,16 +87,19 @@ export const MUTATIONS: readonly Mutation[] = [
     what: 'the provider is always ollama, whatever is configured',
     file: WIRING,
     tests: CONFIG_TESTS,
-    find: 'PROFILES[env.PSEUDONYM_PROVIDER]',
-    replace: 'PROFILES.ollama',
+    // Anchored on chatProvider's call: since part 2 the lookup also appears
+    // in modelRefusals, modelNameWarning and serverConfig.
+    find: 'providerConfig(env), PROFILES[env.PSEUDONYM_PROVIDER]',
+    replace: 'providerConfig(env), PROFILES.ollama',
   },
   {
     id: 'GP10',
     what: "Gemini's profile carries Ollama's name",
     file: GEMINI,
     tests: CONFIG_TESTS,
-    find: "{ name: 'gemini' }",
-    replace: "{ name: 'ollama' }",
+    // Since part 2 the profile spans several lines (its refusals).
+    find: "name: 'gemini',",
+    replace: "name: 'ollama',",
   },
   {
     id: 'GP11',
@@ -111,7 +114,8 @@ export const MUTATIONS: readonly Mutation[] = [
     what: 'an error body carries a value in param (its code)',
     file: ERRORS,
     tests: ['test/unit/gateway/errors.test.ts'],
-    find: 'param: null, code: this.code',
+    // Since part 2, body() returns `this.param` (null unless option 3 set it).
+    find: 'param: this.param, code: this.code',
     replace: 'param: this.code, code: this.code',
   },
 ];

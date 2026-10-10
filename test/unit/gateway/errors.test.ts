@@ -5,6 +5,7 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
   GatewayError,
+  isProviderRejection,
   NameDetectionUnavailable,
   PROVIDER_RETRY_AFTER_SECONDS,
   safeErrorDetails,
@@ -39,12 +40,6 @@ describe('toGatewayError', () => {
 
   it.each([
     [new ProviderError('timeout'), 504, 'provider_timeout', 'the provider did not answer in time'],
-    [
-      new ProviderError('http', 400),
-      502,
-      'provider_error',
-      'the provider returned an error (status 400)',
-    ],
     [
       new ProviderError('http', 503),
       502,
@@ -128,6 +123,33 @@ describe('toGatewayError', () => {
     });
   });
 
+  // ADR-041 sections 13 and 15, option 4b: moved out of the 502 table above,
+  // where a provider 400 was a 502 provider_error like any other status.
+  it('a provider 400 → 400 provider_rejected_request, param null, fixed message (4b)', () => {
+    const safe = toGatewayError(new ProviderError('http', 400), LIMIT);
+    expect([safe.statusCode, safe.headers]).toEqual([400, {}]);
+    expect(safe.body()).toEqual({
+      error: {
+        message: 'the provider rejected the request',
+        type: 'invalid_request_error',
+        param: null,
+        code: 'provider_rejected_request',
+      },
+    });
+  });
+
+  it('only a provider HTTP 400 counts as a provider rejection, for the warn log', () => {
+    expect(isProviderRejection(new ProviderError('http', 400))).toBe(true);
+    for (const status of [401, 403, 404, 409, 422, 429, 500]) {
+      expect([status, isProviderRejection(new ProviderError('http', status))]).toEqual([
+        status,
+        false,
+      ]);
+    }
+    expect(isProviderRejection(new ProviderError('bad_response'))).toBe(false);
+    expect(isProviderRejection(new GatewayError(400, 'invalid_request', 'x'))).toBe(false);
+  });
+
   it('a 404 GatewayError has type not_found_error', () => {
     expect(new GatewayError(404, 'not_found', 'x').type).toBe('not_found_error');
   });
@@ -192,10 +214,12 @@ describe('the Retry-After sent with a provider 429', () => {
       'provider_rate_limited',
       { 'retry-after': String(PROVIDER_RETRY_AFTER_SECONDS) },
     ]);
-    for (const status of [400, 401, 403, 404, 408, 409, 422, 500, 502, 503]) {
+    // 400 left this list for 4b (its own test above): a 400 now, still no header.
+    for (const status of [401, 403, 404, 408, 409, 422, 500, 502, 503]) {
       const other = toGatewayError(new ProviderError('http', status), LIMIT);
       expect([status, other.statusCode, other.headers]).toEqual([status, 502, {}]);
     }
+    expect(toGatewayError(new ProviderError('http', 400), LIMIT).headers).toEqual({});
   });
 });
 

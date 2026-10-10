@@ -351,15 +351,28 @@ describe("a provider 429: a 503 with the gateway's own Retry-After", () => {
     expect((response.json() as { error: unknown }).error).toMatchObject(rateLimited);
   });
 
-  it('every other provider status keeps its 502 and gets no Retry-After (the 400 path untouched)', async () => {
+  // 400 left this list for 4b (ADR-041 sections 13 and 15), which this test
+  // used to call "the 400 path untouched": 4b now owns that path, below.
+  it('every other provider status keeps its 502 and gets no Retry-After', async () => {
     const { g, strict } = await againstStrict();
-    for (const status of [400, 401, 403, 404, 500, 503]) {
+    for (const status of [401, 403, 404, 500, 503]) {
       strict.answer = { kind: 'status', status, retryAfter: '20' };
       const response = await send(g, chat());
       expect([status, response.statusCode]).toEqual([status, 502]);
       expect(response.headers['retry-after']).toBeUndefined();
       expect((response.json() as { error: { code: string } }).error.code).toBe('provider_error');
     }
+  });
+
+  it("a provider 400 is 4b's: a 400, and still no Retry-After whatever the provider sends", async () => {
+    const { g, strict } = await againstStrict();
+    strict.answer = { kind: 'status', status: 400, retryAfter: '20' };
+    const response = await send(g, chat());
+    expect(response.statusCode).toBe(400);
+    expect(response.headers['retry-after']).toBeUndefined();
+    expect((response.json() as { error: { code: string } }).error.code).toBe(
+      'provider_rejected_request',
+    );
   });
 });
 
