@@ -377,16 +377,17 @@ section 15).
 
 Errors use OpenAI's shape, `{"error": {"message", "type", "param", "code"}}`:
 
-| Status | When                                                                                                                                                                                                                        |
-| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 400    | invalid or unsupported request (codes `invalid_json`, `invalid_request`, `unsupported_feature`, `model_not_found`; `stream_not_supported` existed until Phase 4b)                                                           |
-| 404    | any other endpoint                                                                                                                                                                                                          |
-| 413    | body over the limit                                                                                                                                                                                                         |
-| 415    | not `application/json` (a `charset` parameter is fine)                                                                                                                                                                      |
-| 422    | more than 9,999 different values of one type in one request (`too_many_values`)                                                                                                                                             |
-| 500    | Pseudonym's own bug (`internal_error`)                                                                                                                                                                                      |
-| 502    | the provider failed, answered with an error, answered with something unusable, or answered `stop` with no text and no refusal (`provider_empty_response`). Its own error message is never passed on: it can echo the prompt |
-| 504    | the provider did not answer within the timeout                                                                                                                                                                              |
+| Status | When                                                                                                                                                                                                                                                         |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 400    | invalid or unsupported request (codes `invalid_json`, `invalid_request`, `unsupported_feature`, `model_not_found`; `stream_not_supported` existed until Phase 4b)                                                                                            |
+| 404    | any other endpoint                                                                                                                                                                                                                                           |
+| 413    | body over the limit                                                                                                                                                                                                                                          |
+| 415    | not `application/json` (a `charset` parameter is fine)                                                                                                                                                                                                       |
+| 422    | more than 9,999 different values of one type in one request (`too_many_values`)                                                                                                                                                                              |
+| 500    | Pseudonym's own bug (`internal_error`)                                                                                                                                                                                                                       |
+| 502    | the provider failed, answered with an error, answered with something unusable, or answered `stop` with no text and no refusal (`provider_empty_response`). Its own error message is never passed on: it can echo the prompt                                  |
+| 503    | the provider answered 429: it is limiting the gateway, whose key every client shares (`provider_rate_limited`). Comes with `Retry-After: 30`, the gateway's own value, never the provider's; the OpenAI SDKs wait that long before each of their two retries |
+| 504    | the provider did not answer within the timeout                                                                                                                                                                                                               |
 
 ### Logs
 
@@ -502,8 +503,9 @@ a non-streamed answer to the same model text read exactly the same.
 
 - **Before the first chunk** (the provider is down, answers with an error,
   takes longer than the timeout to start, or sends something that is not a
-  stream): an ordinary JSON error with the usual status (502 or 504), as
-  without streaming.
+  stream): an ordinary JSON error with the usual status (502, 503 with
+  `Retry-After` for a provider 429, or 504), as without streaming. A
+  provider 429 always arrives here, before the stream starts.
 - **After the stream has started:** the status is already 200 and cannot
   change. You get everything that was already decided (including the few
   held-back characters, restored), then one `data: {"error": {…}}` event

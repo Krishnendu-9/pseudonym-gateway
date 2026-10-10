@@ -3666,3 +3666,46 @@ commit.
 17 of 17 caught. RF11 covers the branch the earlier coverage fix added (a
 refusal piece held back whole); none of RF1 to RF10 reached it. No marker
 was left, and the source was unchanged afterwards.
+
+## A provider 429 becomes a 503 with Retry-After (2026-10-10, ADR-041 section 15 decision 2)
+
+**What is tested, and where.**
+
+- `strict-provider.test.ts`, block "a provider 429": a 429 carrying its
+  own `Retry-After` of 20, of 3600, or none is always a 503 with
+  `Retry-After: 30` (the gateway's value, never the provider's), no
+  `x-should-retry`, the `provider_rate_limited` error body, and nothing of
+  the provider's body. A streamed request gets the same 503 as a JSON
+  error before any event. Every other provider status (400, 401, 403,
+  404, 500, 503) keeps its 502 `provider_error` and gets no header.
+- `chat-completions.test.ts`, "provider failures": the 429 row moved out
+  of the 502 table into a test of its own, which checks the full error
+  body. **This is the existing test section 15 did not predict would
+  change**; the table's other rows are unchanged.
+- `errors.test.ts`: the value is a whole number from 1 to 60, whatever
+  value is ruled (above 60, openai-node ignores it), and `toGatewayError`
+  maps only a 429 to the 503 with the header; ten other statuses stay 502
+  with no header.
+
+**Shown failing before the change.** The two integration files, run with
+the new tests against `src/` as it was: 5 failed, each `expected 502 to
+be 503`; 130 passed, including the "every other status keeps its 502"
+test. After the change the three files passed 167 of 167.
+
+### Mutation checks (`scripts/mutations/rate-limit.ts`, run 2026-10-10)
+
+Run against the three files above (167 tests):
+
+| Id  | Mutation                                                      | Failed   |
+| --- | ------------------------------------------------------------- | -------- |
+| RA1 | a provider 429 is a 502 provider_error again                  | 6 of 167 |
+| RA2 | a provider 429 is passed through as a 429                     | 6 of 167 |
+| RA3 | the 503 carries no Retry-After                                | 6 of 167 |
+| RA4 | the fixed value is above the 60-second ceiling                | 6 of 167 |
+| RA5 | the error handler drops an error's headers                    | 5 of 167 |
+| RA6 | the 429 branch takes every provider 4xx (a 400 becomes a 503) | 6 of 167 |
+| RA7 | GatewayError keeps no headers                                 | 6 of 167 |
+| RA8 | the code is OpenAI's own rate_limit_exceeded                  | 6 of 167 |
+
+8 of 8 caught. RA6 is the boundary with section 13's 4b, seen from this
+side. No marker was left, and the source was unchanged afterwards.

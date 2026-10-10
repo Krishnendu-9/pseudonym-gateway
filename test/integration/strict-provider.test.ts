@@ -4,8 +4,7 @@
 // that never complains proves nothing). Then the real gateway and adapter
 // against it: every request shape the gateway forwards must pass every
 // check, and every response shape the specification allows must be handled
-// as decided. Where the gateway's answer is a decision not built yet (a
-// 429), the test pins today's behaviour and says so.
+// as decided.
 
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -278,15 +277,6 @@ describe('every answer the specification allows is handled as decided', () => {
     },
   );
 
-  it('a 429 with Retry-After: today a 502 provider_error, the retry information dropped; open (ADR-041)', async () => {
-    const { g, strict } = await againstStrict();
-    strict.answer = { kind: 'status', status: 429, retryAfter: '20' };
-    const response = await send(g, chat());
-    expect(response.statusCode).toBe(502);
-    expect((response.json() as { error: { code: string } }).error.code).toBe('provider_error');
-    expect(response.headers['retry-after']).toBeUndefined();
-  });
-
   it.each([401, 500, 503])(
     'HTTP %i from the provider: a 502, nothing of its body passed on',
     async (status) => {
@@ -314,6 +304,62 @@ describe('every answer the specification allows is handled as decided', () => {
     expect(streamed.content).toBe('ab');
     expect(streamed.done).toBe(false);
     expect(streamed.error?.error.code).toBe('provider_bad_response');
+  });
+});
+
+// ADR-041 section 15, decision 2 (option 2c, with c2): a provider 429 is a
+// 503 to the client with the gateway's own fixed Retry-After. The
+// provider's own Retry-After is never passed on (tension 2: it would tell
+// the client about our provider relationship), and the client is never
+// told it is the one rate limited (tension 1). No x-should-retry header
+// (section 15 records why).
+describe("a provider 429: a 503 with the gateway's own Retry-After", () => {
+  /** The gateway's fixed value: at most 60 s, or openai-node ignores it. */
+  const RETRY_AFTER = '30';
+  const rateLimited = {
+    type: 'api_error',
+    code: 'provider_rate_limited',
+    param: null,
+  };
+
+  it.each([
+    ['with its own Retry-After of 20', '20'],
+    ['with its own Retry-After of 3600', '3600'],
+    ['with no Retry-After', undefined],
+  ])('not streamed, the provider answers 429 %s', async (_label, retryAfter) => {
+    const { g, strict } = await againstStrict();
+    strict.answer = {
+      kind: 'status',
+      status: 429,
+      ...(retryAfter === undefined ? {} : { retryAfter }),
+    };
+    const response = await send(g, chat());
+    expect(response.statusCode).toBe(503);
+    expect(response.headers['retry-after']).toBe(RETRY_AFTER);
+    expect(response.headers['x-should-retry']).toBeUndefined();
+    expect((response.json() as { error: unknown }).error).toMatchObject(rateLimited);
+    expect(response.body).not.toContain('rate limited or failed');
+  });
+
+  it('streamed: the same 503 as an ordinary HTTP error, before any event', async () => {
+    const { g, strict } = await againstStrict();
+    strict.answer = { kind: 'status', status: 429, retryAfter: '20' };
+    const response = await send(g, chat({ stream: true }));
+    expect(response.statusCode).toBe(503);
+    expect(response.headers['content-type']).toMatch(/^application\/json/);
+    expect(response.headers['retry-after']).toBe(RETRY_AFTER);
+    expect((response.json() as { error: unknown }).error).toMatchObject(rateLimited);
+  });
+
+  it('every other provider status keeps its 502 and gets no Retry-After (the 400 path untouched)', async () => {
+    const { g, strict } = await againstStrict();
+    for (const status of [400, 401, 403, 404, 500, 503]) {
+      strict.answer = { kind: 'status', status, retryAfter: '20' };
+      const response = await send(g, chat());
+      expect([status, response.statusCode]).toEqual([status, 502]);
+      expect(response.headers['retry-after']).toBeUndefined();
+      expect((response.json() as { error: { code: string } }).error.code).toBe('provider_error');
+    }
   });
 });
 

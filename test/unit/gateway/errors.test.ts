@@ -3,7 +3,12 @@
 // stack frames but never its message.
 
 import { describe, expect, it } from 'vitest';
-import { GatewayError, safeErrorDetails, toGatewayError } from '../../../src/gateway/errors.js';
+import {
+  GatewayError,
+  PROVIDER_RETRY_AFTER_SECONDS,
+  safeErrorDetails,
+  toGatewayError,
+} from '../../../src/gateway/errors.js';
 import { ProviderError } from '../../../src/providers/provider.js';
 import { PlaceholderLimitError } from '../../../src/redaction/placeholder.js';
 
@@ -123,6 +128,29 @@ describe('toGatewayError', () => {
 
   it('a 404 GatewayError has type not_found_error', () => {
     expect(new GatewayError(404, 'not_found', 'x').type).toBe('not_found_error');
+  });
+});
+
+// ADR-041 section 15, decision 2: whatever value is chosen, above 60 s
+// openai-node ignores Retry-After and falls back to its own fast backoff.
+describe('the Retry-After sent with a provider 429', () => {
+  it('is a whole number of seconds from 1 to 60', () => {
+    expect(Number.isInteger(PROVIDER_RETRY_AFTER_SECONDS)).toBe(true);
+    expect(PROVIDER_RETRY_AFTER_SECONDS).toBeGreaterThanOrEqual(1);
+    expect(PROVIDER_RETRY_AFTER_SECONDS).toBeLessThanOrEqual(60);
+  });
+
+  it('a 429 is a 503 carrying it; no other provider status carries a header', () => {
+    const limited = toGatewayError(new ProviderError('http', 429), LIMIT);
+    expect([limited.statusCode, limited.code, limited.headers]).toEqual([
+      503,
+      'provider_rate_limited',
+      { 'retry-after': String(PROVIDER_RETRY_AFTER_SECONDS) },
+    ]);
+    for (const status of [400, 401, 403, 404, 408, 409, 422, 500, 502, 503]) {
+      const other = toGatewayError(new ProviderError('http', status), LIMIT);
+      expect([status, other.statusCode, other.headers]).toEqual([status, 502, {}]);
+    }
   });
 });
 

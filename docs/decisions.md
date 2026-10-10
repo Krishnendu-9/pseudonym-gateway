@@ -9553,6 +9553,137 @@ RF1 to RF17, **17 of 17 caught**. RF4 and RF5 got a new `find` for the
 rewritten guard, with the same meaning. RF12 to RF16 cover the empty
 `stop`, RF17 `refusal: null`. Details are in the testing guide.
 
+#### Decision 2 built (2026-10-10): the value proposed, then ruled 30 seconds
+
+No live call was made. A provider 429 is now a **503** to the client, with
+`Retry-After` set to the gateway's own fixed value. The provider's own
+`Retry-After`, if any, is never passed on. No `x-should-retry` header is
+sent (section 15 records why).
+
+**The value: 30 seconds proposed (`PROVIDER_RETRY_AFTER_SECONDS` in
+`src/gateway/errors.ts`). The user rules; a different value is a change to
+that one constant and to the tests that pin it.**
+
+**Ruled (the user, 2026-10-10): 30 seconds**, for the reason given below:
+2N ≥ 60 is the condition for the last retry to outlive any per-minute
+window, and 30 is the smallest value that meets it.
+
+**Why a constant, not a `PSEUDONYM_*` setting like the other tunables
+(the user, 2026-10-10).** Above 60, `openai-node` ignores the header and
+falls back to its own 0.5 s / 1 s backoff, the behaviour this ruling
+exists to replace. A setting would let someone defeat the mechanism with
+one value, and nothing would say so: the gateway would still send a
+`Retry-After`, and the client would simply not wait.
+
+- **The 1 to 60 bound is pinned by a test**
+  (`test/unit/gateway/errors.test.ts`, "is a whole number of seconds from
+  1 to 60"), so changing the constant past the ceiling fails the suite
+  (mutation RA4).
+- **A setting would need runtime validation** at start-up in its place.
+  Even with that, it would still allow a misconfiguration that fails
+  quietly: a value inside the range but badly chosen (1, say) passes
+  validation and brings back near-immediate retries into a provider that
+  is already limiting.
+- **Changing the value stays possible**, deliberately: a change to the
+  constant in a reviewed commit, with the test and this record beside it.
+
+- **The hard constraint:** a whole number from 1 to 60. Above 60,
+  `openai-node` ignores the header and falls back to its own 0.5 s / 1 s
+  backoff, the behaviour this ruling replaces. A unit test pins the bound
+  whatever the value.
+- **What N does with default SDK settings** (two retries, the header's
+  delay used as given; section 13's reading of `retryRequest`): retries at
+  about N and 2N seconds after the first failure, plus each call's own
+  time.
+
+  | N   | Retries at  | Definitive answer after | Last retry a full minute after the failure? |
+  | --- | ----------- | ----------------------- | ------------------------------------------- |
+  | 10  | 10 s, 20 s  | about 20 s              | no                                          |
+  | 20  | 20 s, 40 s  | about 40 s              | no                                          |
+  | 30  | 30 s, 60 s  | about 60 s              | **yes, the smallest N for which it is**     |
+  | 60  | 60 s, 120 s | about 120 s             | yes, already at the first retry             |
+
+- **The trade-off.** A larger N is more likely to clear a per-minute
+  window; a smaller one gets the client a definitive answer sooner.
+- **Why 30.** It is the smallest value whose last retry lands a full
+  minute after the first failure. Whatever per-minute window caused the
+  429, whether a calendar minute or a sliding 60 s, has turned over by
+  that last attempt. That buys the most of the ruling's upside at half the
+  wait of 60. It also keeps a margin below the ceiling (60 itself is
+  allowed, `> 60 * 1000` is the SDK's test, but leaves none).
+- **What 30 does not buy.**
+  - If the burst that filled the window continues (other clients on the
+    same key keep sending), the window may still be full at 60 s.
+  - Against a daily limit, all three calls fail and the client waits
+    about 60 s for the error instead of about 1.5 s today. That is the
+    cost the ruling accepts. Telling the two kinds of limit apart would
+    need the body (principle B).
+  - For scale, `gemini-3.5-flash-lite`'s free tier allows 15 RPM and
+    500 RPD (section 13 item 8); the daily count resets at midnight
+    Pacific (section 14).
+
+**The error code: `provider_rate_limited`**, in OpenAI's error shape:
+`{"error": {"message": "the provider is limiting requests; try again
+later", "type": "api_error", "param": null, "code":
+"provider_rate_limited"}}`. How a client tells it apart:
+
+- **by status:** 503, where every other provider failure is a 502
+  (`provider_error`, `provider_bad_response`, `provider_empty_response`,
+  `provider_unavailable`, `provider_response_too_large`) or a 504
+  (`provider_timeout`). A client that reads only the status gets "try
+  again later", and a `Retry-After`;
+- **by `error.code`:** `provider_rate_limited` against
+  `provider_empty_response` (an empty answer) and `provider_error` (any
+  other provider status).
+
+The code is deliberately not OpenAI's own `rate_limit_exceeded`. An SDK or
+client branching on that code would conclude that its own key is
+limited, which is tension 1. The message no longer carries the upstream
+status number, today's one disclosure. The code already says the provider
+is limiting, which is exactly what "status 429" said, and nothing more.
+
+**Where a 429 can arrive, checked against the code.**
+
+- `post()` in `src/providers/openai-compatible.ts` throws
+  `ProviderError('http', status)` for any non-2xx status, before the
+  content-type check and before any chunk is read.
+- `stream()` resolves only after that, the content-type check and a first
+  usable chunk.
+- `server.ts` awaits `provider.stream()` before it sends a byte.
+
+So **an HTTP 429 is always an ordinary HTTP error before any stream
+begins**, and the streamed request gets the same 503, as JSON, with the
+header (tested). One thing the ruling does not cover, by design: a
+provider could report rate limiting _inside_ a started stream as an
+error event. The adapter never reads error bodies (principle B), so such
+an event is a `stream_error` (`provider_error`), the same as any other.
+It is not an HTTP 429, and nothing recorded shows any provider doing it.
+
+**The provider-400 path is untouched.** Only the `http` branch for status
+429 is new. Every other provider status, 400 included, is still a 502
+`provider_error` with the status in the message and no header. That is
+tested for 400, 401, 403, 404, 408, 409, 422, 500, 502 and 503. Section
+13's 4b, when built, must stay "any provider 400", never "any 4xx". Mutation
+RA6 (a 429 branch that takes every 4xx) is caught by the 400 cases, so
+that boundary is now guarded from this side too.
+
+**A second existing test changed, which section 15 did not predict.**
+Section 15 said the strict fake's pinned 429 test would be the only one.
+`test/integration/chat-completions.test.ts`, "provider failures", also
+had a table row `[429, 502, 'provider_error']`, asserting the old message
+"the provider returned an error (status 429)". That row was removed from
+the table and replaced by a test of its own, asserting the 503, the
+header and the full error body. The table's other four rows (400, 404,
+500, 503) are unchanged. The strict fake's pinned test was replaced as
+predicted. No other test changed.
+
+**Proof.** The new tests were run against the code before the change: 5
+failed, each with `expected 502 to be 503`, and 130 passed, including
+"every other provider status keeps its 502". After the change the three
+test files passed 167 of 167. Mutations RA1 to RA8
+(`scripts/mutations/rate-limit.ts`): **8 of 8 caught**. Details are in the
+testing guide.
+
 <a id="adr-042"></a>
 
 ## ADR-042: Rule 1 is kept by compliance; the permission deny list is a partial backstop (2026-10-08)

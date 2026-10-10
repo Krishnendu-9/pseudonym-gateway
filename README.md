@@ -849,6 +849,10 @@ The `user` and `safety_identifier` fields are accepted and dropped: they
 exist to identify the end user to the provider. Error messages never repeat
 what was sent, and a provider's own error message is never passed on (it can
 echo the prompt): the client gets a 502 with the provider's status code.
+The one exception is a provider 429. The gateway's upstream is limiting
+requests on a key every client shares, so the client gets a 503
+`provider_rate_limited` with `Retry-After: 30`, the gateway's own value,
+never the provider's ([ADR-041](docs/decisions.md#adr-041), section 15).
 Pseudonym reads at most 1 MiB of a provider's response when not streaming
 (`PSEUDONYM_MAX_RESPONSE_BYTES`) and at most 32 MiB of a streamed one
 (`PSEUDONYM_MAX_STREAM_BYTES`); beyond that the answer fails with

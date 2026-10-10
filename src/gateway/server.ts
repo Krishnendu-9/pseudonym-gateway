@@ -75,7 +75,7 @@ export function buildServer(config: ServerConfig, provider: ChatProvider): Fasti
     const details = { error: safeErrorDetails(error), statusCode: safe.statusCode };
     if (safe.statusCode >= 500) request.log.error(details, 'request failed');
     else request.log.info(details, 'request rejected');
-    return reply.code(safe.statusCode).send(safe.body());
+    return reply.code(safe.statusCode).headers(safe.headers).send(safe.body());
   });
 
   // The URL is never echoed: it could carry a query string.

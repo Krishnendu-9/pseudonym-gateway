@@ -493,7 +493,6 @@ describe('provider failures', () => {
   it.each([
     [400, 502, 'provider_error'],
     [404, 502, 'provider_error'],
-    [429, 502, 'provider_error'],
     [500, 502, 'provider_error'],
     [503, 502, 'provider_error'],
   ])(
@@ -512,6 +511,27 @@ describe('provider failures', () => {
       expect(response.body).not.toContain('upstream said');
     },
   );
+
+  // ADR-041 section 15, decision 2 (2c): moved out of the table above,
+  // where a 429 was a 502 provider_error like any other status.
+  it('provider status 429 → 503 provider_rate_limited with Retry-After, the provider body never forwarded', async () => {
+    gateway = await startTestGateway();
+    gateway.provider.respondWith((_req, res) => {
+      res.writeHead(429, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: { message: 'upstream said something' } }));
+    });
+    const response = await post(gateway, chatBody('hi'));
+    expect(response.statusCode).toBe(503);
+    expect(response.headers['retry-after']).toBe('30');
+    const error = (JSON.parse(response.body) as { error: Record<string, unknown> }).error;
+    expect(error).toEqual({
+      message: 'the provider is limiting requests; try again later',
+      type: 'api_error',
+      param: null,
+      code: 'provider_rate_limited',
+    });
+    expect(response.body).not.toContain('upstream said');
+  });
 
   it('a provider timeout → 504', async () => {
     gateway = await startTestGateway({ timeoutMs: 100 });

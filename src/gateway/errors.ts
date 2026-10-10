@@ -21,15 +21,32 @@ export interface ErrorBody {
   };
 }
 
-/** An error whose status, code and message are safe to return as they are. */
+/**
+ * The `Retry-After` the gateway sends with a provider 429 (ADR-041 section
+ * 15, decision 2): its own fixed value, never the provider's. At most 60:
+ * above that openai-node ignores the header and falls back to its own
+ * 0.5 s / 1 s backoff, the behaviour the ruling replaces. With the SDK's two
+ * retries, the last attempt lands about 2 × this after the first failure.
+ */
+export const PROVIDER_RETRY_AFTER_SECONDS = 30;
+
+/** An error whose status, code, message and headers are safe to return as they are. */
 export class GatewayError extends Error {
   readonly statusCode: number;
   readonly type: ErrorType;
   readonly code: string;
+  /** Response headers this error sets (fixed values written here, never a provider's). */
+  readonly headers: Readonly<Record<string, string>>;
 
-  constructor(statusCode: number, code: string, message: string) {
+  constructor(
+    statusCode: number,
+    code: string,
+    message: string,
+    headers: Readonly<Record<string, string>> = {},
+  ) {
     super(message);
     this.name = 'GatewayError';
+    this.headers = headers;
     this.statusCode = statusCode;
     this.type =
       statusCode === 404
@@ -118,9 +135,20 @@ function fromProvider(error: ProviderError): GatewayError {
     case 'timeout':
       return new GatewayError(504, 'provider_timeout', 'the provider did not answer in time');
     case 'http':
-      // Deliberately 502 even for a provider 4xx (ADR-014): the provider's
-      // body can echo the prompt, so it is never forwarded; the status
-      // number alone is safe.
+      // A 429 is the provider limiting the gateway, on a key every client
+      // shares: a 503 is true whoever caused it, where a 429 would tell
+      // the client it is the one limited (ADR-041 section 15, decision 2).
+      if (error.status === 429) {
+        return new GatewayError(
+          503,
+          'provider_rate_limited',
+          'the provider is limiting requests; try again later',
+          { 'retry-after': String(PROVIDER_RETRY_AFTER_SECONDS) },
+        );
+      }
+      // Deliberately 502 even for any other provider 4xx (ADR-014): the
+      // provider's body can echo the prompt, so it is never forwarded; the
+      // status number alone is safe.
       return new GatewayError(
         502,
         'provider_error',
