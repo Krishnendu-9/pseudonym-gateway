@@ -3910,6 +3910,83 @@ support, since slow runs are rare. Slow runs that continue would put
 scanning of temp files out, leaving Node's installation and causes
 unrelated to scanning.
 
+#### A separate slow mode, not a tail (observed 2026-10-10, after the 17:13 run)
+
+**The durations.** Every full `npm test`-equivalent run whose duration is
+recorded (`vitest run --project main --project timing`), all on
+2026-10-10:
+
+| Set                                                  | Runs | Seconds                                                      |
+| ---------------------------------------------------- | ---- | ------------------------------------------------------------ |
+| the flake comparison (above), both arms              | 40   | 79–112 (with: mean 90.4, 83–112; without: mean 87.7, 79–112) |
+| gates at 13:00, 14:09 and 15:45                      | 3    | 80.5, 87.8, 87.8                                             |
+| **the sampler-flake failure** (its own summary line) | 1    | **139**                                                      |
+| **gates at 15:31 and 17:13**                         | 2    | **142.3, 143.2**                                             |
+
+**What the shape says.** 43 runs fall between 79 and 112 s, and three
+between 139 and 143 s. **No run fell between 112 and 139.**
+
+- The normal runs **spread over about 33 s**, as general variation in
+  load would make them.
+- The slow runs are **within 4 s of each other**.
+- The slow ones sit **27 s above the slowest normal run**, and **about
+  50 s above the normal runs' centre** (about 89 s).
+
+That is the shape of **a separate mode, not a tail**. A continuous cause,
+such as how busy the machine is in general, would spread runs across the
+gap. A tight second cluster points to **a discrete event that either
+happens during a run or does not, and costs about 50 s when it does.**
+
+**What it changes about the search.** The question is not "was the machine
+busy". It is **"what roughly 50-second thing occasionally happens during a
+run"**.
+
+**Limits.**
+
+- **Three slow runs** are enough to see a separate cluster, but not to
+  measure its width or rule out that it is the far edge of something
+  wider.
+- The runs are not all the same suite: between 3,106 and 3,230 tests,
+  growing through the day. That changes durations by a few seconds, not
+  by 50.
+- (The user first described this as two tight clusters about 60 s apart,
+  with nothing in between. The flake comparison's 40 runs show the normal
+  mode is not tight, and the gap is 27 s edge to edge, about 50 s centre to
+  centre. The conclusion, a separate mode, stands.)
+
+**An exploratory pattern, not pre-registered.** The slow mode appeared in
+**none of the 40 back-to-back runs** of the flake comparison, which ran with
+nothing else started. It appeared in **2 of the 5 gates**, which ran in
+working sessions with other work just before them: Docker Desktop
+starting and stopping, image builds, model loads. The conditions differ in
+more than one way, and the pattern was noticed after the fact, so it is a
+direction to look in (something around a working session), not a finding.
+
+**What the 17:13 run rules out further.** It was slow, and:
+
+- **Docker Desktop was not running** (stopped earlier in that session).
+  The 15:31 run also had Docker Desktop stopped, shortly before it.
+- **Free memory stayed at 4,045 MB or above.** That is far above bug-log
+  57's failing range (at most 1,799 MB), so memory pressure is not
+  needed for the slow mode.
+- **The project folder had been excluded from Defender since about 11:20
+  IST.** Scanning the project's own files is not needed for the slow mode
+  either, as recorded above.
+
+**Available, not scheduled: measuring the slow mode's rate.**
+`scripts/flake-compare.sh` already records each run's seconds in
+`results.tsv`, so the rate can be measured without changing anything on
+the machine.
+
+- Its arms differ by one test file (the guard file). That moved the mean
+  by about 3 s in the comparison above, and that can be told apart from a
+  50 s mode.
+- A run of it is also a measurement of conditions. The 40 back-to-back
+  runs above are one such measurement (0 slow runs). Comparing that rate
+  with runs inside working sessions would test the exploratory pattern.
+
+Recorded as available. Nothing is scheduled.
+
 ### B. A deleted directory
 
 **Event:**
