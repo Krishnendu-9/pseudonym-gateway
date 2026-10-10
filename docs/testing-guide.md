@@ -3790,3 +3790,41 @@ is not known. SG1 counts as caught on its 15 aimed tests.
 
 The runner's output from all three runs was checked to hold no signature
 text. No marker was left, and the source was unchanged afterwards.
+
+## An intervention on the two unexplained stalls: a Defender exclusion (recorded 2026-10-10, before any outcome)
+
+**What changed.** On 2026-10-10 at about 11:20 IST, the project folder
+(`E:\professional\Projects\pseudonym-gateway`) was added to Windows
+Defender's exclusion list, by the user. It was **not** excluded before
+that.
+
+**The two stalls it is aimed at**, both unexplained, both on 2026-10-10:
+
+1. the machine-sampler test's timeout ("The machine-sampler flake,
+   measured", above): one failure in one of three full runs, not raised
+   by the guard tests in 40 runs;
+2. mutation SG1 taking 653 s against a normal 12 s ("One slow run, read
+   before believing it", above), with one unrelated timing test failing.
+
+**The hypothesis.** Defender's real-time scanning of files that are
+rewritten again and again caused both stalls. The mutation runner
+rewrites a source file for every mutation, and Vitest, esbuild and the
+sampler write files during every run.
+
+**What each outcome would mean**, stated now, before either happens:
+
+- **No further stall over a comparable amount of file-churning work**
+  (full gates, mutation runs) is **weak support** only. Neither stall
+  could be reproduced on demand before the change, so their absence
+  afterwards is what one would also expect if they were simply rare.
+- **A further stall after this date weakens the hypothesis materially.**
+  A stall that recurs with the folder excluded points away from scanning
+  of the project's own files. It would not rule out scanning of files
+  outside this folder, such as the temporary directory the mutation
+  runner's logs and Vitest's caches may use, or Node's own installation.
+
+**What it cannot do.** This is an intervention with **no control arm**: the
+exclusion was not alternated with its absence, and nothing else was held
+fixed (load, other processes, updates). It **cannot establish cause**
+either way. Any later stall or its absence is recorded here against this
+entry, with the date and the work that ran.

@@ -9777,6 +9777,21 @@ the user first. This is a separate line, not a field added to the
 request lines, and it was asked for in this form ("say exactly what is
 written and where").
 
+**Log volume, and why `info` (recorded 2026-10-10).** Every recorded
+Gemini answer carries `extra_content`, so every Gemini request writes the
+new line. Measured on this code with a stub provider: a request without
+`extra_content` writes **2** lines (Fastify's "incoming request" and
+"request completed"); with it, **3** ("provider extra content dropped"
+between them). That is **50% more log lines for Gemini traffic**, not a
+doubling as first stated when this note was asked for: the request
+already writes two lines, not one. `info` was chosen so that the count is
+on at the default level (`LOG_LEVEL=info`), where it serves its purpose:
+making the dropped signatures visible, and the lengths available as
+evidence. **If the volume ever matters, `debug` is the fallback**: the
+line then disappears at the default level and comes back with
+`LOG_LEVEL=debug`, at the cost of the count not being there unless asked
+for.
+
 **A side benefit of the lengths, not the reason for the ruling.** Section
 13 (item 4) recorded, as a hypothesis on n = 2, that the signature's
 length tracks hidden thinking tokens: 952 and 1,004 characters on the two
