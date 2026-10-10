@@ -6,11 +6,10 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadEnv } from './config/env.js';
-import { nameFinder, nameOptions, ollamaConfig, serverConfig } from './config/wiring.js';
+import { chatProvider, nameFinder, nameOptions, serverConfig } from './config/wiring.js';
 import { safeErrorDetails } from './gateway/errors.js';
 import { buildServer } from './gateway/server.js';
 import { startupHardening } from './hardening.js';
-import { createOllamaProvider } from './providers/ollama.js';
 
 const readOptional = (path: string): string | undefined => {
   try {
@@ -81,7 +80,7 @@ const names = await nameFinder(env, async () => {
 
 const app = buildServer(
   { ...serverConfig(env), ...(names === undefined ? {} : { names }) },
-  createOllamaProvider(ollamaConfig(env)),
+  chatProvider(env),
 );
 
 await app.listen({ host: env.HOST, port: env.PORT });

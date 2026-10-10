@@ -16,7 +16,10 @@ export interface ErrorBody {
   readonly error: {
     readonly message: string;
     readonly type: ErrorType;
-    readonly param: null;
+    // The field a request was refused for (ADR-041 section 16, decision G),
+    // taken only from the gateway's own constants, never from the request.
+    // Null for every error the gateway has today.
+    readonly param: string | null;
     readonly code: string;
   };
 }

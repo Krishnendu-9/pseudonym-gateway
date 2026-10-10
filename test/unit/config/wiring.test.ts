@@ -4,7 +4,12 @@
 
 import { describe, expect, it } from 'vitest';
 import { loadEnv } from '../../../src/config/env.js';
-import { nameOptions, ollamaConfig, serverConfig } from '../../../src/config/wiring.js';
+import {
+  chatProvider,
+  nameOptions,
+  providerConfig,
+  serverConfig,
+} from '../../../src/config/wiring.js';
 
 const env = loadEnv({
   LOG_LEVEL: 'warn',
@@ -21,9 +26,9 @@ const env = loadEnv({
   PSEUDONYM_NAMES_MAX_QUEUE: '1006',
 });
 
-describe('ollamaConfig', () => {
+describe('providerConfig', () => {
   it('takes each setting from its own variable', () => {
-    expect(ollamaConfig(env)).toEqual({
+    expect(providerConfig(env)).toEqual({
       baseUrl: 'https://ollama.example/v1',
       model: 'qwen3:8b',
       apiKey: 'key',
@@ -34,7 +39,35 @@ describe('ollamaConfig', () => {
   });
 
   it('has no API key when none is set', () => {
-    expect(ollamaConfig(loadEnv({ PSEUDONYM_MODEL: 'qwen3:8b' })).apiKey).toBeUndefined();
+    expect(providerConfig(loadEnv({ PSEUDONYM_MODEL: 'qwen3:8b' })).apiKey).toBeUndefined();
+  });
+
+  it("gemini: Gemini's base URL by default, and the key", () => {
+    const gemini = loadEnv({
+      PSEUDONYM_PROVIDER: 'gemini',
+      PSEUDONYM_MODEL: 'gemini-model',
+      PSEUDONYM_PROVIDER_API_KEY: 'gemini-key',
+    });
+    expect(providerConfig(gemini)).toMatchObject({
+      baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+      model: 'gemini-model',
+      apiKey: 'gemini-key',
+    });
+  });
+});
+
+describe('chatProvider', () => {
+  it("ollama by default, with Ollama's profile", () => {
+    expect(chatProvider(loadEnv({ PSEUDONYM_MODEL: 'qwen3:8b' })).profile.name).toBe('ollama');
+  });
+
+  it("gemini: Gemini's profile", () => {
+    const gemini = loadEnv({
+      PSEUDONYM_PROVIDER: 'gemini',
+      PSEUDONYM_MODEL: 'gemini-model',
+      PSEUDONYM_PROVIDER_API_KEY: 'gemini-key',
+    });
+    expect(chatProvider(gemini).profile.name).toBe('gemini');
   });
 });
 

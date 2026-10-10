@@ -2,14 +2,16 @@
 // client sees is fixed text, and a logged error keeps its name, code and
 // stack frames but never its message.
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
   GatewayError,
+  NameDetectionUnavailable,
   PROVIDER_RETRY_AFTER_SECONDS,
   safeErrorDetails,
   toGatewayError,
+  type ErrorBody,
 } from '../../../src/gateway/errors.js';
-import { ProviderError } from '../../../src/providers/provider.js';
+import { ProviderError, type ProviderFailure } from '../../../src/providers/provider.js';
 import { PlaceholderLimitError } from '../../../src/redaction/placeholder.js';
 
 const LIMIT = 262_144;
@@ -128,6 +130,49 @@ describe('toGatewayError', () => {
 
   it('a 404 GatewayError has type not_found_error', () => {
     expect(new GatewayError(404, 'not_found', 'x').type).toBe('not_found_error');
+  });
+});
+
+// ADR-041 section 16, decision G: `param` may carry a field name, which only
+// option 3 will set; every error that exists today still sends null.
+describe('param', () => {
+  it('is typed string | null (checked by the typecheck, not at run time)', () => {
+    expectTypeOf<ErrorBody['error']['param']>().toEqualTypeOf<string | null>();
+  });
+
+  // Every failure kind, as a record so that a new kind fails the typecheck
+  // until it is listed here.
+  const FAILURES = Object.keys({
+    timeout: true,
+    unavailable: true,
+    http: true,
+    bad_response: true,
+    too_large: true,
+    stream_error: true,
+    empty_response: true,
+    aborted: true,
+  } satisfies Record<ProviderFailure, true>) as ProviderFailure[];
+
+  it('is null for every error the gateway produces today', () => {
+    const errors: GatewayError[] = [
+      new GatewayError(400, 'invalid_request', 'x'),
+      new GatewayError(404, 'not_found', 'x'),
+      new NameDetectionUnavailable('timeout'),
+      toGatewayError(new PlaceholderLimitError('EMAIL'), LIMIT),
+      ...FAILURES.map((failure) => toGatewayError(new ProviderError(failure), LIMIT)),
+      ...[400, 401, 404, 429, 500, 503].map((status) =>
+        toGatewayError(new ProviderError('http', status), LIMIT),
+      ),
+      ...[
+        'FST_ERR_CTP_INVALID_JSON_BODY',
+        'FST_ERR_CTP_EMPTY_JSON_BODY',
+        'FST_ERR_CTP_BODY_TOO_LARGE',
+        'FST_ERR_CTP_INVALID_MEDIA_TYPE',
+        'FST_ERR_SOMETHING_ELSE',
+      ].map((code) => toGatewayError(fastifyError(code, 400), LIMIT)),
+      toGatewayError(new Error('boom'), LIMIT),
+    ];
+    expect(errors.map((error) => error.body().error.param)).toEqual(errors.map(() => null));
   });
 });
 

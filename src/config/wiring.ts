@@ -5,10 +5,27 @@
 
 import type { NameDetectorOptions } from '../gateway/names.js';
 import type { NameFinder, ServerConfig } from '../gateway/server.js';
-import type { OllamaConfig } from '../providers/ollama.js';
+import { GEMINI_PROFILE } from '../providers/gemini.js';
+import { OLLAMA_PROFILE } from '../providers/ollama.js';
+import {
+  createOpenAICompatibleProvider,
+  type OpenAICompatibleConfig,
+  type ProviderProfile,
+} from '../providers/openai-compatible.js';
+import type { ChatProvider } from '../providers/provider.js';
 import type { Env } from './env.js';
 
-export function ollamaConfig(env: Env): OllamaConfig {
+const PROFILES: Readonly<Record<Env['PSEUDONYM_PROVIDER'], ProviderProfile>> = {
+  ollama: OLLAMA_PROFILE,
+  gemini: GEMINI_PROFILE,
+};
+
+/** The adapter for the configured provider, with that provider's profile. */
+export function chatProvider(env: Env): ChatProvider & { readonly profile: ProviderProfile } {
+  return createOpenAICompatibleProvider(providerConfig(env), PROFILES[env.PSEUDONYM_PROVIDER]);
+}
+
+export function providerConfig(env: Env): OpenAICompatibleConfig {
   return {
     baseUrl: env.PSEUDONYM_PROVIDER_BASE_URL,
     model: env.PSEUDONYM_MODEL,

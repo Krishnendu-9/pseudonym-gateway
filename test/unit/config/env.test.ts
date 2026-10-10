@@ -57,6 +57,52 @@ describe('loadEnv', () => {
     });
   });
 
+  describe('gemini (ADR-041 section 16, decision A)', () => {
+    const GEMINI = { ...REQUIRED, PSEUDONYM_PROVIDER: 'gemini', PSEUDONYM_PROVIDER_API_KEY: 'key' };
+
+    it("is accepted, with Gemini's own base URL by default", () => {
+      expect(loadEnv(GEMINI)).toMatchObject({
+        PSEUDONYM_PROVIDER: 'gemini',
+        PSEUDONYM_PROVIDER_BASE_URL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+        PSEUDONYM_PROVIDER_API_KEY: 'key',
+      });
+    });
+
+    it('keeps a base URL that is set', () => {
+      const env = loadEnv({ ...GEMINI, PSEUDONYM_PROVIDER_BASE_URL: 'https://proxy.example/v1' });
+      expect(env.PSEUDONYM_PROVIDER_BASE_URL).toBe('https://proxy.example/v1');
+    });
+
+    it('refuses to start without a key, naming only the variable', () => {
+      expect(() =>
+        loadEnv({
+          PSEUDONYM_PROVIDER: 'gemini',
+          PSEUDONYM_MODEL: 'canary-model-name',
+          PSEUDONYM_PROVIDER_BASE_URL: 'https://canary.example/v1',
+        }),
+      ).toThrow(/^Invalid environment variables: PSEUDONYM_PROVIDER_API_KEY$/);
+    });
+
+    it('an empty key is refused once, not twice', () => {
+      expect(() => loadEnv({ ...GEMINI, PSEUDONYM_PROVIDER_API_KEY: '' })).toThrow(
+        /^Invalid environment variables: PSEUDONYM_PROVIDER_API_KEY$/,
+      );
+    });
+
+    it('a missing key is listed beside other wrong variables, not hidden by them', () => {
+      expect(() => loadEnv({ PSEUDONYM_PROVIDER: 'gemini', PORT: 'x' })).toThrow(
+        /^Invalid environment variables: PORT, PSEUDONYM_MODEL, PSEUDONYM_PROVIDER_API_KEY$/,
+      );
+    });
+  });
+
+  it('ollama needs no key; an unknown provider is not mistaken for gemini', () => {
+    expect(loadEnv(REQUIRED).PSEUDONYM_PROVIDER_API_KEY).toBeUndefined();
+    expect(() => loadEnv({ ...REQUIRED, PSEUDONYM_PROVIDER: 'Gemini' })).toThrow(
+      /^Invalid environment variables: PSEUDONYM_PROVIDER$/,
+    );
+  });
+
   it('requires PSEUDONYM_MODEL', () => {
     expect(() => loadEnv({})).toThrow('Invalid environment variables: PSEUDONYM_MODEL');
   });
