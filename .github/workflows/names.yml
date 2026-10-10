@@ -1,13 +1,15 @@
 # Person names on Linux with the real model (Phase 6c, ADR-036): the names
 # tests and the span comparison against the baseline of the runner's CPU
 # model (eval/names-baselines.json). Manual (option E4), plus a daily run
-# that is temporary: it exists to collect counted runs on as many runner
-# CPUs as possible for ADR-036's stopping rule, which decides whether this
-# ever runs on every push (E1). Every run prints the runner's CPU model.
+# that is temporary. ADR-036's stopping rule closed out on 2026-10-10 with
+# E1 (every push) NOT adopted; the daily run is kept, its removal deferred,
+# for the EPYC 9V74 instruction-set question. Every run prints the runner's
+# CPU model and the CPU flags its guest sees.
 name: Names
 
 on:
-  # Daily, temporary (ADR-036): counted runs for the stopping rule.
+  # Daily, temporary (ADR-036): kept after the close-out for the EPYC 9V74
+  # question; its removal is deferred until that is settled.
   schedule:
     - cron: '23 4 * * *'
   workflow_dispatch:

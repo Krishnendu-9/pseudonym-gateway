@@ -487,11 +487,16 @@ eval:names` sends the 1,998 measured messages through it and compares
     set. That explanation predicted the Xeon 6973P-C's result before it was
     looked at, and held; it is still **not shown**, since no run has looked
     at which kernels were chosen. The held-out figure stays the
-    i5-12450H's. **Not yet:** CI on
-    every push. The Names workflow runs by hand and once a day, comparing
-    each run with its own CPU model's baseline (a CPU with none yet passes
-    with a warning until one is committed), until a rule set in advance
-    decides whether it can run on every push.
+    i5-12450H's. **Not adopted: names checks on every push.** A rule set
+    in advance decided it, closed out early on 2026-10-10 at 10 counted
+    runs. One CPU model name turned out to cover two instruction sets on
+    GitHub's runners, so two runs from before the CPU flags were logged can
+    never be matched to a baseline, and the rule's condition can never be
+    met. On the one CPU key with a baseline, the names reproduced exactly
+    in six runs of six ([ADR-036](docs/decisions.md#adr-036), close-out).
+    The Names workflow still runs by hand and once a day, comparing each
+    run with its own CPU model's baseline (a CPU with none passes with a
+    warning).
 
 ## Measured results
 

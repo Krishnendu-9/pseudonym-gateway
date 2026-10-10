@@ -6732,6 +6732,168 @@ hashes will settle is the hypothesis, not the tally. In the close-out's
 terms: 11 runs; 10 counted; 3 of them checked nothing (#6, #10, #11, NEW
 CPU), plus #4, uncounted, on the Xeon 6973P-C; 0 incomplete.
 
+### Close-out (2026-10-10, the user's ruling): E1 NOT ADOPTED, closed early at 10 counted runs — a recorded deviation
+
+**The ruling.** The stopping rule is closed out now, with **E1 not
+adopted**. The Names workflow does not move to every push.
+
+**Decided before any hash could influence it.** The ruling was made on
+2026-10-10, **before #10's and #11's `names-result.json` were opened**.
+Neither has been opened in writing this. So were the keying ruling
+(model name plus printed flags) and the predictions above.
+
+**The argument: determinism, not convenience.**
+
+1. Runs #2 and #6 are counted runs whose keys can never be established.
+   They printed no flags. Taking a key from their hashes would be
+   circular, since the key decides which hashes a run must agree with. No
+   future run can retroactively give a past run a key. A counted run
+   cannot be uncounted.
+2. S2, as keyed by the ruling above, requires **every counted key** to
+   have a committed baseline. A baseline for a key that cannot be known
+   cannot exist.
+3. **So the adoption condition is permanently unsatisfiable, and no
+   number of further counted runs can change that.**
+4. **Reaching 20 counted runs would give the same outcome, by the same
+   reasoning, later.** The second exit would record "not adopted" at 20
+   because the baseline condition is unmet, and it is unmet for #2's and
+   #6's keys whatever runs 11 to 20 show. Running on would cost about a
+   week of daily runs and could not change the answer.
+
+**A deviation from the committed text, not the rule working as written.**
+
+- **This is an early close-out, and a departure from the committed
+  text.** The second exit (ruled 2026-10-10, `93b6b90`) says "If 20
+  counted runs pass while any counted CPU model still lacks a committed
+  baseline, E1 is NOT adopted". This closes at **10**.
+- The close-out procedure's step 3 says that if the threshold was not
+  reached, "the rule remains open". This records the outcome as **final**
+  instead. That is part of the same deviation, and for the same reason:
+  "open" would claim further runs could still decide something.
+- **It changes only the date of the outcome, not the outcome.** At 10
+  counted runs or at 20, the answer is "not adopted", for the reason in
+  the argument above.
+- **Why that distinction matters.** An early stop that could have changed
+  the answer would not be acceptable. Choosing when to stop, once results
+  are coming in, is one of the oldest ways to choose a result. This stop
+  demonstrably cannot change the answer. The only route to a different
+  answer was a change to the rule itself: option 3 above, exempting #2 and
+  #6 from the baseline condition. The user rejected that, on 2026-10-10,
+  before any of #10's or #11's hashes were known. More runs were never that
+  route.
+
+**The close-out record** (the pre-registered steps).
+
+**Step 1. Every run**, with its key under the ruling, its hashes and what
+it was checked against:
+
+| Run | Trigger  | Input                            | Counted | Key (model + printed flags)                           | B's spans / names                  | Checked against its own key's baseline                |
+| --- | -------- | -------------------------------- | ------- | ----------------------------------------------------- | ---------------------------------- | ----------------------------------------------------- |
+| #1  | manual   | `skip` (inferred, settled by #4) | yes     | EPYC 7763, no AVX-512/AMX (by part)                   | `96a5c328…` / `ba1a6b82…`          | no: compared with the i5-12450H's baseline, before C1 |
+| #2  | manual   | `skip` (inferred, settled by #4) | yes     | **unknown** (Xeon Platinum 8573C, no flags printed)   | `d1f611f0…` / `46dd8ff3…`          | no: no baseline can exist for an unknown key          |
+| #3  | manual   | `skip` (inferred, settled by #4) | yes     | EPYC 7763, no AVX-512/AMX (by part)                   | `96a5c328…` / `ba1a6b82…`          | yes: identical                                        |
+| #4  | manual   | `default`                        | no      | Xeon 6973P-C (no flags printed)                       | `d1f611f0…` / `46dd8ff3…`          | no: no baseline (NEW CPU)                             |
+| #5  | schedule | `skip`                           | yes     | EPYC 7763, no AVX-512/AMX (by part)                   | `96a5c328…` / `ba1a6b82…`          | yes: identical                                        |
+| #6  | schedule | `skip`                           | yes     | **unknown** (EPYC 9V74, no flags printed)             | `d1f611f0…` / `46dd8ff3…`          | no: no baseline can exist for an unknown key          |
+| #7  | manual   | `skip`                           | yes     | EPYC 7763, no AVX-512/AMX (printed)                   | `96a5c328…` / `ba1a6b82…`          | yes: identical                                        |
+| #8  | manual   | `skip`                           | yes     | EPYC 7763, no AVX-512/AMX (printed)                   | `96a5c328…` / `ba1a6b82…`          | yes: identical                                        |
+| #9  | manual   | `skip`                           | yes     | EPYC 7763, no AVX-512/AMX (printed)                   | `96a5c328…` / `ba1a6b82…`          | yes: identical                                        |
+| #10 | schedule | `skip`                           | yes     | EPYC 9V74, AVX-512 F/BW/VL/VNNI/BF16, no AMX/AVX-VNNI | **not opened** (withheld, NEW CPU) | no: no baseline for its key                           |
+| #11 | manual   | `skip`                           | yes     | EPYC 9V74, no AVX-512/AMX (flags as the EPYC 7763's)  | **not opened** (withheld, NEW CPU) | no: no baseline for its key                           |
+
+**Totals:**
+
+- **11 runs.**
+- **10 counted:** 3 CPU models; 3 known keys plus 2 runs with unknown
+  keys.
+- **3 counted runs checked nothing,** because their key has no baseline:
+  #6, #10, #11.
+- **1 uncounted run also checked nothing:** #4, on the Xeon 6973P-C.
+- **0 incomplete.**
+- **5 counted runs were checked against their own key's baseline:** #3,
+  #5, #7, #8, #9.
+
+**Baselines committed:**
+
+- the i5-12450H's, `eval/names-baseline.json`, in `ecb8c4e` (2026-10-07),
+  indexed in `f68ee5d` (2026-10-07);
+- the EPYC 7763's index entry, pointing to the same file, in `f68ee5d`
+  (2026-10-07). It was confirmed by #3 and #5 (recorded 2026-10-10).
+  Under the ruling it is the "EPYC 7763, no AVX-512/AMX" key, the only key
+  that part can have.
+
+**Step 2. The threshold was not reached.**
+
+- **Met:** 10 counted runs; at least 2 distinct models.
+- **Not met:** at least 3 counted runs on each of two keys. Only the EPYC
+  7763 key has more than one.
+- **Never met:** every counted key with a committed baseline. The two
+  9V74 keys have none, and #2's and #6's keys can never have one.
+
+**Step 3. E1 was not adopted.** The outcome is **final**, not open, for the
+reason in the argument above (a recorded deviation, as stated).
+
+**Step 4. The rule was not loosened, and it was not dropped.** No
+threshold was lowered, and no counted run was exempted. The outcome is the
+one the rule's own conditions give.
+
+**What was established.**
+
+- **On the one key with a baseline (EPYC 7763, no AVX-512/AMX), the
+  detector reproduced exactly: six of six counted runs** (#1, #3, #5, #7,
+  #8, #9) gave the baseline's two hashes.
+- Five of them also ran C3's second pass in the same process, and it
+  agreed. #1 predates C3.
+- That baseline file is the i5-12450H's, reproduced on Windows 11 and on
+  Debian 12 on that CPU.
+- **Within each run, repeatability held on every run that had a second
+  pass,** the NEW CPU runs (#6, #10, #11) included: those passes agreed.
+  That is repeatability inside one process, not reproduction across runs.
+
+**What was not established.**
+
+- **That the detector reproduces across keys.** It does not, for the keys
+  already compared before this close-out: #2, #4 and #6 gave
+  `d1f611f0…` / `46dd8ff3…`, against group A's `96a5c328…` / `ba1a6b82…`.
+  The difference is one detection in 933. That was known before #10 and
+  #11, and this close-out says nothing about them.
+- **Adoption-grade determinism, the claim E1 needed:** that every key the
+  workflow can land on reproduces its own baseline, on enough keys and
+  runs to trust an every-push check. That was **not reached**.
+
+**Why E1 was not adopted.** It was **a measurement limitation discovered
+mid-course**: one CPU model name, the EPYC 9V74, presented two instruction
+sets on two runners, so the rule's key was not sufficient, and two counted
+runs were recorded before the flags that would have keyed them were
+printed. **It is not a failure of the detector:** on the one key the rule
+could check, it reproduced six for six.
+
+**Kept separate: the #10 and #11 hypothesis test.** This close-out is about
+E1's adoption only. Whether #10 and #11 confirm or refute the
+instruction-set hypothesis is a different question, with its own
+predictions committed above. This close-out does not anticipate either
+answer, and neither answer can change it. E1 was not adopted for a reason
+that holds whatever those hashes show.
+
+**What follows.**
+
+- **The Names workflow stays as it is:** by hand and daily, comparing
+  each run with its CPU model's baseline (C1, still keyed by model name in
+  code). It does not run on every push.
+- **Whether every-push names checks are ever pre-registered again,** under
+  a new rule counting only runs that printed their flags, is a separate
+  decision, not taken. It would be a new rule, not this one reopened.
+- **No run after this date changes this outcome.** Runs continue to be
+  recorded for the hypothesis test, not for E1.
+
+**The daily schedule: removal deferred (the user).** The daily-schedule
+decision of 2026-10-07 says the schedule "is removed, or replaced by E1,
+when the rule is closed out". **It is not removed now.** The 9V74 question
+may still want runs, and whether it does depends on what #10's and #11's
+artifacts show. Removal is deferred until that question is settled. This
+too is a departure from the committed text, recorded as one. The schedule's
+remaining purpose is the hypothesis test, not E1.
+
 <a id="adr-037"></a>
 
 ## ADR-037: Person names in the request path, against a fake model (Phase 6b step 3, 2026-10-03; amends ADR-003, ADR-013)
