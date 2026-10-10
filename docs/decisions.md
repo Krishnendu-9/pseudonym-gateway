@@ -7017,6 +7017,41 @@ are left as written, as dated records.
   the schedule is the user's decision, not taken here.
 - **The two 9V74 keys** each have one counted run, and no baseline.
 
+### The daily schedule removed (2026-10-10, the user): the deferral discharged
+
+**What changed.** The `schedule` trigger (`cron: '23 4 * * *'`) is removed
+from `.github/workflows/names.yml`. Nothing else in the workflow changed:
+its steps, its inputs and its comparison are as before. Only comments were
+updated.
+
+**Why now, per the record.**
+
+- **The original decision.** On 2026-10-07 the daily schedule was made
+  temporary: it "is removed, or replaced by E1, when the rule is closed
+  out". The rule closed on 2026-10-10 with E1 not adopted.
+- **The deferral.** Removal was then deferred, in the close-out, "until
+  that question is settled": whether the EPYC 9V74's two instruction sets
+  give two groups.
+- **The 9V74 question, settled in the user's judgement:** #10 and #11
+  gave groups B and A as committed in advance (above).
+- **So the deferral is discharged today, 2026-10-10,** and the 2026-10-07
+  decision applies as written. **The two departures recorded in the
+  close-out are now one:** the early close-out at 10 counted runs stands;
+  the schedule's deferral has ended.
+
+**Still available by hand.** The workflow remains on `workflow_dispatch`,
+with the same `skip` / `default` input, and every run still prints its
+input, the CPU model and the guest's flags. It still compares each run with
+its CPU model's baseline (C1, keyed by model name in code), and a CPU with
+none still passes with a warning.
+
+**A periodic check later is a new decision.** If a periodic determinism
+check (daily, weekly, or on some trigger) is wanted later, it will be **a
+new decision, with its own reason**: for example, watching for a runtime or
+runner-image change. It will **not be a continuation of this one.** This
+schedule existed to collect counted runs for a stopping rule that has now
+closed, and the run counts recorded above are final for that rule.
+
 <a id="adr-037"></a>
 
 ## ADR-037: Person names in the request path, against a fake model (Phase 6b step 3, 2026-10-03; amends ADR-003, ADR-013)

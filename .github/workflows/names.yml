@@ -1,17 +1,13 @@
 # Person names on Linux with the real model (Phase 6c, ADR-036): the names
 # tests and the span comparison against the baseline of the runner's CPU
-# model (eval/names-baselines.json). Manual (option E4), plus a daily run
-# that is temporary. ADR-036's stopping rule closed out on 2026-10-10 with
-# E1 (every push) NOT adopted; the daily run is kept, its removal deferred,
-# for the EPYC 9V74 instruction-set question. Every run prints the runner's
-# CPU model and the CPU flags its guest sees.
+# model (eval/names-baselines.json). Manual only (option E4). ADR-036's
+# stopping rule closed out on 2026-10-10 with E1 (every push) NOT adopted,
+# and the temporary daily run was removed the same day, once the EPYC 9V74
+# question it was kept for was settled. Every run prints the runner's CPU
+# model and the CPU flags its guest sees.
 name: Names
 
 on:
-  # Daily, temporary (ADR-036): kept after the close-out for the EPYC 9V74
-  # question; its removal is deferred until that is settled.
-  schedule:
-    - cron: '23 4 * * *'
   workflow_dispatch:
     inputs:
       onnxruntime-install:
@@ -40,8 +36,8 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
-      # A scheduled run has no inputs: it installs with skip, CI's setting, so
-      # that it counts under the stopping rule.
+      # Falls back to skip, CI's setting, if no input is given (the daily
+      # schedule, removed 2026-10-10, gave none).
       # The resolved mode is printed first, so every run records its own
       # input: three runs' inputs could not be recovered from their logs
       # afterwards (testing guide, Phase 6c).

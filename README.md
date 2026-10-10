@@ -11,7 +11,7 @@ reaches an LLM, and restores it in the reply.**
 > measured on, among others), and differs by one detection in 933, one
 > extra correct name, on machines with it, where one CPU model name has
 > appeared on both sides;
-> a separate workflow checks it on GitHub's runners by hand and daily,
+> a separate workflow checks it on GitHub's runners when run by hand,
 > against each CPU model's own baseline. Phase 8 has started before Phase 7
 > is finished: a Docker image builds, and CI checks what it contains and
 > that it serves; see [Running in Docker](#running-in-docker)).** Not ready
@@ -508,9 +508,9 @@ eval:names` sends the 1,998 measured messages through it and compares
     never be matched to a baseline, and the rule's condition can never be
     met. On the one CPU key with a baseline, the names reproduced exactly
     in six runs of six ([ADR-036](docs/decisions.md#adr-036), close-out).
-    The Names workflow still runs by hand and once a day, comparing each
-    run with its own CPU model's baseline (a CPU with none passes with a
-    warning).
+    The Names workflow still runs by hand (its temporary daily run was
+    removed on 2026-10-10), comparing each run with its own CPU model's
+    baseline (a CPU with none passes with a warning).
 
 ## Measured results
 
