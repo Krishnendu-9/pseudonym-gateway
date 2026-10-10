@@ -933,14 +933,23 @@ the events on disk and sends them to `mobile.events.data.microsoft.com`.
 Since 2026-10-10 Pseudonym forces it off in code before the model loads,
 whatever the environment says.
 
-- **Shown by a negative control, not asserted:** in the image, with the
-  switch set back to "on" from outside, the runtime wrote nothing. The image
-  built before the fix wrote a device ID and a queue of unsent events. Those
-  files were observed; an upload was not, since the image has no CA bundle.
-- **What was probably sent and cannot be undone:** one Linux run in Phase
-  6c (a Debian container, 2026-10-07) had a CA bundle and no CI variable,
-  and **probably uploaded one session's events**. That cannot be verified
-  or taken back.
+- **Shown by a negative control, not asserted:** in the shipped image,
+  with the switch set back to "on" from outside, the runtime wrote nothing.
+  The shipped image built before the fix wrote a device ID and a queue of
+  unsent events.
+- **The shipped image could not have uploaded, even with telemetry on.** It
+  is built on `node:22.23.3-bookworm-slim`, which has no `ca-certificates`.
+  None of the six certificate files the runtime looks for is present, and
+  `SSL_CERT_FILE` is unset. The queued events were observed; an upload was
+  not, and could not have happened. (Checked 2026-10-10 on the built
+  image.)
+- **What was probably sent and cannot be undone: the Phase 6c run, not the
+  shipped image.** That run (2026-10-07) used a different image, the full
+  `node:22.23.3-bookworm` at the digest recorded in ADR-036. That image
+  carries `ca-certificates` (version 20250419~deb12u1, checked 2026-10-10
+  on that same digest), and the run set no CI variable. It ran names, and
+  so **probably uploaded one session's events**. That cannot be verified or
+  taken back.
 - **GitHub's runners had telemetry off:** the runtime turns it off itself
   when it sees a CI variable.
 

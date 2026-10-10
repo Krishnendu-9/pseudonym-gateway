@@ -3854,10 +3854,95 @@ entry, with the date and the work that ran.
     samples in the next run. Free memory went down to 4,704 MB.
   - The file alone then passed 32 of 32, and the full suite 3,230 of 3,230.
 
-  Cause unknown. It fits this entry's caveat: the temp folder is outside
-  the Defender exclusion. But nothing shows that a scanner deletes empty
-  directories, so that is a direction, not an explanation. Recorded here,
-  not in the bug log: no root cause.
+  Recorded here, not in the bug log: no root cause. The next section
+  records what it does to this entry's hypothesis.
+
+### The condition fired: 2026-10-10, 15:31–15:34 IST
+
+**Fired, as written.** This entry said, before any outcome: "A further
+stall after this date weakens the hypothesis materially." The failure
+above happened after the exclusion:
+
+| When              | What                                      |
+| ----------------- | ----------------------------------------- |
+| about 11:20 IST   | the project folder excluded from Defender |
+| 15:31:51 IST      | the failing `npm test` started (142 s)    |
+| 15:31:51–15:34:13 | the failure, somewhere inside this window |
+
+The run was failing and slow, which is the kind of event this entry was
+written for. **The condition has fired. The hypothesis is materially
+weakened** as stated: scanning of the project's own files is not what
+caused it, because the project folder was excluded at the time.
+
+**What survives, and why that is honest.** The same paragraph, written
+before the evidence, said a later stall "would not rule out scanning of
+files outside this folder, such as the temporary directory". The directory
+that vanished was under the system temp folder
+(`%LOCALAPPDATA%\Temp\live-run-guard-out-…`), which is not excluded. So the
+hypothesis **narrows to scanning of temporary files**; it does not die.
+That narrowing is allowed only because the caveat was written down first.
+Read after the fact, the same move would be a hypothesis saved by
+redefining it.
+
+**What weakens even the narrowed form.** Defender's own record shows **0
+detections on 2026-10-10** (`Get-MpThreatDetection`, read without
+elevation). Defender removes files only on a detection. Scanning a clean
+file can hold it open for a moment, and that tends to give "busy" or
+"permission" errors, not a missing directory. An empty directory that
+disappears (`ENOENT`) is not a known effect of antivirus scanning.
+
+**A second candidate for this symptom (a hypothesis): Windows Storage
+Sense.** It deletes temporary files automatically, and could remove a
+directory under `%TEMP%` while a test still holds a path to it.
+
+- **Why it fits:** a directory the test created, that nothing in the
+  repository deletes, vanishing mid-run with `ENOENT`, fits a cleaner
+  better than a scanner.
+- **The setting on this machine** (`HKCU\…\StorageSense\Parameters\StoragePolicy`):
+  `01=1` (on), `2048=1` (every day), `04=1` (delete temporary files apps
+  are not using). Those meanings come from third-party documentation, not a
+  Microsoft page. The same sources say the cleanup engine may follow a
+  different key, so they may not describe what actually runs.
+- **What weakens it:** the scheduled task
+  (`\Microsoft\Windows\DiskFootprint\StorageSense`) last ran at **10:30:53
+  IST**, about five hours before the failure, and that run ended in
+  **error** (`0x80040154`, a COM class not registered). Storage Sense can
+  also be started by Windows on low disk space, through another path, so
+  this does not rule it out.
+- **What "apps are not using" means** for an empty directory created
+  seconds earlier is not documented. Whether Storage Sense would remove one
+  is the open question.
+
+**What would tell the two apart.** Neither candidate can be shown from one
+failure. A single uncontrolled event fits more than one cause. The two
+predict different things:
+
+1. **Where temp files go.** Point `TMP` and `TEMP` for test runs at a
+   folder outside both `%TEMP%` and the project, for example
+   `E:\pseudonym-test-tmp`.
+   - Storage Sense does not clean that folder; Defender still scans it.
+   - If the `ENOENT` recurs there, Storage Sense is out.
+   - If it never recurs there, that is weak support only: the rate is low,
+     so its absence is what rarity also predicts.
+2. **Timing.** On any further occurrence, read at once:
+   - the Storage Sense task's `LastRunTime`;
+   - Defender's Operational event log;
+   - whether other recent items in `%TEMP%` vanished at the same moment.
+
+   A cleaner removes many items at once; a scan does not remove clean ones.
+
+3. **Storage Sense's temp cleanup switched off** (`04`, in Settings) for a
+   period. If the `ENOENT` recurs with it off, Storage Sense is out. If it
+   stops, that is again only weak support.
+
+**Not to be done casually: excluding the whole temp folder from
+Defender.** That is a far broader trade than excluding one project folder.
+Every program's temporary files would go unscanned: installers, unpacked
+archives, browser downloads, and the folder malware most often stages in.
+One project folder is a narrow, known trade; the temp folder is the
+machine's. If an experiment is needed, option 1 above moves this project's
+temp files somewhere specific instead, and changes nothing for anything
+else.
 
 ## The Docker image (Phase 8, 2026-10-10, ADR-046, bug-logs 72 and 73)
 

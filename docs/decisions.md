@@ -10938,7 +10938,37 @@ it is on by default.
 
 Linux is not in the same position: there the runtime's on-disk queue and
 device ID were observed, and the fix removed them. An upload itself was not
-observed on Linux either; the image has no CA bundle.
+observed on Linux either; the shipped image has no CA bundle (amendment E).
+
+### Amendment E (2026-10-10, after 2d3afa0): which image could upload
+
+Item 8 said the Phase 6c L2 run's image "has a CA bundle", and that this
+image could not upload "only because the slim image has no CA bundle".
+Both were asserted from the image names. The user asked for them to be
+confirmed, and for every mention of uploads to say which image it means.
+Checked on 2026-10-10 by running each image (no live API call):
+
+| Image                                                                        | `ca-certificates`           | A bundle at any of the runtime's six paths          | `SSL_CERT_FILE` |
+| ---------------------------------------------------------------------------- | --------------------------- | --------------------------------------------------- | --------------- |
+| L2's: `node:22.23.3-bookworm@sha256:0e5f9065…` (the digest ADR-036 recorded) | installed, 20250419~deb12u1 | `/etc/ssl/certs/ca-certificates.crt`, 224,449 bytes | unset           |
+| The shipped base: `node:22.23.3-bookworm-slim@sha256:c3de60bf…`              | not installed               | none                                                | unset           |
+| The built gateway image (`pseudonym-gateway:local`, after 2d3afa0)           | not installed               | none of the six                                     | unset           |
+
+**Both statements hold, and they are about different images.**
+
+- **The historical L2 run could have uploaded,** and probably did:
+  - a CA bundle was present;
+  - no CI variable was set;
+  - names ran, with telemetry on by default (before the fix).
+- **The shipped image could not have uploaded, even with telemetry on:**
+  - it holds no bundle the runtime looks for;
+  - `SSL_CERT_FILE` is unset.
+
+  That is still an accident of the base image, not a control. The control
+  is the code switch, shown by the negative control.
+
+The README's Linux entry now names the image in each sentence that
+mentions an upload.
 
 ---
 
