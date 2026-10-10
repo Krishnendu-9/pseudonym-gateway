@@ -10653,8 +10653,10 @@ the implementation.
 **README, when built, not before** (rule 15: the README never describes
 behaviour that does not exist): F's breaking change, option 3's privacy
 property, and Gemini as a supported provider together with the free-tier
-terms recorded in section 2 (content used to improve products, human
-reviewers).
+terms recorded in sections 2 and 4 (content used to improve products, human
+reviewers). _Corrected 2026-10-11, after commit `a91af20`: this first said
+"section 2" only; section 2 states the first point and points to the quote,
+and the quote and the human reviewers are in section 4._
 
 **The two error codes, checked against OpenAI's documentation
 (2026-10-11).** `unsupported_parameter` and `unsupported_value` were
