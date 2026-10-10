@@ -10,7 +10,10 @@ reaches an LLM, and restores it in the reply.**
 > published measurement exactly on the CPU it was measured on and on an AMD
 > EPYC 7763, and differs by one detection in 933 on two Intel Xeon models;
 > a separate workflow checks it on GitHub's runners by hand and daily,
-> against each CPU model's own baseline).** Not ready for production use.
+> against each CPU model's own baseline. Phase 8 has started before Phase 7
+> is finished: a Docker image builds, and CI checks what it contains and
+> that it serves; see [Running in Docker](#running-in-docker)).** Not ready
+> for production use.
 > Pseudonym runs as a gateway: `POST /v1/chat/completions` (OpenAI format,
 > streaming and non-streaming) redacts emails, phone numbers, Aadhaar, PAN,
 > card numbers, UPI IDs, IFSC codes, IP addresses, API keys in known formats, secrets written after a
@@ -897,6 +900,15 @@ to a handler (the kernel then ignores the limit; Pseudonym warns), and it can
 verify none of this on Windows or macOS. Production means Linux
 ([ADR-016](docs/decisions.md#adr-016)).
 
+**In a container,** the loopback default does not protect anything. The
+image listens on `0.0.0.0`, because inside a container `127.0.0.1` cannot
+be reached from outside it. Who can reach the gateway is then decided by
+the network in front of it: the Docker networks the container is on, and
+which ports are published on which host interface. The compose file
+publishes on the host's loopback only. With person names on, ONNX Runtime's
+telemetry to Microsoft, which its Linux build sends by default, is forced
+off ([ADR-046](docs/decisions.md#adr-046)).
+
 Logs contain the method, route, status and timing of each request, never a
 body, a URL or an error message. Two kinds of line add numbers and nothing
 else: an empty answer from the provider (one line each), and fields the
@@ -963,6 +975,65 @@ is held by a call past its timeout, and from a crash on, until the process
 is restarted
 ([ADR-037](docs/decisions.md#adr-037)).
 
+## Running in Docker
+
+The [Dockerfile](Dockerfile) builds a Debian slim image (Node 22.23.3,
+pinned by digest) that runs the built gateway as an unprivileged user,
+with `NODE_ENV=production` so the start-up guard applies. It is 794 MB as
+Docker Desktop reports it; about 301 MB of that is the person-name runtime,
+kept so that names can be switched on without another image. The model is
+never inside it.
+
+```bash
+docker compose up --build    # gateway on http://127.0.0.1:3000/v1
+```
+
+[compose.yaml](compose.yaml) reads `.env` and adds what the container
+needs:
+
+- the core dump limit at zero, without which the start-up guard refuses to
+  start;
+- Docker's init process, so a stop is a clean exit, not a kill after 10 s;
+- a read-only filesystem, no Linux capabilities, and no privilege
+  escalation;
+- the port published on the host's loopback only.
+
+In `.env`, point `PSEUDONYM_PROVIDER_BASE_URL` at an address the container
+can reach. For an Ollama on the same machine that is
+`http://host.docker.internal:11434/v1`, not `localhost`. Do not paste the
+output of `docker compose config`: it prints the API key from `.env`.
+
+Without compose:
+
+```bash
+docker build -t pseudonym-gateway .
+docker run --init --ulimit core=0 --read-only --cap-drop ALL \
+  --security-opt no-new-privileges -p 127.0.0.1:3000:3000 \
+  -e PSEUDONYM_MODEL=qwen3:4b-instruct-2507-q4_K_M \
+  -e PSEUDONYM_PROVIDER_BASE_URL=http://host.docker.internal:11434/v1 \
+  pseudonym-gateway
+```
+
+**Do not pass a development `.env` to `docker run --env-file`.** The one
+made from `.env.example` says `NODE_ENV=development`, which turns the
+start-up guard off, and `HOST=127.0.0.1`, which nothing outside the
+container can reach. The compose file overrides both; `docker run` cannot.
+
+**The network is the boundary.** The image sets `HOST=0.0.0.0`. The
+loopback default protects a process on a host, not a container, so
+publish the port on `127.0.0.1` (as above) unless a network boundary in
+front of the gateway is meant to decide who reaches it.
+
+**Person names:** run `npm run fetch:model`, set `PSEUDONYM_NAMES=true`,
+and mount the model read-only: uncomment the `volumes` lines in
+`compose.yaml`, or add `-v "$PWD/models:/app/models:ro"`. With names on and
+no model mounted, the container refuses to start.
+
+The container's health check calls `GET /health`, which never calls the
+provider. A healthy container is not proof that it can be reached: the
+check runs inside it. CI checks that separately (below)
+([ADR-046](docs/decisions.md#adr-046)).
+
 ## Continuous integration
 
 [.github/workflows/ci.yml](.github/workflows/ci.yml) runs on every push and
@@ -980,6 +1051,24 @@ of date. The timing tests run one file at a time there: the three at a time
 used locally was measured on 12 cores, and the runner has 4
 ([ADR-032](docs/decisions.md#adr-032)).
 
+A second job builds the Docker image and runs
+[scripts/docker-smoke.ts](scripts/docker-smoke.ts) on it. It checks the
+built image, not the Dockerfile:
+
+- a listing of its whole filesystem has no `.env` file, no `eval/` (where
+  the held-out set lives), `test/`, `docs/` or model, and `/app` holds only
+  the built code, its dependencies and `package.json`;
+- it runs as a non-root user, configured and running;
+- the start-up guard refuses a core dump limit, a debugger flag and a
+  missing `--disable-sigusr1`;
+- names on with no model mounted refuses to start;
+- a real request with a synthetic email, sent through the published port
+  to a stub provider, comes back with the email restored, and the stub
+  received only its placeholder.
+
+Five deliberately broken images each fail it
+([ADR-046](docs/decisions.md#adr-046)).
+
 Not covered by CI:
 
 - **The model measurement** (`scripts/measure-rewrites.ts`, the table
@@ -996,7 +1085,9 @@ Not covered by CI:
   ([ADR-043](docs/decisions.md#adr-043)).
 - **One platform and one Node version**: Linux with Node 22.23.3, not
   Windows or macOS, and not the oldest version `engines` allows (22.20).
-- **Docker** does not exist yet (Phase 8).
+- **The Docker image with person names on.** CI has no model for that
+  job; it was checked by hand (`docker-smoke.ts --models models`). Only
+  linux/amd64 is built.
 
 ## Documentation
 

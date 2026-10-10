@@ -1,0 +1,46 @@
+# Pseudonym with Docker Compose (ADR-046): the run flags the image needs,
+# written down once. Start with `docker compose up --build`.
+#
+# Do not paste the output of `docker compose config`: it prints every
+# variable from .env, the provider API key included.
+services:
+  pseudonym:
+    build: .
+    image: pseudonym-gateway:local
+    # Docker's init runs as PID 1 and passes signals on. Node as PID 1 would
+    # ignore SIGTERM (it has no handler for it), so a stop would wait 10 s
+    # and then kill it.
+    init: true
+    # The start-up guard refuses to start with any core dump limit above
+    # zero (ADR-016).
+    ulimits:
+      core: 0
+    # The gateway writes nothing to disk; with names on, ONNX Runtime's
+    # telemetry, which would, is off (ADR-046).
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    # The container listens on 0.0.0.0, so this line, not HOST, decides who
+    # can reach the gateway: loopback on the host, as outside a container.
+    # Publish it more widely only with a network boundary in front (ADR-046).
+    ports:
+      - '127.0.0.1:3000:3000'
+    env_file:
+      - path: .env
+        required: false
+    # Set after env_file, which they override: a .env made from .env.example
+    # says NODE_ENV=development, which turns the start-up guard off, and
+    # HOST=127.0.0.1, which nothing outside the container can reach.
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: '3000'
+    # Lets PSEUDONYM_PROVIDER_BASE_URL=http://host.docker.internal:11434/v1
+    # reach an Ollama on the host, on Linux as well as Docker Desktop.
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    # Person names (ADR-036): run `npm run fetch:model`, set
+    # PSEUDONYM_NAMES=true in .env, and uncomment the mount. The model is
+    # mounted read-only, never built into the image.
+    # volumes:
+    #   - ./models:/app/models:ro

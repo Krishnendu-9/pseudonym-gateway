@@ -46,6 +46,12 @@ switch (mode) {
     });
     port.postMessage({ type: 'ready' });
     break;
+  case 'telemetry-off':
+    // Ready only if the thread was started with ONNX Runtime's telemetry
+    // switch on (ADR-046); otherwise it exits, and start() refuses.
+    if (process.env.ORT_DISABLE_TELEMETRY !== '1') process.exit(4);
+    serveNames(port, (text) => Promise.resolve(occurrences(text)));
+    break;
   case 'not-ready-first':
     port.postMessage({ type: 'answer', id: 0, spans: [] });
     setInterval(() => {}, 1_000);

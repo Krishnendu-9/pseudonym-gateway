@@ -1490,3 +1490,58 @@ and the held-out figure (41 of 45) is not re-run on any other CPU. Speed
 differs a great deal more than the names: 308–332 ms per KiB on the
 i5-12450H under Windows, 450.7 on it under Linux with 4 CPUs, 292.1 on the
 EPYC and 147.0 on the Xeon.
+
+## Running in a container (Phase 8, 2026-10-10, ADR-046)
+
+Pseudonym can run as a Docker container. The image holds three things:
+the compiled gateway, the packages it needs to run, and `package.json`.
+It does not hold the tests, the evaluation data (including the held-out
+set), the documentation, any `.env` file or the name model. CI checks this
+on every build by listing the image's whole filesystem.
+
+**Starting it.** `docker compose up --build` builds the image and starts
+it on `http://127.0.0.1:3000/v1`, with the settings from `.env`. Two of
+those need care in a container:
+
+- `PSEUDONYM_PROVIDER_BASE_URL` must be an address the container can
+  reach. `localhost` inside a container is the container itself. For an
+  Ollama on the same machine use `http://host.docker.internal:11434/v1`.
+- `NODE_ENV` and `HOST` from `.env` are ignored. The compose file sets
+  `NODE_ENV=production`, so the start-up guard runs, and `HOST=0.0.0.0`.
+  Without compose, do not pass a development `.env` to `docker run
+--env-file`: its `NODE_ENV=development` would switch the guard off.
+
+**Who can reach it.** Outside a container, Pseudonym listens on
+`127.0.0.1` unless told otherwise, so only programs on the same machine can
+reach it. Inside a container that address would make it unreachable even
+from the machine it runs on, so the image listens on every interface. What
+decides who can reach it is then where Docker publishes the port. The
+compose file publishes it on the machine's own loopback (`127.0.0.1:3000`),
+which matches running it without Docker. Publish it more widely only when
+something in front of it, such as a private network or a proxy with access
+control, decides who gets through.
+
+**What the container insists on.** It runs as an ordinary user, never as
+root. It refuses to start if core dumps are allowed, if a debugger flag is
+set, or if it was started without the flag that stops a signal from opening
+a debugger; the reasons are the same as for any production start (see the
+threat model in the README). The compose file sets the core dump limit to
+zero. Without compose, add `--ulimit core=0` to `docker run`.
+
+**Person names.** The name runtime is in the image; the model is not.
+To switch names on:
+
+1. Download the model with `npm run fetch:model`.
+2. Set `PSEUDONYM_NAMES=true`.
+3. Mount the `models` folder read-only at `/app/models`. The compose file
+   has the lines for this, commented out.
+
+With names on and no model mounted, the container refuses to start rather
+than sending names as written. ONNX Runtime, the library that runs the
+model, sends usage statistics to Microsoft from Linux by default. Pseudonym
+always turns that off before the model loads.
+
+**The health check.** Docker asks `GET /health` every 30 seconds; it
+never contacts the AI provider. A container marked healthy is answering
+from inside itself; that alone does not prove it can be reached from
+outside. Check the published address yourself.

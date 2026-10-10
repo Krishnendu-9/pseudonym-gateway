@@ -10,6 +10,7 @@ import { MessageChannel, type MessagePort } from 'node:worker_threads';
 import { afterEach, describe, expect, it } from 'vitest';
 import { NameDetectionUnavailable } from '../../../src/gateway/errors.js';
 import {
+  disableRuntimeTelemetry,
   NameWorkerStartError,
   serveNames,
   startNameWorker,
@@ -271,5 +272,25 @@ describe('WorkerNameModel.start: refuses, with a fixed message, unless the threa
 
   it('waits two minutes by default: the measured load is about a second', () => {
     expect(WORKER_START_TIMEOUT_MS).toBe(120_000);
+  });
+});
+
+describe("ONNX Runtime's telemetry is off before any thread starts (ADR-046)", () => {
+  const before = process.env.ORT_DISABLE_TELEMETRY;
+  afterEach(() => {
+    if (before === undefined) delete process.env.ORT_DISABLE_TELEMETRY;
+    else process.env.ORT_DISABLE_TELEMETRY = before;
+  });
+
+  it('disableRuntimeTelemetry sets the switch, overriding a value that would leave it on', () => {
+    const env: NodeJS.ProcessEnv = { ORT_DISABLE_TELEMETRY: '0' };
+    disableRuntimeTelemetry(env);
+    expect(env).toEqual({ ORT_DISABLE_TELEMETRY: '1' });
+  });
+
+  it('a thread started with the switch set to "0" still starts with it on', async () => {
+    process.env.ORT_DISABLE_TELEMETRY = '0';
+    const model = await start('telemetry-off');
+    expect(await model.run([`Ask ${NAME}`])).toEqual([[{ start: 4, end: 12, score: 0.95 }]]);
   });
 });

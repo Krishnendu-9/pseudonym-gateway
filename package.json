@@ -9,7 +9,7 @@
     "node": ">=22.20.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
     "start": "node --disable-sigusr1 --env-file-if-exists=.env dist/src/main.js",
     "dev": "tsx --env-file-if-exists=.env src/main.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",

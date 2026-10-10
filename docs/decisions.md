@@ -10407,3 +10407,329 @@ soundness**. Its costs, stated above (a non-OpenAI header, visible to
 proxies and client logs, at per-request granularity), are a client's
 own data shown back to it. **It is not to be built** under this ruling.
 Building it later would be a new decision.
+
+---
+
+<a id="adr-046"></a>
+
+## ADR-046: The container image (Phase 8, 2026-10-10)
+
+**Status.** Accepted. The user set the requirements: Debian slim, not Alpine;
+base pinned by digest; multi-stage; non-root; a health check that never
+calls the provider; the model mounted, never baked; a CI smoke test. The
+user chose the telemetry decision (item 8). Item 1's placement of `HOST`
+was left to me by the user, and is decided here.
+
+**Phase order: a deliberate choice.** Phase 8 started on 2026-10-10 with
+Phase 7c still open. That is the user's choice, not a slip of rule 10.
+What is left of 7c (ADR-041 section 13's option 3 and 4b) waits on section
+14's three live calls, which are not made here. This work made no live
+API call. The only network traffic was Docker Hub pulls (the base images)
+and the npm registry, during image builds.
+
+**Context.** The gateway had never run in a container. Its safety
+properties were designed for a process on a host: a loopback default
+(`HOST=127.0.0.1`), a start-up guard keyed on `NODE_ENV=production`
+(ADR-016), names off unless switched on (ADR-035), a model downloaded and
+hash-checked into `models/` (ADR-036). Each was checked again inside a
+container, on the built image, and not assumed from the Dockerfile.
+
+### 1. `HOST`: the loopback default does not protect a container
+
+**Said plainly:** inside a container, `127.0.0.1` is the container's own
+loopback. A gateway bound to it cannot be reached from the host or from
+anywhere else, so the image must listen on `0.0.0.0`. **The loopback
+default, a deliberate safety property, therefore does not protect a
+containerised deployment.** What limits who can reach the gateway there is
+the network in front of it: which Docker networks the container is on, and
+which ports are published, and on which host interface. `docker run -p
+3000:3000` publishes on every host interface by default.
+
+**Options:**
+
+- (a) `ENV HOST=0.0.0.0` in the Dockerfile.
+- (b) In the compose file only.
+- (c) The operator's job, documented.
+
+**Decision: (a), with compose publishing on loopback.** (b) and (c) leave
+the image unreachable when run on its own. That fails safe, but a
+container that starts, says healthy, and serves nobody is a trap of its
+own (negative control N3, below). Set in the image, the change is
+declared, not silent. It shows in `docker image inspect`, the smoke test
+checks it, and a comment in `env.ts` says the default protects nothing
+there. Two compensations:
+
+- `compose.yaml` publishes `127.0.0.1:3000:3000`. On the host the gateway is
+  then as reachable as `npm start`'s, and the line itself says to widen it
+  only with a network boundary in front.
+- The README says that the container relies on the network boundary, not on
+  the loopback default.
+
+**A worse trap found beside it.** `.env.example` sets
+`NODE_ENV=development` and `HOST=127.0.0.1`, as it should for development.
+A `.env` made from it and passed to the container (compose `env_file`, or
+`docker run --env-file .env`) makes the gateway unreachable, and **turns
+the ADR-016 guard off** inside the container, silently. `compose.yaml`
+sets `NODE_ENV`, `HOST` and `PORT` under `environment`, which overrides
+`env_file`. This was tested with `.env.example` itself as the `.env`: the
+container ran with `NODE_ENV=production` and `HOST=0.0.0.0`. **Plain
+`docker run --env-file` with a development `.env` cannot be protected by
+the image.** The README warns about it; whether the guard should key on
+something other than `NODE_ENV` is open (consequences).
+
+### 2. What goes into the image
+
+**The build context is an allowlist.** `.dockerignore` excludes everything
+(`*`), then lets back in `package.json`, `package-lock.json`,
+`tsconfig.json`, `tsconfig.build.json` and `src/`. It names `.env`,
+`.env.*`, `eval/`, `test/`, `docs/`, `scripts/`, `models/`, the held-out
+file and the rest **again, last**. The last matching line wins, so a `!`
+line added above can never let them back in. Shown, not assumed: a
+throwaway build copied the context and listed it. 68 files, exactly
+those five entries. The working tree beside it held `.env`,
+`eval/held-out.txt` and `models/`.
+
+**`npm run build` compiles `src/` only.** It now uses
+`tsconfig.build.json`: `src/` only, `rootDir: "."` (so the output stays
+`dist/src/main.js`, where `npm start` and the worker entry expect it), no
+declarations and no source maps. Before, it compiled `test/`, `eval/` and
+`scripts/` into `dist/` too, which nothing used. `npm run typecheck` still
+covers everything.
+
+**The runtime stage copies three things:** `package.json` (for
+`"type": "module"`), production `node_modules`, and `dist/src`. Files are
+owned by root. The process runs as `node`, so it cannot change its own
+code.
+
+**Proved on the built image** by `scripts/docker-smoke.ts`. A `docker
+export` of a container made from the image is listed with `tar`: 13,389
+paths. Checks:
+
+- `/app` holds exactly `dist`, `node_modules` and `package.json`;
+- `/app/dist` holds only `src`;
+- no file named `.env` or `.env.*` anywhere in the image;
+- nothing named `held-out` anywhere;
+- no `eval/`, `test/`, `docs/`, `dev_docs/`, `models/`, `scripts/` or `.git`
+  under `/app` (outside `node_modules`);
+- five expected files are present, so an empty or wrong listing cannot pass.
+
+`src/synthetic/` is compiled in like the rest of `src/` (the seeded
+generators and the Wikidata name lists, ADR-008 and ADR-035). It holds no
+personal data.
+
+### 3. The model is optional, verified in the image
+
+Checked on the image, not read from the code:
+
+- names off with no model present: serves; `/health` 200;
+- names on with no model mounted: refuses to start, exit 1,
+  `NAME_MODEL_FILE_MISSING` (fail closed, ADR-036);
+- names on with `models/` mounted read-only at `/app/models`: healthy in
+  6–15 s. A synthetic name reached the stub provider only as
+  `[PERSON_1]`, and came back restored (`docker-smoke.ts --models models`,
+  run locally; CI has no model).
+
+**The optional dependencies stay in the image** (the person-name runtime,
+`onnxruntime-node` 301,125,480 bytes), so switching names on needs only the
+mount and two settings, not another image. That size is byte-for-byte the
+Debian size measured in Phase 6c with `ONNXRUNTIME_NODE_INSTALL=skip`
+(ADR-036, L2), and the image contains no CUDA file. The alternative, an
+`--omit=optional` image about 300 MB smaller in which names can never be
+switched on, was not built.
+
+**Not shown:** that the name model reproduces its published spans _in this
+image_. L2 reproduced them on `node:22.23.3-bookworm`, the full image,
+running from the repository, not on this slim image. `eval:names` was not
+run inside it.
+
+### 4. The health check
+
+`GET /health` already existed (ADR-037). It never calls the provider, and
+answers 503 only for the name model's states, so no new endpoint was
+needed. The image's `HEALTHCHECK` calls it with Node's `fetch` (the slim
+image has no curl).
+
+**What it cannot show** (negative control N3): with `HOST` removed, Docker
+reported the container **healthy**. The check runs inside the container,
+where the loopback-bound gateway answers, while nothing outside could
+reach it. A healthy container is not a serving one. That is why the smoke
+test sends a real request through the published port.
+
+### 5. The base image
+
+`node:22.23.3-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392`.
+The digest is the multi-platform index digest Docker Hub returned for the
+tag on 2026-10-10. Pinned for the same reason the actions are pinned by
+SHA and the model by hash: a floating tag would have been the only
+unpinned input. One `base` stage carries the pin, and every other stage
+starts from it, so the digest is written once.
+
+**Debian, not Alpine: glibc checked by loading, not assumed.**
+
+- `onnxruntime-node` 1.30.0 ships one Linux x64 build and no musl build.
+- Its `libonnxruntime.so.1` names `ld-linux-x86-64.so.2`, `libc.so.6` and
+  `libstdc++.so.6`, and needs glibc symbol versions up to `GLIBC_2.28`.
+- Loading the binding on `node:22.23.3-alpine` (with `libstdc++` added, so
+  only the C library differs) fails: `Error loading shared library
+ld-linux-x86-64.so.2: No such file or directory`. On
+  `node:22.23.3-bookworm-slim` it loads.
+- `@huggingface/tokenizers` is plain JavaScript.
+- Bookworm (glibc 2.36) is also the distribution on which L2 reproduced the
+  name model's spans.
+
+**Bump procedure:** pull the new tag, record its digest here, rebuild, and
+run the smoke test. A base change moves glibc and libstdc++ under the name
+runtime: say the spans are reproduced only after `eval:names` has shown
+it in the new image.
+
+### 6. The start-up guard survives
+
+The image sets `NODE_ENV=production`, so the guard runs, and the command is
+`node --disable-sigusr1 dist/src/main.js`. The core dump limit cannot be set
+from a Dockerfile. It stays the operator's: `docker run --ulimit core=0`,
+or `ulimits: core: 0` in compose, which sets soft and hard to 0.
+Measured: Docker Desktop's default is soft 0, hard unlimited. Docker Engine
+on Linux can pass the daemon's own limit through (not measured here), so
+the image must not count on a zero.
+
+**Shown in the image**, by the smoke test on every CI run. With
+`PSEUDONYM_MODEL` set and nothing else wrong, the guard refuses, exit 1,
+with its own message:
+
+- with `--ulimit core=1024`;
+- with `NODE_OPTIONS=--inspect`;
+- when started as `node dist/src/main.js`, without `--disable-sigusr1`.
+
+Each run is limited to 60 s (bug-log 72).
+
+On Docker Desktop the guard also prints its host warning. The VM pipes core
+dumps to a crash handler, which is the host-side case ADR-016 can only warn
+about.
+
+### 7. Non-root, and the hardened run
+
+`USER node` (uid 1000). The smoke test checks the configured user, then
+the running process. It finds the process whose argv is `node … dist/src/main.js`
+(not PID 1, which is Docker's init), and checks that its real and effective
+uid are both non-zero.
+
+The smoke test runs the gateway the way the README recommends:
+
+- `--init`;
+- `--ulimit core=0`;
+- `--read-only`;
+- `--cap-drop ALL`;
+- `--security-opt no-new-privileges`;
+- the port published on `127.0.0.1`.
+
+`compose.yaml` carries the same flags. `init` is there because Node as
+PID 1 has no SIGTERM handler, and the kernel ignores signals without one
+for PID 1. Without it, `docker stop` waits 10 s and kills the process.
+
+### 8. ONNX Runtime's telemetry (found here; the user's decision)
+
+**Found** in the first names-on start in the image, which logged: "No
+readable CA bundle was found; telemetry HTTPS uploads will be unavailable".
+
+ONNX Runtime 1.30's Linux build contains Microsoft's 1DS telemetry
+client, **on by default**. Its source at v1.30.0
+(`core/platform/posix/telemetry.cc`, `core/platform/telemetry_environment.h`,
+`core/platform/posix/device_id.cc`) shows:
+
+- **Where it sends:** `https://mobile.events.data.microsoft.com/OneCollector/1.0`.
+- **What it sends:** the CPU model, OS, memory, a hashed device ID, and
+  per session the model's file name, hashes, metadata and execution
+  providers. Request text is not among the fields read.
+- **What it keeps on disk:** unsent events and the device ID, under
+  `~/.cache`.
+- **When it is off:** when `ORT_DISABLE_TELEMETRY` is `1`, `true`, `yes`,
+  `on` or `y`, and when any of 13 CI variables is set (`CI` and
+  `GITHUB_ACTIONS` among them).
+
+**In this image, before the fix:** no upload was possible, only because
+the slim image has no CA bundle. That is an accident, not a control: one
+`apt-get install ca-certificates` would have enabled it. It still wrote
+`deviceid` and a 45 KB event queue to
+`/home/node/.cache/Microsoft/DeveloperTools/.onnxruntime/`.
+
+**Decision (the user): forced off in code.**
+
+- `WorkerNameModel.start` calls `disableRuntimeTelemetry()`, which sets
+  `ORT_DISABLE_TELEMETRY=1` on the main thread before any name thread
+  starts. Main thread, because the runtime reads the process environment
+  from native code, and only a main-thread assignment to `process.env`
+  changes it.
+- It overrides whatever the environment held, so an operator cannot turn
+  telemetry back on.
+- The Dockerfile declares `ORT_DISABLE_TELEMETRY=1` as well, so that the
+  image says so.
+
+**Shown:**
+
+- In the image, names on, model mounted, `-e ORT_DISABLE_TELEMETRY=0`
+  overriding the image's `ENV`: the container's environment said `0`, yet
+  no telemetry line was logged and nothing was written under `~/.cache`.
+- The control is the image built before the switch, which wrote both
+  files.
+- Unit tests: the setter overrides `0`, and a stand-in thread started with
+  `0` in the environment sees `1`. Mutations OT1–OT3
+  (`scripts/mutations/runtime-telemetry.ts`) are 3 of 3 caught.
+
+**Exposure before this, as far as it can be known:**
+
+- The GitHub runner runs (CI, Names) set `CI`/`GITHUB_ACTIONS`, so
+  telemetry was off there.
+- The Phase 6c L2 run used `node:22.23.3-bookworm`, which has a CA bundle,
+  set no CI variable and ran names. It **probably uploaded** that
+  session's events (CPU model, device ID, model file name and hashes).
+  This was not checked, and cannot be now.
+- Windows uses a different telemetry path (`core/platform/windows`), which
+  was not examined.
+- `scripts/compare-names.ts` loads the runtime in-process, not through the
+  worker, so the switch does not cover it. It is a 6a measurement script,
+  not the gateway.
+
+### 9. Size
+
+The image is **794,001,759 bytes**, as Docker Desktop reports it (`docker
+image inspect` `.Size`, the unpacked size in its image store), built from
+this change's final tree on 2026-10-10. Of that:
+
+| Part                        | Bytes       |
+| --------------------------- | ----------- |
+| The base image              | 326,104,305 |
+| `/app/node_modules`         | 331,758,071 |
+| of which `onnxruntime-node` | 301,125,480 |
+| `/app/dist`                 | 389,694     |
+
+The compressed (pulled) size was not measured. CI prints the size on its
+runner.
+
+### Negative controls (the smoke test can fail)
+
+Five broken images, each built from a one-line change to the Dockerfile;
+the commands are in the testing guide. All five were run against the final
+script:
+
+| Control | The change                                         | Failed checks |
+| ------- | -------------------------------------------------- | ------------- |
+| N1      | `eval/held-out.txt` and `.env` planted in `/app`   | 4             |
+| N2      | no `USER` line                                     | 2             |
+| N3      | no `HOST=0.0.0.0` (Docker still said healthy)      | 6             |
+| N4      | `NODE_ENV=development` (the guard checks time out) | 4             |
+| N5      | `CMD` without `--disable-sigusr1`                  | 9             |
+
+### Consequences and open points
+
+- The gateway's reachability in a container is the operator's network
+  configuration. The README says so.
+- **Open, for the user:** a development `.env` passed with `docker run
+--env-file` turns the guard off. Compose is protected; plain
+  `docker run` is not. The guard keys only on `NODE_ENV`.
+- npm and yarn from the base image remain in the runtime image; nothing
+  runs them.
+- Only linux/amd64 was built and tested. The base digest covers arm64,
+  but this image was not built or tested there.
+- CI does not run the names-on smoke test (no model in `ci.yml`).
+- The README status line is unchanged in substance. Phase 7 is not done,
+  so "Phase 6 of 8 done" stays, with the image added beside it.

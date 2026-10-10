@@ -102,6 +102,19 @@ interface Call {
   readonly reject: (error: Error) => void;
 }
 
+/**
+ * Turns off ONNX Runtime's telemetry (ADR-046). Its Linux build sends usage
+ * events to Microsoft by default from 1.30 (the CPU model, a device ID, the
+ * model's file name and hashes; never the text), and keeps unsent ones on
+ * disk. Forced, whatever the environment held: the runtime reads the
+ * process's environment from its native code, so this must run on the main
+ * thread, where assigning to process.env changes it, before any thread
+ * loads the runtime.
+ */
+export function disableRuntimeTelemetry(env: NodeJS.ProcessEnv = process.env): void {
+  env.ORT_DISABLE_TELEMETRY = '1';
+}
+
 export class WorkerNameModel implements NameModel {
   readonly #worker: Worker;
   readonly #calls = new Map<number, Call>();
@@ -127,6 +140,7 @@ export class WorkerNameModel implements NameModel {
     execArgv,
     startTimeoutMs = WORKER_START_TIMEOUT_MS,
   }: WorkerStartOptions): Promise<WorkerNameModel> {
+    disableRuntimeTelemetry();
     const worker = new Worker(entry, { workerData, execArgv: [...execArgv] });
     // An error from the thread may quote its input: swallowed, never read.
     // (The thread exits after one, and 'exit' is what is acted on.)

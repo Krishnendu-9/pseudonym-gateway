@@ -3828,3 +3828,101 @@ exclusion was not alternated with its absence, and nothing else was held
 fixed (load, other processes, updates). It **cannot establish cause**
 either way. Any later stall or its absence is recorded here against this
 entry, with the date and the work that ran.
+
+- **2026-10-10, Phase 8:** no stall. The work: one mutation list (3
+  mutations, about 7 s each), the name-worker test file run alone, and one
+  full gate (`npm test` 3,217 tests, the coverage run, `npm run eval`,
+  `test:names`, `eval:names`), with Docker Desktop stopped before the gate.
+
+## The Docker image (Phase 8, 2026-10-10, ADR-046, bug-logs 72 and 73)
+
+**The check is on the built image, not the Dockerfile.**
+
+```powershell
+docker build -t pseudonym-gateway:local .
+npx tsx scripts/docker-smoke.ts pseudonym-gateway:local
+npx tsx scripts/docker-smoke.ts --models models pseudonym-gateway:local   # also names on (needs npm run fetch:model)
+```
+
+It runs 29 checks, plus 8 more with `--models`, in four groups:
+
+- **What the image contains.** A `docker export` of a container made from
+  the image, listed with `tar`.
+- **Its configuration.** The user, the environment, the command and the
+  health check.
+- **Four refusals.** Three from the ADR-016 guard, and names on with no
+  model. Each is limited to 60 s.
+- **Serving.** A stub provider, which is the image itself running a small
+  `node -e` server, on a private Docker network. A request with a
+  synthetic email goes through the published port, and the stub's log is
+  checked. It is never printed.
+
+It prints check names, paths and exit codes only. It needs Docker and
+`tar` on the PATH. CI runs it in its own job (`docker` in `ci.yml`). It
+ran green on Docker Desktop 29.8.1 (Windows 11, WSL2 VM with 4 CPUs).
+
+**The build context, listed.** To see what the `.dockerignore` allowlist
+lets in, build a throwaway Dockerfile, written anywhere outside the repo,
+that copies the context and lists it:
+
+```dockerfile
+FROM node:22.23.3-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392
+COPY . /ctx
+RUN find /ctx -maxdepth 2 | sort && echo files: $(find /ctx -type f | wc -l)
+```
+
+Build it with `docker build --no-cache --progress=plain -f <that file> .`.
+On 2026-10-10 it showed 68 files: `package.json`, `package-lock.json`,
+`tsconfig.json`, `tsconfig.build.json` and `src/`.
+
+**Negative controls: the smoke test can fail.** Each is a copy of the
+Dockerfile, outside the repo, with one change. Build it with `docker
+build -f <copy> -t pseudonym-gateway:nN .`, then run the smoke test on
+that tag. All five were run against the final script, and each failed it:
+
+| Control | Change to the copy                                                                                     | Failed checks                                                                          |
+| ------- | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| N1      | after the `COPY --from=build` line: `RUN mkdir -p /app/eval && touch /app/eval/held-out.txt /app/.env` | 4: `/app` contents, `.env`, held-out, forbidden directories                            |
+| N2      | delete `USER node`                                                                                     | 2: configured user, running uid (`0 0`)                                                |
+| N3      | delete the `HOST=0.0.0.0` line of `ENV`                                                                | 6: the environment and all five serving checks; **Docker's health check still passed** |
+| N4      | `ENV NODE_ENV=development`                                                                             | 4: the environment and the three guard refusals ("still running after 60 s")           |
+| N5      | `CMD` without `--disable-sigusr1`                                                                      | 9: the command, the names refusal (refused by the guard instead), serving, health, uid |
+
+N4 found bug 72: a refusal check that waited without a limit could only
+pass or hang. N3 shows why serving is checked through the published port.
+Docker's own check runs inside the container, where a loopback-bound
+gateway answers.
+
+**Two hangs, both in the script.** Bug 72 is the refusal wait above. Bug
+73 was the first `GET /health`: sent before the gateway listened, Docker
+Desktop's port forwarder accepted it and never answered, and Node exited
+mid-run with code 13 without removing its containers. Every request now
+has a time limit on an ordinary timer, which keeps the process alive. If a
+run is ever interrupted, look for leftovers:
+
+```powershell
+docker ps -a --filter name=pseudonym-smoke
+docker network ls --filter name=pseudonym-smoke
+```
+
+**ONNX Runtime's telemetry, shown off in the image.** The unit tests show
+that the switch is set before a thread starts. That the runtime's native
+code honours it was shown in the image, names on, model mounted, with
+`-e ORT_DISABLE_TELEMETRY=0` overriding the image's `ENV`:
+
+- the container's environment said `0`;
+- the logs held no telemetry line;
+- nothing was written under `/home/node/.cache`.
+
+The image built before the switch wrote
+`/home/node/.cache/Microsoft/DeveloperTools/.onnxruntime/deviceid` and a
+45 KB event queue (`onnxruntime.db`, `-wal`, `-shm`). Mutations OT1–OT3
+(`scripts/mutations/runtime-telemetry.ts`): 3 of 3 caught, about 7 s each.
+
+**Not covered:**
+
+- names on in CI (no model in that job);
+- linux/arm64;
+- `eval:names` inside the image (the spans were reproduced in Phase 6c on
+  the full `bookworm` image, from the repository, not on this one);
+- the compressed size of the image.

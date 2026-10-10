@@ -2986,3 +2986,47 @@ declared as `z.unknown()` is required: `z.object({a: z.unknown()})` refuses
 **Guarded by:** the whole adapter suite (any answer without the field) and
 mutation SG10 (`scripts/mutations/extra-content.ts`), which removes the
 `.optional()` from the response schema and is caught by 50 tests.
+
+## 72. The Docker smoke test hung forever when the start-up guard did not refuse (2026-10-10, found by negative control N4 in Phase 8; fixed before commit)
+
+**Symptom:** running `scripts/docker-smoke.ts` on an image built with
+`NODE_ENV=development` (negative control N4: the ADR-016 guard is off)
+printed the contents and configuration checks, then nothing; the run was
+still going after 10 minutes, and the container it had started was still
+serving.
+
+**Root cause:** each refusal check ran `docker run --rm` in the foreground
+and waited for it to exit. A guard that refuses exits in about a second; a
+guard that does not lets the gateway start, and a started gateway never
+exits. The check could only pass or hang, never fail.
+
+**Fix:** each refusal run is named, has a 60-second limit, and is removed
+by name afterwards; a run still going at the limit fails its check
+("still running after 60 s").
+
+**Guarded by:** negative control N4 (testing guide, Phase 8): the three
+guard checks now fail in about 60 s each, and no container is left.
+
+## 73. The Docker smoke test exited mid-run, without cleaning up, when it asked too early (2026-10-10, found while adding the names-on run in Phase 8; fixed before commit)
+
+**Symptom:** the smoke test printed "the gateway container starts", then
+Node's "Detected unsettled top-level await" warning, and exited with code 13. The stub and gateway containers and their network were left running.
+Earlier runs of the same code had passed.
+
+**Root cause:** the first `GET /health` went to the published port before
+the gateway was listening. Docker Desktop's port forwarder accepted the
+connection and never answered or closed it (reproduced alone: the first
+fetch was still pending after 2 minutes). With nothing else pending, Node
+found its event loop empty while the top-level await was unsettled, and
+exited without running the `finally` that removes the containers. Whether
+it happened depended on whether the gateway was listening before the first
+attempt.
+
+**Fix:** every request has a time limit (2 s for health, 60 s for the
+chat request), the body is read inside it, and the limit is an ordinary
+timer: `AbortSignal.timeout` would not do, since its timer does not keep
+the process alive.
+
+**Guarded by:** nothing automatic; the smoke test is the check. Every run
+since (the final run with names on, the five negative controls, and the
+gate) finished and left no container behind.

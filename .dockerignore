@@ -1,12 +1,35 @@
+# An allowlist (ADR-046): the build context is only what the image build
+# reads. Everything else, including any file added to the repo later, stays
+# out unless it is named here.
+*
+!package.json
+!package-lock.json
+!tsconfig.json
+!tsconfig.build.json
+!src/
+
+# Named again, last, because the last matching line wins: a "!" line added
+# above can never let these back in. .env holds the provider key; eval/
+# holds the held-out set, which must never ship (ADR-021); models/ is
+# mounted at run time, never baked (ADR-046). scripts/docker-smoke.ts checks
+# the built image, not this file.
+**/.env
+**/.env.*
+eval/
+test/
+docs/
+dev_docs/
+scripts/
+models/
+**/held-out.txt
 node_modules/
 dist/
 coverage/
-.env
-*.log
-.mutation-in-progress.json
-.head-worktree/
-dev_docs/
 .git/
-models/
+.github/
+.claude/
+.head-worktree/
 .machine-samples/
+.mutation-in-progress.json
 names-result.json
+*.log
