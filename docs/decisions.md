@@ -6527,6 +6527,211 @@ baseline), Xeon Platinum 8573C 1, EPYC 9V74 1. Outstanding, at minimum:
   required run on that model; and the second exit stands: at 20 counted
   runs with any counted model still unbaselined, E1 is not adopted.
 
+### Runs #7 to #11 (2026-10-10; reported by the user from the logs; no artifact opened)
+
+Values as the user read them from each run's log; the assistant cannot
+reach GitHub. **No `names-result.json` from #10 or #11 has been opened.**
+
+| Run | Trigger             | Input printed | Duration | CPU model (as printed)          | Flags printed                                                                                        | Outcome                                                  |
+| --- | ------------------- | ------------- | -------- | ------------------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| #7  | `workflow_dispatch` | `skip`        | 6m 0s    | AMD EPYC 7763 64-Core Processor | (the EPYC 7763's list: no AVX-512)                                                                   | identical to the EPYC 7763's baseline; second pass equal |
+| #8  | `workflow_dispatch` | `skip`        | 6m 5s    | AMD EPYC 7763 64-Core Processor | (as #7)                                                                                              | identical; second pass equal                             |
+| #9  | `workflow_dispatch` | `skip`        | 6m 1s    | AMD EPYC 7763 64-Core Processor | (as #7)                                                                                              | identical; second pass equal                             |
+| #10 | `schedule`          | `skip`        | 3m 36s   | AMD EPYC 9V74 80-Core Processor | avx2, avx512f, avx512bw, avx512vl, avx512_vnni, avx512_bf16 **yes**; avx_vnni, amx_tile/int8/bf16 no | NEW CPU, results withheld (so its two passes agreed)     |
+| #11 | `workflow_dispatch` | `skip`        | 6m 18s   | AMD EPYC 9V74 80-Core Processor | avx2 **yes**; every avx512 flag, avx_vnni, amx_tile/int8/bf16 **no** (identical to the EPYC 7763's)  | NEW CPU, results withheld (so its two passes agreed)     |
+
+#10's and #11's inputs were confirmed by the user (both printed `skip`)
+after the question was put, before any artifact was opened. A NEW CPU
+outcome implies the two passes agreed: `outcome` returns NOT REPEATABLE
+before it looks for a baseline. All five completed.
+
+### Finding: one CPU model name, two instruction sets (2026-10-10)
+
+**What was observed.** #10 and #11 print the same model name, `AMD EPYC
+9V74 80-Core Processor`. Their guests show different instruction sets:
+#10 shows AVX-512 (F, BW, VL, VNNI, BF16); #11 shows none of it, and its
+flag list is identical to the EPYC 7763's.
+
+**Why that can happen, not observed:** a hypervisor decides what a guest
+sees.
+
+- It can clear CPUID bits.
+- It can leave AVX-512 state out of the enabled extended state (XCR0), in
+  which case the Linux kernel drops the AVX-512 flags.
+- It can hide an instruction set, but it cannot add one the silicon lacks.
+
+Which of these happened on #11's host is not known. #11's 6m 18s, against
+#10's 3m 36s and the EPYC 7763 runs' 6m 0–5s, fits a guest running without
+AVX-512. That is a duration, weak, and not part of any compared field.
+
+**What it does to `eval/names-baselines.json`.** The index is keyed by the
+exact CPU model name (C1). One entry for `AMD EPYC 9V74 80-Core Processor`
+would serve guests with and without AVX-512.
+
+- If the instruction-set hypothesis holds, a baseline taken from one of
+  them makes runs on the other fail. That is a failure by host, not by
+  change, which is exactly what E1 exists to avoid.
+- **The minting rule can pair two machines that are not the same
+  machine.** "Two completed counted runs in separate jobs, each with its
+  own second pass, identical" checks that two runs agree. It does not check
+  that they ran on the same instruction set. A baseline minted from, for
+  example, #6 (whose flags were never printed) and #10 would describe
+  whichever instruction set those two shared, and nobody could say which.
+- **So a model name is not a sufficient key.** That holds in principle for
+  every model, not only this one. Any hypervisor can hide flags, so the
+  Xeons' and the 9V74's entries could each describe more than one guest.
+
+**What it does to #6.** #6 landed in group B. Under the hypothesis, that
+implies its guest saw AVX-512. But #6 never printed its flags, and taking
+its key from its hashes would be circular: the key is what decides which
+hashes a run must agree with. **#6's key is unknown,** and #2's (the Xeon
+Platinum 8573C, also before the flags were printed) is unknown for the same
+reason.
+
+### Predictions for #10 and #11, separately (committed before either `names-result.json` is opened)
+
+The groups, from runs already opened:
+
+- **Group A:** B's spans `96a5c328…`, names `ba1a6b82…` (the i5-12450H, the
+  EPYC 7763).
+- **Group B:** `d1f611f0…`, `46dd8ff3…` (the Xeon Platinum 8573C, the Xeon
+  6973P-C, and #6 on the EPYC 9V74).
+
+**The committed prediction, as written, and where the new one contradicts
+it.** The standing step (`ef8b102`) predicted **"the Xeon group"** for "the
+AMD EPYC 9V74". It was keyed to the model name and scored a hit on #6.
+Read as written, it predicts group B for **every** 9V74 run, #11 included.
+The instruction-set hypothesis predicts **group A** for #11, because #11's
+guest shows no AVX-512. **For #11 the two contradict each other,** and #11's
+result decides between them. The earlier prediction is not edited: it
+stands as committed, and #11's result will be scored against both.
+
+| Run | Predicted                              | Confidence | Reasoning (one line)                                                                                                                                                               |
+| --- | -------------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| #10 | **group B** (`d1f611f0…`, `46dd8ff3…`) | **high**   | Its guest shows AVX-512, as every group-B CPU has, and the same model (#6) landed in group B; the 3m 36s duration is group B's speed (weak).                                       |
+| #11 | **group A** (`96a5c328…`, `ba1a6b82…`) | **medium** | Its guest shows no AVX-512, and its whole flag list equals the EPYC 7763's (group A); the runtime picks kernels from what CPUID and XCR0 report; 6m 18s is group A's speed (weak). |
+
+Why #11 is only medium: the flags are what the kernel shows, not the
+runtime's own CPUID read. If the hypervisor masked the kernel's view but
+not the instruction itself, the runtime could still use AVX-512. This is
+also the first time the hypothesis is tested against a model-name
+prediction rather than beside one.
+
+**What refutes the hypothesis** ("the instruction set the guest sees
+decides the group"):
+
+- **#10 in group A:** a guest that shows AVX-512 gave group A's spans.
+- **#11 in group B:** a guest that shows no AVX-512 gave group B's spans.
+  That would favour the model-name prediction, or something the kernel's
+  flags do not show.
+- **Either run giving a third pair of hashes:** this refutes the two-group
+  picture itself.
+- **#10 and #11 agreeing with each other** (both A or both B): this
+  refutes it for one of them, whichever group they share.
+
+**What would not refute it:** #10 in B and #11 in A. That is consistent
+with the hypothesis, as #6 was, and still not proof. No run has looked at
+which kernels were chosen.
+
+### Ruling (the user, 2026-10-10, under rule 6): S2, C1 and minting key on model name plus printed flags, strictly (decided before #10's and #11's hashes are known)
+
+**The question.** S2 requires "every counted run on a CPU model gives the
+same two hashes as every other counted run on that model". If #10 and #11
+disagree, the EPYC 9V74 fails that condition as written. What follows had
+to be fixed **now**, before the hashes are known. Deciding it after seeing
+them is what this ADR refuses to do.
+
+**Options put to the user, with their costs:**
+
+1. **Model name, as written. No change.**
+   - **If #10 and #11 disagree:** S2 labels the 9V74 "not deterministic"
+     and E1 is not adopted. That label is wrong: the evidence is that the
+     two machines differ, not that one machine varies.
+   - **If they agree:** E1 stays reachable on a key now known to be
+     insufficient. A 9V74 baseline minted from one instruction set would
+     make every-push runs fail by host on the other.
+2. **Model name plus the printed flags, strict.**
+   - A run's key is its model name plus the ten flags the workflow prints,
+     and C1's baselines are keyed the same way.
+   - A flagless run gets a key only where the part cannot have those
+     flags. A hypervisor can hide but never add, so a part without
+     AVX-512 or AMX has one possible key.
+   - **#2 and #6 stay counted** (a counted run cannot be uncounted), but
+     their keys are unknown. They cannot mint a baseline or count toward
+     any key, and the baselines for their keys can never exist.
+   - **Cost: "every counted key has its committed baseline" can never be
+     met, so E1 cannot be adopted on this rule.** The second exit then
+     gives "not adopted" at 20 counted runs.
+   - It loosens nothing.
+3. **Model name plus flags, with #2 and #6 exempted** from per-key
+   agreement and from the baseline condition, while still counting toward
+   the 10-run total and the model count.
+   - E1 stays reachable.
+   - **Cost:** it loosens S2's baseline condition in the light of data
+     already collected, which the close-out principle forbids unless ruled
+     explicitly.
+
+**Decision: option 2 (the user).**
+
+- **Key.** A run's key is `(CPU model name, the ten printed flags: avx2,
+avx512f, avx512bw, avx512vl, avx512_vnni, avx512_bf16, avx_vnni,
+amx_tile, amx_int8, amx_bf16, each yes or no)`. Every place this ADR
+  says "CPU model" for S2, C1, the minting rule, the second exit or the
+  close-out now means this key.
+- **Flagless runs.** A run that printed no flags is keyed only where its
+  part allows one key. For the EPYC 7763 (Zen 3) and the i5-12450H
+  (Alder Lake, AVX-512 not supported), AVX-512 and AMX are off.
+- **Unknown keys.** #2 (Xeon Platinum 8573C) and #6 (EPYC 9V74) have
+  unknown keys: they count, and can never mint a baseline or satisfy a
+  key.
+- **Never from results.** A key is never taken from a run's hashes.
+- **Consequences, stated now:**
+  - **E1 cannot be adopted on this rule.** The baseline condition is
+    unmeetable for #2's and #6's keys.
+  - The formal outcome, "not adopted", is given by the second exit when
+    20 counted runs have passed.
+  - Whether to keep the daily schedule running until then, or to close out
+    earlier with E1 recorded as not adopted and unreachable, is a separate
+    decision that has not been taken.
+  - So is whether every-push is ever pre-registered again, under a new
+    rule counting only runs that printed their flags. That would be a new
+    rule, not this one reopened.
+- **C1 in code must be rekeyed** (`eval/names-baselines.json`,
+  `eval/names/gateway.ts`) before any baseline is committed for a key with
+  AVX-512. Not built here; this commit is documentation only. Until then,
+  every 9V74 or Xeon run stays NEW CPU, since none has a baseline, so the
+  current code compares nothing wrongly.
+- **#10 and #11 under the ruling:** different keys. If they disagree, that
+  is not an S2 violation; each key needs its own two agreeing runs.
+
+### Tally after #11 (under the ruling)
+
+**Counted: 10 runs** (#1, #2, #3, #5, #6, #7, #8, #9, #10, #11). Not
+counted: #4 (`default`). Incomplete: none.
+
+| Key                                                   | Counted runs                                | Own second pass                        | Baseline                 | Agree within key |
+| ----------------------------------------------------- | ------------------------------------------- | -------------------------------------- | ------------------------ | ---------------- |
+| EPYC 7763, no AVX-512 / AMX                           | 6 (#1, #3, #5 flagless by part; #7, #8, #9) | 5 (#3, #5, #7, #8, #9; #1 predates C3) | the i5's file, confirmed | yes, all six     |
+| EPYC 9V74, AVX-512 F/BW/VL/VNNI/BF16, no AMX/AVX-VNNI | 1 (#10)                                     | 1                                      | none                     | one run          |
+| EPYC 9V74, no AVX-512 (flags as the EPYC 7763's)      | 1 (#11)                                     | 1                                      | none                     | one run          |
+| key unknown: Xeon Platinum 8573C (#2), EPYC 9V74 (#6) | 2                                           | #6 only                                | can never exist          | cannot be judged |
+
+**Adoption conditions (S2, keyed as ruled):**
+
+| Condition                                            | Now                                                                  | Met?                     |
+| ---------------------------------------------------- | -------------------------------------------------------------------- | ------------------------ |
+| at least 10 counted runs                             | 10                                                                   | yes                      |
+| at least 2 distinct CPU models                       | 3 models, 3 known keys                                               | yes                      |
+| at least 3 counted runs on each of at least two keys | EPYC 7763 6; no other key above 1                                    | no                       |
+| every counted run on a key gives its hashes          | EPYC 7763: all six agree; #10, #11 one each; #2, #6 cannot be judged | not judgeable for #2, #6 |
+| every counted key has its baseline committed         | EPYC 7763 yes; the two 9V74 keys no; #2's and #6's keys never        | **never, on this rule**  |
+
+**Provisional in one respect only.** The key is settled by the ruling
+above, and the counts do not depend on #10's and #11's hashes. What those
+hashes will settle is the hypothesis, not the tally. In the close-out's
+terms: 11 runs; 10 counted; 3 of them checked nothing (#6, #10, #11, NEW
+CPU), plus #4, uncounted, on the Xeon 6973P-C; 0 incomplete.
+
 <a id="adr-037"></a>
 
 ## ADR-037: Person names in the request path, against a fake model (Phase 6b step 3, 2026-10-03; amends ADR-003, ADR-013)
