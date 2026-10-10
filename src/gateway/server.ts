@@ -143,11 +143,13 @@ export function buildServer(config: ServerConfig, provider: ChatProvider): Fasti
 
     const result = await provider.complete(outbound, controller.signal);
     // A refusal is model text like content: restored, with restoration
-    // safety, as a text of its own (ADR-041 section 15, decision 1).
+    // safety, as a text of its own (ADR-041 section 15, decision 1). As in
+    // OpenAI's response, `refusal` is on every message, null when there is
+    // none (the specification lists it as required).
     const content =
       result.content === null ? null : restore(result.content, mapping, restoreOptions);
     const refusal =
-      result.refusal === undefined ? undefined : restore(result.refusal, mapping, restoreOptions);
+      result.refusal === undefined ? null : restore(result.refusal, mapping, restoreOptions);
 
     return {
       id: result.id,
@@ -157,7 +159,7 @@ export function buildServer(config: ServerConfig, provider: ChatProvider): Fasti
       choices: [
         {
           index: 0,
-          message: { role: 'assistant', content, ...(refusal === undefined ? {} : { refusal }) },
+          message: { role: 'assistant', content, refusal },
           finish_reason: result.finishReason,
         },
       ],

@@ -2898,7 +2898,7 @@ and the longer gap itself says the machine was struggling.
 which runs inside the full suite (where it failed); and the evidence each
 run now writes (a "-" in the process columns of the `.tsv` file).
 
-## 70. A streamed refusal reaches the client as an empty answer that finished normally (2026-10-10, found while writing the Phase 7c options; fixed the same day for every refusal the provider names; an answer that names none is still open)
+## 70. A streamed refusal reaches the client as an empty answer that finished normally (2026-10-10, found while writing the Phase 7c options; fixed and closed the same day)
 
 **Symptom:** no real provider has sent a refusal through the gateway
 (none of the 12 Gemini answers or the recorded Ollama stream had one). The
@@ -2951,12 +2951,19 @@ restored with restoration safety, by a restorer of its own when streamed.
 The streamed test was shown failing against the code before the fix, with
 the bug's own symptom: an empty refusal where the text should be.
 
-**Not closed:** an answer with no content that names no refusal
-(`content: ""`, or a stream with no text) still reaches the client as an
-empty answer that finished normally. It may be a refusal or an empty
-answer, and 1e does not say which. What it should become is put to the
-user (ADR-041 section 15, "Decision 1 built"). Neither real provider has
-ever sent a `refusal` field (0 of the 12 recorded Gemini answers, 0 in the
-recorded Ollama stream). If either refuses, the unnamed shape may be the
-only one it sends. That is not shown: no refusal from either has been
-recorded.
+**The unnamed case, closed later the same day.** After 1e, an answer with
+no text that names no refusal (`content: ""`, or a stream with no text)
+still reached the client as an empty answer that finished normally. It
+may be a refusal or an empty answer, and 1e does not say which. The
+user's ruling (ADR-041 section 15, "The two open points ruled") makes an
+empty `stop` a 502 `provider_empty_response`, streamed or not, with one
+log line each. So no shape is left in which a refusal reaches the client
+as an empty answer that finished normally. Guarded by the strict-fake
+tests of that block and mutations RF12 to RF16.
+
+**What this does not show.** Neither real provider has ever sent a
+`refusal` field (0 of the 12 recorded Gemini answers, 0 in the recorded
+Ollama stream), and no refusal from either has been recorded. So the 1e
+path has been exercised only by the strict fake. On current evidence a
+refusal from either provider would arrive as the empty `stop` (now loud)
+or as a finish reason. That is likely, not shown.

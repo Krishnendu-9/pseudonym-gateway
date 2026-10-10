@@ -347,33 +347,46 @@ listed above. Errors never quote what you sent.
 ### What comes back
 
 An OpenAI-shaped `chat.completion`: `id`, `object`, `created`, `model`, one
-choice with the restored `content` and `finish_reason`, and `usage`.
-Nothing else from the provider is passed on (a thinking model's reasoning is
-dropped).
+choice with the restored `content`, `refusal` and `finish_reason`, and
+`usage`. `refusal` is on every message and is `null` unless the provider
+named a refusal, as in OpenAI's own response. Nothing else from the
+provider is passed on (a thinking model's reasoning is dropped).
 
 **A refusal** the provider names in its own `refusal` field comes back as
 OpenAI sends one: `content: null` and the refusal text, restored like any
 model text (restoration safety included), in `message.refusal`. If the
-provider sent text in `content` as well, both are passed on. The `refusal`
-key is present only on a refusal; OpenAI also sends `refusal: null` on
-ordinary answers, which Pseudonym does not. An answer that names no
-refusal and has empty text is passed on as an empty answer; with
-`content: null` it is a 502 `provider_bad_response`. What either should
-become is an open decision (ADR-041 section 15). Neither
-Ollama nor Gemini has been seen to send a `refusal` field.
+provider sent text in `content` as well, both are passed on.
+
+**This path has never been seen to fire against the providers Pseudonym
+supports.** None of the 12 recorded Gemini answers carries a `refusal` key,
+not even `refusal: null`, and neither does the recorded Ollama stream. No
+refusal from either has been recorded. It is likely, but not shown, that
+neither provider ever names a refusal. If so, a refusal from either
+arrives as an empty answer (next paragraph) or as a finish reason, never
+through this path.
+
+**An empty answer that names no refusal** (no text, `finish_reason:
+"stop"`) may be a refusal or a genuinely empty answer, and Pseudonym
+cannot tell which. It is a **502 `provider_empty_response`** ("the
+provider returned no text and no refusal"), streamed or not; see "When
+something goes wrong" for the stream. The official OpenAI SDKs retry a
+502 twice by default, which may get an answer on a second attempt. An empty answer
+that ends `length` (the token limit was reached) or `content_filter` is
+passed on as it came, since the finish reason says why (ADR-041
+section 15).
 
 Errors use OpenAI's shape, `{"error": {"message", "type", "param", "code"}}`:
 
-| Status | When                                                                                                                                                              |
-| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 400    | invalid or unsupported request (codes `invalid_json`, `invalid_request`, `unsupported_feature`, `model_not_found`; `stream_not_supported` existed until Phase 4b) |
-| 404    | any other endpoint                                                                                                                                                |
-| 413    | body over the limit                                                                                                                                               |
-| 415    | not `application/json` (a `charset` parameter is fine)                                                                                                            |
-| 422    | more than 9,999 different values of one type in one request (`too_many_values`)                                                                                   |
-| 500    | Pseudonym's own bug (`internal_error`)                                                                                                                            |
-| 502    | the provider failed, answered with an error, or answered with something unusable. Its own error message is never passed on: it can echo the prompt                |
-| 504    | the provider did not answer within the timeout                                                                                                                    |
+| Status | When                                                                                                                                                                                                                        |
+| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 400    | invalid or unsupported request (codes `invalid_json`, `invalid_request`, `unsupported_feature`, `model_not_found`; `stream_not_supported` existed until Phase 4b)                                                           |
+| 404    | any other endpoint                                                                                                                                                                                                          |
+| 413    | body over the limit                                                                                                                                                                                                         |
+| 415    | not `application/json` (a `charset` parameter is fine)                                                                                                                                                                      |
+| 422    | more than 9,999 different values of one type in one request (`too_many_values`)                                                                                                                                             |
+| 500    | Pseudonym's own bug (`internal_error`)                                                                                                                                                                                      |
+| 502    | the provider failed, answered with an error, answered with something unusable, or answered `stop` with no text and no refusal (`provider_empty_response`). Its own error message is never passed on: it can echo the prompt |
+| 504    | the provider did not answer within the timeout                                                                                                                                                                              |
 
 ### Logs
 
@@ -498,8 +511,12 @@ a non-streamed answer to the same model text read exactly the same.
   `[DONE]`**. The OpenAI SDKs raise that as an exception. Causes: the
   provider's stream was cut off or ended without saying it was done
   (`provider_bad_response`), it sent an error (`provider_error`), it went
-  quiet for longer than the timeout (`provider_timeout`), or it sent more
-  than the response limit (`provider_response_too_large`).
+  quiet for longer than the timeout (`provider_timeout`), it sent more
+  than the response limit (`provider_response_too_large`), or it finished
+  `stop` without sending any text or refusal (`provider_empty_response`;
+  the role chunk has already gone out, so this comes as the error event,
+  with no finish chunk). The OpenAI Node SDK retries only on an HTTP error
+  status, so it does not retry a stream that has already started with a 200.
 - **If you disconnect,** Pseudonym stops the provider's work straight away.
 
 ### Timeouts and limits

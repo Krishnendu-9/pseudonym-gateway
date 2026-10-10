@@ -4,15 +4,20 @@
 //   npx tsx scripts/mutate.ts --out <dir outside the repo> scripts/mutations/refusals.ts
 //
 // Written with the change they check, on 2026-10-10. RF1, RF3 and RF10 each
-// put back one way a refusal reached the client as an empty answer.
+// put back one way a refusal reached the client as an empty answer. RF11
+// to RF17 were added the same day with the empty `stop` and refusal: null
+// rulings; RF4 and RF5 got a new `find` then (the guard they mutate was
+// rewritten), and each still names the same mutation as before.
 
 import type { Mutation } from '../mutate.js';
 
 const ADAPTER = 'src/providers/openai-compatible.ts';
 const SERVER = 'src/gateway/server.ts';
 const STREAM = 'src/gateway/stream.ts';
+const ERRORS = 'src/gateway/errors.ts';
 const TESTS = [
   'test/integration/strict-provider.test.ts',
+  'test/integration/chat-completions.test.ts',
   'test/unit/providers/ollama.test.ts',
   'test/unit/gateway/stream.test.ts',
 ];
@@ -44,19 +49,19 @@ export const MUTATIONS: readonly Mutation[] = [
   },
   {
     id: 'RF4',
-    what: 'content null with a refusal is still bad_response (the old 502)',
+    what: 'content null with a refusal is still an error (the old 502)',
     file: ADAPTER,
     tests: TESTS,
-    find: 'if (content === null && !refusal) throw',
-    replace: 'if (content === null) throw',
+    find: "if (!content && !refusal && choice!.finish_reason === 'stop') {",
+    replace: "if (!content && choice!.finish_reason === 'stop') {",
   },
   {
     id: 'RF5',
     what: 'content null with no refusal named passes as an answer',
     file: ADAPTER,
     tests: TESTS,
-    find: 'if (content === null && !refusal) throw',
-    replace: 'if (false) throw',
+    find: "if (!content && !refusal && choice!.finish_reason === 'stop') {",
+    replace: 'if (false) {',
   },
   {
     id: 'RF6',
@@ -97,5 +102,61 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: TESTS,
     find: "if (refusalRest !== '') yield refusal(refusalRest);",
     replace: '// RF10',
+  },
+  {
+    id: 'RF11',
+    what: 'a refusal piece held back whole sends an empty refusal chunk',
+    file: STREAM,
+    tests: TESTS,
+    find: "if (text !== '') yield refusal(text);",
+    replace: 'yield refusal(text);',
+  },
+  {
+    id: 'RF12',
+    what: 'a streamed empty stop is not an error',
+    file: ADAPTER,
+    tests: TESTS,
+    find: "if (event.type === 'finish' && event.reason === 'stop' && !text) {",
+    replace: 'if (false) {',
+  },
+  {
+    id: 'RF13',
+    what: 'a streamed refusal does not count as text: a refusal-only stream is empty',
+    file: ADAPTER,
+    tests: TESTS,
+    find: "if (event.type === 'content' || event.type === 'refusal') text = true;",
+    replace: "if (event.type === 'content') text = true;",
+  },
+  {
+    id: 'RF14',
+    what: 'not streamed, no text is an error whatever the finish reason',
+    file: ADAPTER,
+    tests: TESTS,
+    find: "&& choice!.finish_reason === 'stop') {",
+    replace: ') {',
+  },
+  {
+    id: 'RF15',
+    what: 'streamed, no text is an error whatever the finish reason',
+    file: ADAPTER,
+    tests: TESTS,
+    find: "event.reason === 'stop' && !text",
+    replace: '!text',
+  },
+  {
+    id: 'RF16',
+    what: 'an empty stop gets the old bad_response code',
+    file: ERRORS,
+    tests: TESTS,
+    find: "'provider_empty_response',",
+    replace: "'provider_bad_response',",
+  },
+  {
+    id: 'RF17',
+    what: 'refusal: null is left off an ordinary answer',
+    file: SERVER,
+    tests: TESTS,
+    find: 'result.refusal === undefined ? null : restore(',
+    replace: 'result.refusal === undefined ? undefined : restore(',
   },
 ];

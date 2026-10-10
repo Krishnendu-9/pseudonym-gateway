@@ -144,6 +144,14 @@ function fromProvider(error: ProviderError): GatewayError {
         'provider_error',
         'the provider reported an error during the stream',
       );
+    case 'empty_response':
+      // A 5xx, not a 4xx: the client's request was not at fault, and the
+      // same request may get an answer next time (ADR-041 section 15).
+      return new GatewayError(
+        502,
+        'provider_empty_response',
+        'the provider returned no text and no refusal',
+      );
     case 'unavailable':
     case 'aborted':
       return new GatewayError(502, 'provider_unavailable', 'the provider could not be reached');

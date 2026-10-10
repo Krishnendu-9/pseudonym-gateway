@@ -181,22 +181,54 @@ describe('createOllamaProvider: a refusal named in message.refusal', () => {
     expect(await answer()).toMatchObject({ content: 'Partly.', refusal: 'Not [CARD_1].' });
   });
 
-  it('no refusal named: no refusal key, content as before', async () => {
+  it('no refusal named: no refusal key in the result', async () => {
     withMessage({ content: 'ok', refusal: null });
     expect(await answer()).not.toHaveProperty('refusal');
-    withMessage({ content: '', refusal: '' });
-    const result = await answer();
-    expect(result).toMatchObject({ content: '' });
-    expect(result).not.toHaveProperty('refusal');
+  });
+});
+
+// ADR-041 section 15, the empty `stop` ruling (B plus D).
+describe('createOllamaProvider: no text and no refusal named', () => {
+  const answer = (): Promise<unknown> =>
+    provider()
+      .complete(REQUEST, new AbortController().signal)
+      .then(
+        (result) => result,
+        (error: unknown) => error,
+      );
+  const withMessage = (message: Record<string, unknown>, finish: string): void => {
+    const body = JSON.parse(completionBody('x')) as {
+      choices: { message: unknown; finish_reason: string }[];
+    };
+    body.choices[0]!.message = { role: 'assistant', ...message };
+    body.choices[0]!.finish_reason = finish;
+    mock.respondWith(respond(200, JSON.stringify(body)));
+  };
+
+  it.each([
+    ['content null, refusal null', { content: null, refusal: null }],
+    ['content null, refusal ""', { content: null, refusal: '' }],
+    ['content null, no refusal key', { content: null }],
+    ['content "", refusal null', { content: '', refusal: null }],
+    ['content "", refusal ""', { content: '', refusal: '' }],
+    ['content "", no refusal key', { content: '' }],
+  ])('finish stop, %s → empty_response', async (_label, message) => {
+    withMessage(message, 'stop');
+    const error = await answer();
+    expect(error).toBeInstanceOf(ProviderError);
+    expect(error).toMatchObject({ failure: 'empty_response' });
   });
 
   it.each([
-    ['refusal null', { content: null, refusal: null }],
-    ['refusal ""', { content: null, refusal: '' }],
-    ['no refusal key', { content: null }],
-  ])('content null and %s → bad_response (open, section 15)', async (_label, message) => {
-    withMessage(message);
-    expect(await answer()).toMatchObject({ failure: 'bad_response' });
+    ['length', null],
+    ['length', ''],
+    ['content_filter', null],
+    ['content_filter', ''],
+  ])('finish %s with content %j: kept, the finish reason says why', async (finish, content) => {
+    withMessage({ content }, finish);
+    const result = await answer();
+    expect(result).toMatchObject({ content, finishReason: finish });
+    expect(result).not.toHaveProperty('refusal');
   });
 });
 
@@ -220,7 +252,6 @@ describe('createOllamaProvider: failures', () => {
     ['not JSON', 'Sorry, [CARD_1] is invalid'],
     ['no choices', JSON.stringify({ id: 'x', created: 1 })],
     ['two choices', completionBody('a').replace(/"choices":\[(.*?)\]/, '"choices":[$1,$1]')],
-    ['null content', completionBody('a').replace('"content":"a"', '"content":null')],
     [
       'a tool call',
       completionBody('a').replace('"message":{', '"message":{"tool_calls":[{"id":"t"}],'),
@@ -433,10 +464,19 @@ describe('createOllamaProvider.stream: the answer', () => {
     ]);
   });
 
-  it('an empty answer: only the finish', async () => {
+  it('no text and finish stop: empty_response at the finish (ADR-041 section 15)', async () => {
     mock.respondWith(streamed(ollamaStreamEvents([])));
-    expect(await collect(await openStream())).toEqual([{ type: 'finish', reason: 'stop' }]);
+    const { events, error } = await midStreamFailure(await openStream());
+    expect([events, error.failure]).toEqual([[], 'empty_response']);
   });
+
+  it.each(['length', 'content_filter'])(
+    'no text and finish %s: only the finish, the finish reason says why',
+    async (reason) => {
+      mock.respondWith(streamed([piece('', { role: 'assistant' }), finishChunk(reason), DONE]));
+      expect(await collect(await openStream())).toEqual([{ type: 'finish', reason }]);
+    },
+  );
 
   it('events split across network reads come out the same', async () => {
     const whole = ollamaStreamEvents(['₹ 5', ' for [CARD_1]'], { usage: true }).join('');

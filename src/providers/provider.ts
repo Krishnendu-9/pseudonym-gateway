@@ -44,8 +44,11 @@ export type FinishReason = 'stop' | 'length' | 'content_filter';
 /**
  * The answer, still in placeholders; the gateway restores `content` and
  * `refusal`. `refusal` is set only when the provider named a refusal with
- * text (ADR-041 section 15, decision 1); `content` is null only then, and
- * is null rather than "" when the refusal came without content.
+ * text (ADR-041 section 15, decision 1), and `content` is then null rather
+ * than "" when the refusal came without content. With no refusal, an
+ * answer with no text ends `length` or `content_filter` (an empty `stop`
+ * is the `empty_response` failure), and its `content` is as sent: "" or
+ * null.
  */
 export interface ProviderChatResult {
   readonly id: string;
@@ -104,10 +107,20 @@ export interface ChatProvider {
  *   tool call, a stream that ended before the provider said it was done);
  * - `too_large`: more bytes than the response size cap (ADR-020);
  * - `stream_error`: the provider sent an error in the middle of a stream;
+ * - `empty_response`: the answer finished `stop` with no text and named no
+ *   refusal, so it may be a refusal or an empty answer (ADR-041 section 15,
+ *   the empty `stop` ruling);
  * - `aborted`: our caller gave up (the client disconnected).
  */
 export type ProviderFailure =
-  'timeout' | 'unavailable' | 'http' | 'bad_response' | 'too_large' | 'stream_error' | 'aborted';
+  | 'timeout'
+  | 'unavailable'
+  | 'http'
+  | 'bad_response'
+  | 'too_large'
+  | 'stream_error'
+  | 'empty_response'
+  | 'aborted';
 
 /**
  * A provider call failed. Carries only what kind of failure it was and, for

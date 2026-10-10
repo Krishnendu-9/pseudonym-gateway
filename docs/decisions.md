@@ -9315,7 +9315,8 @@ overrule any):**
    puts `refusal: null` on every message. Adding it to every answer would
    change every non-refusal response, and that was not asked for. A client
    that reads `message.refusal` gets `undefined` instead of `null` on an
-   ordinary answer; both are falsy.
+   ordinary answer; both are falsy. **Superseded the same day by the
+   user's ruling below (`refusal: null` on every non-streamed message).**
 4. **The first stream chunk is unchanged** (`role`, `content: ""`). It goes
    out before the gateway knows whether a refusal follows. So a client that
    accumulates a streamed refusal ends with `content: ""` rather than
@@ -9408,6 +9409,149 @@ only, combined with D**, and (ii) moved to the same code so that the
 streamed and unstreamed answers agree. It is the only option that never
 lets a refusal pass as an answer. Its cost, an error for a model that
 meant to say nothing, is loud, rare and visible in the counts.
+
+#### The two open points ruled, and built (the user, 2026-10-10)
+
+No live call was made.
+
+**On current evidence, 1e may never fire against either provider we
+support.** None of the 12 recorded Gemini answers carries a `refusal` key,
+not even the `refusal: null` OpenAI sends on every answer, and neither
+does the recorded Ollama stream. No refusal from either has been recorded.
+That neither provider ever names a refusal is **likely but not shown**. If
+it holds, every refusal from them arrives as the empty `stop` below or as
+a finish reason, and the 1e path is exercised only by the strict fake. No
+document may imply that refusals from real providers are now handled
+through 1e; the user manual says this, and the README does not describe
+refusal handling at all.
+
+**Ruling 1: an empty `stop` is B plus D.** An answer that finishes `stop`
+with no text and names no refusal is a distinct error, with a record of
+each occurrence. The `content: null` case moves to the same code, so the
+same empty answer is no longer a 502 unstreamed and a silent 200
+streamed: that asymmetry is what the ruling removes.
+
+- **What the ruling covers, defined.** Not streamed: `content` null or
+  `""`, no `refusal` with text, `finish_reason: "stop"`. Streamed: no
+  content or refusal piece before a `stop` finish. The ruling is on the
+  ambiguous `stop` and nothing else.
+- **The status code: 502, argued, not inherited.**
+  - **For a 4xx** (no SDK retry, so one empty answer stays one provider
+    call): a 4xx tells the client its request was at fault and should be
+    changed. Here it was not, and the same request may well get an
+    answer next time. That is the misattribution 2c's ruling rejected for
+    the 429.
+  - **For a 5xx** (the SDKs retry twice; section 13): unlike the 429
+    case, a retry can legitimately help, since a model may produce text
+    on a second attempt, more so above temperature 0.
+  - **Which 5xx:** 500 says the gateway itself failed, which is false.
+    503 is 2c's code for "the upstream is rate limiting us", and sharing
+    it would make those two indistinguishable to a client. **502**, "the
+    upstream gave a response we cannot use", is what happened.
+  - **Chosen: 502, code `provider_empty_response`**, message "the
+    provider returned no text and no refusal". The distinct code lets a
+    client tell this from `provider_bad_response` (a broken response).
+  - **The retry cost, stated honestly (the user, after the build).** A
+    502 means one empty answer costs **up to three provider calls** with
+    default SDK settings. The justification above, that a retry may
+    produce text, holds for transient emptiness. It does not hold for a
+    safety refusal to the same prompt, which will usually refuse again.
+    On the evidence above, the ambiguous case is likely to _be_ the
+    refusal case for both providers we support, since neither has been
+    seen to name a refusal. So **the retries are likely wasted for the
+    most common cause**: two extra calls, with whatever allowance they
+    use (unknown, section 13 (b)), and about 1.5 s more before the
+    client sees the error. **The ruling stands anyway**, because
+    attributing the fault to the client with a 4xx, the only status that
+    avoids the retries, is worse than wasted calls.
+  - **When streamed**, the 200 and the role chunk have already gone out,
+    so it is the stream's error event with the same code, no finish
+    chunk and no `[DONE]`. The OpenAI Node SDK retries only on an HTTP
+    error status (section 13's reading of `makeRequest`), so a streamed
+    empty answer is not retried. To make it a real 502 the gateway would
+    have to hold back the role chunk until the first text, a change to
+    the streaming contract not made here.
+- **Where the count goes: a log line per occurrence, and nothing else.**
+  There is no metrics surface (the dashboard is deferred), and the
+  gateway keeps no counter, since nothing could read one. Each empty
+  answer writes **one log line through the existing error path**, at
+  `error` level:
+  - not streamed: `"request failed"`, with `statusCode: 502` and an
+    `error` object of `name: "ProviderError"` and
+    `failure: "empty_response"`;
+  - streamed: `"stream failed"`, with `code: "provider_empty_response"`
+    and the same `error` object.
+
+  The count is the number of such lines. They carry no message content,
+  because `safeErrorDetails` logs only the error's name, failure kind and
+  status, never a message or body (rule 5). The tests check that each
+  empty answer writes exactly one such line and that a value from the
+  request appears in no log line.
+
+**A scope extension, made while building and approved by the user after
+the fact (2026-10-10).** The ruling covered the ambiguous `stop` only.
+While building it, the assistant extended the treatment to the finish
+reasons that explain an empty answer: with no text and no refusal named,
+an answer that ends `length` (the token limit was reached) or
+`content_filter` (a filter acted) is **kept, on both paths**, not made an
+error. This changed one existing behaviour: `content: null` with those
+reasons was a 502 `provider_bad_response` and is now a 200 with
+`content: null`. The user approved it afterwards, for two reasons: it is
+OpenAI-correct (the specification allows a null content, and the finish
+reason carries the meaning), and it is what makes the streamed and
+unstreamed paths agree, since a stream with no text that ends `length`
+was already a 200. **The ruling and the extension are two steps**: the
+first was ruled before the build, the second was made during it and
+approved after.
+
+**Ruling 2: `refusal: null` on every answer, ruled on the compatibility
+principle rather than on cost.** 1e was chosen because a client changes
+its base URL and nothing else, and a client that reads `message.refusal`
+should find what OpenAI sends.
+
+**Verified first (2026-10-10).** OpenAI's OpenAPI specification
+(`openai/openai-openapi`, branch `manual_spec`, downloaded and searched as
+text, not read through a summarising tool) defines
+`ChatCompletionResponseMessage` with `required: [role, content, refusal]`
+and `refusal` "type: string, nullable: true". The SDK type agrees
+(`refusal: string | null`, not optional; `openai-node`, read earlier the
+same day). So `refusal` is present on every non-streamed message, and the
+ruling's premise holds.
+
+**For streams it does not hold: considered and declined (the user,
+2026-10-10).** `ChatCompletionStreamResponseDelta` has `refusal` among its
+properties but not in any required list (the SDK type is
+`refusal?: string | null`). Adding `refusal: null` to stream deltas was
+considered and declined. OpenAI's specification makes it optional there,
+so adding it would move the gateway away from the shape the ruling was
+chosen to match, not towards it. **The asymmetry is deliberate**:
+`refusal` is on every non-streamed message because the specification
+requires it there, and is absent from stream deltas unless a refusal is
+sent, because the specification leaves it optional there.
+
+Built: every non-streamed message has `refusal`, either `null` or the
+restored refusal text. The two response-shape tests that pinned the old
+key set were updated (`chat-completions.test.ts`,
+`strict-provider.test.ts`). No snapshot exists for this shape.
+
+**The two checks.**
+
+1. **The file edited with `sed`** (`test/unit/providers/ollama.test.ts` in
+   940777a): 92 lines added, 0 removed. Neither `sed` pattern
+   (`answer({})`, `as ProviderError).toMatchObject`) occurs in the file
+   before that commit, so `sed` could only change lines written in that
+   change. Each changed line reads as intended.
+2. **The branch the coverage fix added** (a refusal piece held back
+   whole, `stream.ts`): none of RF1 to RF10 reached it. RF9 changes what
+   is sent and keeps the condition, so on that branch it sends nothing,
+   exactly like the code. **RF11 added** (an empty refusal chunk sent for
+   a piece held back whole): caught by 1 test, the `sseEvents` test that
+   the coverage fix extended.
+
+**Mutations, all run against the final tests** (238 tests in 4 files):
+RF1 to RF17, **17 of 17 caught**. RF4 and RF5 got a new `find` for the
+rewritten guard, with the same meaning. RF12 to RF16 cover the empty
+`stop`, RF17 `refusal: null`. Details are in the testing guide.
 
 <a id="adr-042"></a>
 

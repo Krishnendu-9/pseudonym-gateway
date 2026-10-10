@@ -107,11 +107,17 @@ describe('round trip over HTTP', () => {
       created: 1_790_000_000,
       model: TEST_MODEL,
       choices: [
-        { index: 0, message: { role: 'assistant', content: 'Hi.' }, finish_reason: 'stop' },
+        {
+          index: 0,
+          message: { role: 'assistant', content: 'Hi.', refusal: null },
+          finish_reason: 'stop',
+        },
       ],
       usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
     });
-    expect(Object.keys(body.choices[0]!.message).sort()).toEqual(['content', 'role']);
+    // `refusal` is on every message, null when there is none, as OpenAI's
+    // specification requires (ADR-041 section 15, the refusal: null ruling).
+    expect(Object.keys(body.choices[0]!.message).sort()).toEqual(['content', 'refusal', 'role']);
   });
 
   it('omits usage when the provider sends none', async () => {

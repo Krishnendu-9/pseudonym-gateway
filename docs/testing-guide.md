@@ -3614,3 +3614,55 @@ Run with `scripts/mutate.ts` against the three files above (167 tests):
 
 10 of 10 caught. RF5 is caught by the pins on the open case, so those pins
 can fail. No marker was left, and the source was unchanged afterwards.
+
+### The empty `stop` and `refusal: null` (2026-10-10, the user's rulings)
+
+**What is tested.**
+
+- `strict-provider.test.ts`, block "no text and no refusal named, finish
+  stop":
+  - four non-streamed shapes (content `""` or null, refusal null or
+    `""`): each a 502 `provider_empty_response`, with **exactly one log
+    line** carrying `failure: "empty_response"` (the count) and no
+    request value in any log line;
+  - streamed with no text: the error event with the same code, no finish
+    chunk, no `[DONE]`, one `"stream failed"` line;
+  - streamed and unstreamed give the same code;
+  - `length` and `content_filter` with no text are kept on both paths and
+    write no such line.
+- `ollama.test.ts`: the six non-streamed shapes that are `empty_response`;
+  the four with `length` or `content_filter` that are kept; a streamed
+  empty `stop` failing at the finish; a streamed empty `length` or
+  `content_filter` kept.
+- `refusal: null`: the shape tests in `chat-completions.test.ts` and
+  `strict-provider.test.ts` now expect it on every message.
+
+**The `sed`-edited file, checked.** `ollama.test.ts` in 940777a: 92 lines
+added, 0 removed. Neither `sed` pattern occurs in the file before that
+commit.
+
+**Mutations, all run against the final tests** (4 files, 238 tests):
+
+| Id   | Mutation                                                                  | Failed    |
+| ---- | ------------------------------------------------------------------------- | --------- |
+| RF1  | a streamed refusal piece is dropped (bug 70 itself)                       | 7 of 238  |
+| RF2  | a non-streamed refusal is not passed on                                   | 7 of 238  |
+| RF3  | content "" beside a refusal stays "" instead of null                      | 2 of 238  |
+| RF4  | content null with a refusal is still an error (new `find`)                | 5 of 238  |
+| RF5  | content null with no refusal named passes as an answer (new `find`)       | 11 of 238 |
+| RF6  | a non-streamed refusal is not restored                                    | 2 of 238  |
+| RF7  | a non-streamed refusal is restored without restoration safety             | 1 of 238  |
+| RF8  | refusal pieces go through the content restorer                            | 4 of 238  |
+| RF9  | a streamed refusal is sent as content                                     | 7 of 238  |
+| RF10 | the held-back refusal is never sent                                       | 3 of 238  |
+| RF11 | a refusal piece held back whole sends an empty refusal chunk              | 1 of 238  |
+| RF12 | a streamed empty stop is not an error                                     | 3 of 238  |
+| RF13 | a streamed refusal does not count as text: a refusal-only stream is empty | 2 of 238  |
+| RF14 | not streamed, no text is an error whatever the finish reason              | 7 of 238  |
+| RF15 | streamed, no text is an error whatever the finish reason                  | 4 of 238  |
+| RF16 | an empty stop gets the old bad_response code                              | 5 of 238  |
+| RF17 | refusal: null is left off an ordinary answer                              | 4 of 238  |
+
+17 of 17 caught. RF11 covers the branch the earlier coverage fix added (a
+refusal piece held back whole); none of RF1 to RF10 reached it. No marker
+was left, and the source was unchanged afterwards.

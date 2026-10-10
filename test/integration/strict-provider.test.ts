@@ -4,9 +4,8 @@
 // that never complains proves nothing). Then the real gateway and adapter
 // against it: every request shape the gateway forwards must pass every
 // check, and every response shape the specification allows must be handled
-// as decided. Where the gateway's answer is a decision still open (a 429;
-// an answer with no content and no refusal named), the test pins today's
-// behaviour and says so.
+// as decided. Where the gateway's answer is a decision not built yet (a
+// 429), the test pins today's behaviour and says so.
 
 import { afterEach, describe, expect, it } from 'vitest';
 import {
@@ -211,14 +210,20 @@ describe('every request the gateway forwards passes the specification', () => {
 });
 
 describe('every answer the specification allows is handled as decided', () => {
-  it('a complete answer with every optional field: the content, nothing else', async () => {
+  it('a complete answer with every optional field: the content and refusal: null, nothing else', async () => {
     const { g } = await againstStrict();
     const response = await send(g, chat());
     expect(response.statusCode).toBe(200);
     const body = response.json() as Record<string, unknown> & {
       choices: { message: Record<string, unknown>; finish_reason: string }[];
     };
-    expect(body.choices[0]!.message).toEqual({ role: 'assistant', content: 'Done.' });
+    // `refusal` is on every message, null when there is none, as OpenAI's
+    // specification requires (ADR-041 section 15, the refusal: null ruling).
+    expect(body.choices[0]!.message).toEqual({
+      role: 'assistant',
+      content: 'Done.',
+      refusal: null,
+    });
     expect(body.choices[0]!.finish_reason).toBe('stop');
     // Fields the provider sent that the gateway does not pass on (ADR-014).
     expect(body).not.toHaveProperty('system_fingerprint', 'fp_strict');
@@ -404,41 +409,92 @@ describe("a refusal the provider names reaches the client in OpenAI's shape", ()
   });
 });
 
-// Not settled by 1e and put to the user (ADR-041 section 15): an answer that
-// names no refusal and has no content. It may be a refusal or an empty
-// answer. Today's behaviour is pinned here, not endorsed.
-describe('no content and no refusal named: open, today pinned', () => {
-  it('not streamed, content "": an empty answer, finish stop', async () => {
-    const { g, strict } = await againstStrict();
-    strict.answer = { kind: 'complete', content: '' };
-    const response = await send(g, chat());
-    expect(response.statusCode).toBe(200);
-    expect((response.json() as { choices: { message: unknown }[] }).choices[0]!.message).toEqual({
-      role: 'assistant',
-      content: '',
-    });
+// ADR-041 section 15, the empty `stop` ruling (B plus D). An answer that
+// finishes `stop` with no text and names no refusal may be a refusal or an
+// empty answer; it is a 502 `provider_empty_response`, streamed or not, so
+// the two paths agree. The count is the log line each one writes: the
+// failure kind and status or code, never any text.
+describe('no text and no refusal named, finish stop: provider_empty_response', () => {
+  const EMAIL = 'asha.rao@example.com';
+  const withValue = (extra: Record<string, unknown> = {}) => ({
+    model: TEST_MODEL,
+    messages: [{ role: 'user', content: `Please write to ${EMAIL} for me.` }],
+    ...extra,
   });
+  const empty = { code: 'provider_empty_response', type: 'api_error' };
+  /** The log lines that record an empty answer: the count ruling D asks for. */
+  const emptyLines = (g: TestGateway): Record<string, unknown>[] =>
+    g.logs
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .filter((line) => JSON.stringify(line).includes('empty_response'));
 
   it.each([
-    ['refusal null', null],
-    ['refusal ""', ''],
-  ])('not streamed, content null and %s: a 502 provider_bad_response', async (_label, refusal) => {
+    ['content "", refusal null', '', null],
+    ['content "", refusal ""', '', ''],
+    ['content null, refusal null', null, null],
+    ['content null, refusal ""', null, ''],
+  ])('not streamed, %s: a 502, one log line, no text in it', async (_label, content, refusal) => {
     const { g, strict } = await againstStrict();
-    strict.answer = { kind: 'complete', content: null, refusal };
-    const response = await send(g, chat());
+    strict.answer = { kind: 'complete', content, refusal };
+    const response = await send(g, withValue());
     expect(response.statusCode).toBe(502);
-    expect((response.json() as { error: { code: string } }).error.code).toBe(
-      'provider_bad_response',
-    );
+    expect((response.json() as { error: unknown }).error).toMatchObject(empty);
+    const lines = emptyLines(g);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({
+      msg: 'request failed',
+      statusCode: 502,
+      error: { name: 'ProviderError', failure: 'empty_response' },
+    });
+    expect(g.logs.join('\n')).not.toContain(EMAIL);
   });
 
-  it('streamed, no content and no refusal: an empty answer, finish stop, [DONE]', async () => {
+  it('streamed, no text: the error event with the same code, no finish chunk, no [DONE]', async () => {
     const { g, strict } = await againstStrict();
     strict.answer = { kind: 'stream', pieces: [] };
-    const streamed = readStreamed((await send(g, chat({ stream: true }))).body);
+    const streamed = readStreamed((await send(g, withValue({ stream: true }))).body);
     expect(streamed.content).toBe('');
-    expect(streamed.refusal).toBe('');
-    expect(streamed.done).toBe(true);
-    expect(streamed.chunks.at(-1)!.choices[0]!.finish_reason).toBe('stop');
+    expect(streamed.error?.error).toMatchObject(empty);
+    expect(streamed.done).toBe(false);
+    expect(streamed.chunks.some((c) => c.choices[0]?.finish_reason)).toBe(false);
+    const lines = emptyLines(g);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({
+      msg: 'stream failed',
+      code: 'provider_empty_response',
+      error: { failure: 'empty_response' },
+    });
+    expect(g.logs.join('\n')).not.toContain(EMAIL);
   });
+
+  it('streamed and not streamed agree: the same code for the same empty answer', async () => {
+    const { g, strict } = await againstStrict();
+    strict.answer = { kind: 'complete', content: null };
+    const plain = (await send(g, chat())).json() as { error: { code: string } };
+    strict.answer = { kind: 'stream', pieces: [] };
+    const streamed = readStreamed((await send(g, chat({ stream: true }))).body);
+    expect(streamed.error?.error.code).toBe(plain.error.code);
+  });
+
+  it.each(['length', 'content_filter'])(
+    'finish %s with no text is kept, streamed or not: the finish reason says why',
+    async (finishReason) => {
+      const { g, strict } = await againstStrict();
+      strict.answer = { kind: 'complete', content: null, finishReason };
+      const response = await send(g, chat());
+      expect(response.statusCode).toBe(200);
+      expect((response.json() as { choices: { message: unknown }[] }).choices[0]!.message).toEqual({
+        role: 'assistant',
+        content: null,
+        refusal: null,
+      });
+      strict.answer = { kind: 'stream', pieces: [], finishReason };
+      const streamed = readStreamed((await send(g, chat({ stream: true }))).body);
+      expect([streamed.done, streamed.chunks.at(-1)!.choices[0]!.finish_reason]).toEqual([
+        true,
+        finishReason,
+      ]);
+      expect(emptyLines(g)).toHaveLength(0);
+    },
+  );
 });

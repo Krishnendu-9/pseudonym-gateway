@@ -24,8 +24,12 @@
 // A refusal the provider names in `refusal` (ADR-041 section 15, decision
 // 1) is kept as a text of its own beside `content`: `message.refusal` when
 // not streamed, `delta.refusal` pieces when streamed. An empty `refusal`
-// names nothing. An answer that names no refusal and has no content is
-// handled as before (an open decision, section 15).
+// names nothing. An answer that finishes `stop` with no text and names no
+// refusal (not streamed: `content` null or ""; streamed: no content or
+// refusal piece before the finish) is the `empty_response` failure, the
+// same on both paths: it may be a refusal or an empty answer (section 15,
+// the empty `stop` ruling). With `length` or `content_filter` an answer
+// with no text is kept, since the finish reason says why.
 //
 // What a stream must look like: `data: <chunk>` events; `delta.content` and
 // `delta.refusal` strings, empty or left out; one chunk carries
@@ -208,11 +212,16 @@ async function* streamEvents(
 ): AsyncGenerator<ProviderStreamEvent> {
   let finished = false;
   let usage = false;
+  let text = false;
   try {
     for (let chunk: Chunk | undefined = first; chunk !== undefined;) {
       for (const event of chunkEvents(chunk)) {
         const outOfOrder = event.type === 'usage' ? !finished || usage : finished;
         if (outOfOrder) throw new ProviderError('bad_response');
+        if (event.type === 'content' || event.type === 'refusal') text = true;
+        if (event.type === 'finish' && event.reason === 'stop' && !text) {
+          throw new ProviderError('empty_response');
+        }
         if (event.type === 'finish') finished = true;
         if (event.type === 'usage') usage = true;
         yield event;
@@ -289,8 +298,11 @@ export function createOpenAICompatibleProvider(
 
       const [choice] = parsed.data.choices;
       const { content, refusal } = choice!.message;
-      // No content and no refusal named: what that is, is open (section 15).
-      if (content === null && !refusal) throw new ProviderError('bad_response');
+      // No text, no refusal named, and nothing in the finish reason to say
+      // why: a refusal or an empty answer, which cannot be told apart.
+      if (!content && !refusal && choice!.finish_reason === 'stop') {
+        throw new ProviderError('empty_response');
+      }
       return {
         id: parsed.data.id,
         created: parsed.data.created,
