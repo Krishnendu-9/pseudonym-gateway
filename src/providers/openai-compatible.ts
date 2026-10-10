@@ -9,7 +9,15 @@
 // never by spreading what the client sent, and no client header is
 // forwarded. The response is read into our own shape; every field the
 // provider adds beyond it (Ollama's `reasoning`, `timings`, `_debug_info`,
-// for example) is dropped (ADR-014). Every failure becomes a ProviderError
+// for example) is dropped (ADR-014). The drop is the field-by-field
+// construction of the result and of every event, not Zod's default of
+// stripping unknown keys: a looser schema would still drop them, and
+// test/integration/gemini-recordings.test.ts replays the 12 recorded Gemini
+// answers to check that it does. One extra field is read on purpose:
+// `extra_content` (Gemini's; in every recording
+// `{google: {thought_signature}}`), only to count it and measure the
+// signature's length, never to keep it (ADR-041 section 15, decision 3).
+// Every failure becomes a ProviderError
 // that names the kind of failure only. Each call reads at most its own size
 // cap: `maxResponseBytes` for `complete`, `maxStreamBytes` for `stream`
 // (ADR-020).
@@ -44,6 +52,7 @@ import { z } from 'zod';
 import { CappedReader, rejectDeclaredTooLarge } from './body.js';
 import type {
   ChatProvider,
+  DroppedExtras,
   ProviderChatRequest,
   ProviderChatResult,
   ProviderFailure,
@@ -105,6 +114,8 @@ const responseSchema = z.object({
           content: z.string().nullable(),
           refusal: z.string().nullish(),
           tool_calls: z.array(z.unknown()).max(0).nullish(),
+          // Read only to be counted (tally), never kept.
+          extra_content: z.unknown().optional(),
         }),
         finish_reason: finishReason,
       }),
@@ -124,6 +135,8 @@ const chunkSchema = z.object({
           content: z.string().nullish(),
           refusal: z.string().nullish(),
           tool_calls: z.array(z.unknown()).max(0).nullish(),
+          // Read only to be counted (tally), never kept.
+          extra_content: z.unknown().optional(),
         }),
         finish_reason: finishReason.nullish(),
       }),
@@ -151,6 +164,31 @@ function requestBody(
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
+
+interface Tally {
+  extraContent: number;
+  readonly thoughtSignatureLengths: number[];
+}
+
+const emptyTally = (): Tally => ({ extraContent: 0, thoughtSignatureLengths: [] });
+
+/**
+ * Counts one `extra_content` value and, if it has one, measures its
+ * `google.thought_signature`: the count and the length are all that is kept
+ * (ADR-041 section 15, decision 3).
+ */
+function tally(into: Tally, extra: unknown): void {
+  if (extra === undefined || extra === null) return;
+  into.extraContent++;
+  const google = isRecord(extra) ? extra.google : undefined;
+  const signature = isRecord(google) ? google.thought_signature : undefined;
+  if (typeof signature === 'string') into.thoughtSignatureLengths.push(signature.length);
+}
+
+const snapshot = (from: Tally): DroppedExtras => ({
+  extraContent: from.extraContent,
+  thoughtSignatureLengths: [...from.thoughtSignatureLengths],
+});
 
 function parseChunk(data: string): Chunk {
   let json: unknown;
@@ -205,16 +243,21 @@ async function* readChunks(
   }
 }
 
-/** Turns chunks into events, enforcing the order ProviderStream promises. */
+/**
+ * Turns chunks into events, enforcing the order ProviderStream promises,
+ * and counts each chunk's `extra_content` into `dropped`.
+ */
 async function* streamEvents(
   first: Chunk,
   rest: AsyncGenerator<Chunk>,
+  dropped: Tally,
 ): AsyncGenerator<ProviderStreamEvent> {
   let finished = false;
   let usage = false;
   let text = false;
   try {
     for (let chunk: Chunk | undefined = first; chunk !== undefined;) {
+      tally(dropped, chunk.choices[0]?.delta.extra_content);
       for (const event of chunkEvents(chunk)) {
         const outOfOrder = event.type === 'usage' ? !finished || usage : finished;
         if (outOfOrder) throw new ProviderError('bad_response');
@@ -303,6 +346,8 @@ export function createOpenAICompatibleProvider(
       if (!content && !refusal && choice!.finish_reason === 'stop') {
         throw new ProviderError('empty_response');
       }
+      const dropped = emptyTally();
+      tally(dropped, choice!.message.extra_content);
       return {
         id: parsed.data.id,
         created: parsed.data.created,
@@ -310,6 +355,7 @@ export function createOpenAICompatibleProvider(
         ...(refusal ? { refusal } : {}),
         finishReason: choice!.finish_reason,
         ...(parsed.data.usage === undefined ? {} : { usage: parsed.data.usage }),
+        ...(dropped.extraContent > 0 ? { dropped: snapshot(dropped) } : {}),
       };
     },
 
@@ -351,10 +397,12 @@ export function createOpenAICompatibleProvider(
       const chunks = readChunks(reader, () => wait(() => reader.next()));
       const first = await chunks.next();
       if (first.done) throw new ProviderError('bad_response');
+      const dropped = emptyTally();
       return {
         id: first.value.id,
         created: first.value.created,
-        events: streamEvents(first.value, chunks),
+        events: streamEvents(first.value, chunks, dropped),
+        dropped: () => snapshot(dropped),
       };
     },
   };

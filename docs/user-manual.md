@@ -395,6 +395,21 @@ One JSON line per request start and end: method, route pattern (never the
 URL), status, time taken, request id. Failures add the error's name and
 code, never its message. Request and response bodies are never logged.
 
+One more `info` line, `"provider extra content dropped"`, is written for
+each answer whose provider sent `extra_content` (Gemini does, on every
+answer recorded so far). It carries two fields:
+
+- `extraContent`: how many such objects the answer had;
+- `thoughtSignatureLengths`: the length in characters of each
+  `extra_content.google.thought_signature`.
+
+The field itself never reaches the client and is never logged; the
+signature is opaque provider data with no reason to be emitted. Sending it
+back on later turns is something Google recommends for thinking models'
+quality, though not required for text; Pseudonym does not do it (ADR-041
+section 15, decision 3). For a stream the line is written when the stream
+ends. An answer that fails is not counted.
+
 ### Production
 
 With `NODE_ENV=production`, Pseudonym checks at start-up that nothing can

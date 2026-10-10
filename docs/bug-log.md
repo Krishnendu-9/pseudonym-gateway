@@ -2967,3 +2967,22 @@ Ollama stream), and no refusal from either has been recorded. So the 1e
 path has been exercised only by the strict fake. On current evidence a
 refusal from either provider would arrive as the empty `stop` (now loud)
 or as a finish reason. That is likely, not shown.
+
+## 71. Declaring `extra_content` made every provider answer without it a bad_response (2026-10-10, found by the test suite while building ADR-041 section 15 decision 3; fixed before commit)
+
+**Symptom:** after adding `extra_content: z.unknown()` to the adapter's
+response and chunk schemas (to count it), 102 of 192 tests in the adapter,
+strict-fake and replay files failed. Almost every answer and every stream
+was now `bad_response` (a 502), including every Ollama-shaped answer, which
+never carries the field.
+
+**Root cause:** in the Zod version this project uses, an object key
+declared as `z.unknown()` is required: `z.object({a: z.unknown()})` refuses
+`{}` (checked: `safeParse({}).success` is `false`, and `true` with
+`.optional()`). I had assumed `unknown` accepted a missing key.
+
+**Fix:** `extra_content: z.unknown().optional()` in both schemas.
+
+**Guarded by:** the whole adapter suite (any answer without the field) and
+mutation SG10 (`scripts/mutations/extra-content.ts`), which removes the
+`.optional()` from the response schema and is caught by 50 tests.

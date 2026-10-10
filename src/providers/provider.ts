@@ -42,6 +42,18 @@ export interface ProviderUsage {
 export type FinishReason = 'stop' | 'length' | 'content_filter';
 
 /**
+ * What an answer carried in `extra_content`, as numbers only (ADR-041
+ * section 15, decision 3): never the content, which is dropped. In every
+ * recorded Gemini answer it is `{google: {thought_signature}}`.
+ */
+export interface DroppedExtras {
+  /** How many `extra_content` objects the answer carried (message or stream deltas). */
+  readonly extraContent: number;
+  /** The length in characters of each `extra_content.google.thought_signature` string. */
+  readonly thoughtSignatureLengths: readonly number[];
+}
+
+/**
  * The answer, still in placeholders; the gateway restores `content` and
  * `refusal`. `refusal` is set only when the provider named a refusal with
  * text (ADR-041 section 15, decision 1), and `content` is then null rather
@@ -57,6 +69,8 @@ export interface ProviderChatResult {
   readonly refusal?: string;
   readonly finishReason: FinishReason;
   readonly usage?: ProviderUsage;
+  /** Set only when the answer carried `extra_content`. */
+  readonly dropped?: DroppedExtras;
 }
 
 /** One piece of a streamed answer, still in placeholders. */
@@ -83,6 +97,8 @@ export interface ProviderStream {
   readonly id: string;
   readonly created: number;
   readonly events: AsyncIterable<ProviderStreamEvent>;
+  /** What the chunks read so far carried in `extra_content`, as numbers only. */
+  readonly dropped?: () => DroppedExtras;
 }
 
 export interface StreamOptions {

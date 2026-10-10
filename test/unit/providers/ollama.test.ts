@@ -187,6 +187,39 @@ describe('createOllamaProvider: a refusal named in message.refusal', () => {
   });
 });
 
+// ADR-041 section 15, decision 3: shapes of extra_content no recording has.
+// The 12 real answers are replayed in gemini-recordings.test.ts; these check
+// that anything else in the field is still counted, measured only when it
+// is a string signature, and never kept.
+describe('createOllamaProvider: extra_content shapes beyond the recordings', () => {
+  const answerWith = async (extra: unknown): Promise<unknown> => {
+    const body = JSON.parse(completionBody('ok')) as { choices: { message: unknown }[] };
+    body.choices[0]!.message = { role: 'assistant', content: 'ok', extra_content: extra };
+    mock.respondWith(respond(200, JSON.stringify(body)));
+    return (await provider().complete(REQUEST, new AbortController().signal)).dropped;
+  };
+
+  it.each([
+    ['a string', 'opaque'],
+    ['an array', ['a']],
+    ['no google key', { other: { x: 1 } }],
+    ['google not an object', { google: 5 }],
+    ['a signature that is not a string', { google: { thought_signature: 7 } }],
+  ])('%s: counted, no length', async (_label, extra) => {
+    expect(await answerWith(extra)).toEqual({ extraContent: 1, thoughtSignatureLengths: [] });
+  });
+
+  it('null: not counted, no dropped key', async () => {
+    expect(await answerWith(null)).toBeUndefined();
+  });
+
+  it('a string signature beside other keys: counted, its length only', async () => {
+    expect(
+      await answerWith({ google: { thought_signature: 'abcd', other: 'x' }, more: 1 }),
+    ).toEqual({ extraContent: 1, thoughtSignatureLengths: [4] });
+  });
+});
+
 // ADR-041 section 15, the empty `stop` ruling (B plus D).
 describe('createOllamaProvider: no text and no refusal named', () => {
   const answer = (): Promise<unknown> =>

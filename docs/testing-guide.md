@@ -3709,3 +3709,84 @@ Run against the three files above (167 tests):
 
 8 of 8 caught. RA6 is the boundary with section 13's 4b, seen from this
 side. No marker was left, and the source was unchanged afterwards.
+
+## Gemini's extra_content: dropped on purpose, counted (2026-10-10, ADR-041 section 15 decision 3, bug-log 71)
+
+**The replay.** `test/integration/gemini-recordings.test.ts` serves each of
+the 12 recorded Gemini answers (`test/fixtures/gemini-7b`, attempts 4 and
+5), byte for byte with its recorded content type:
+
+- **through the adapter:** each non-streamed result has exactly our own
+  keys, and the drop is counted with the signature's length; s2's stream
+  events carry only `type`, `text` and `reason`, and are counted the same
+  way; s3 fails as recorded before its `extra_content` chunk, so nothing is
+  counted;
+- **through the gateway:** the client never sees `extra_content`,
+  `thought_signature` or any 16-character stretch of a signature, on
+  either path; the message keys and every streamed delta's keys are
+  exact; one `info` line per answer carries the count and the length;
+  and no part of the signature or of the request is in any log line.
+
+**Safe to fail.** The signatures are read from the recordings only to test
+their absence, through boolean checks. Every count is compared through
+`printable()`, which turns anything that is not a number into its type
+name, so a fault that put the signature where its length goes fails as
+`<string>` and does not print it.
+
+**Shown failing before the change:** 23 of 25 failed, each on the missing
+count. No leak check failed, because the strip already held. After the
+change the replay, adapter and strict-fake files passed 192 of 192.
+
+**Bug-log 71**, found by this suite while building: `z.unknown()` is a
+required key in this Zod version, and declaring `extra_content` with it
+failed 102 tests.
+
+### Mutation checks (`scripts/mutations/extra-content.ts`, run 2026-10-10)
+
+SG1 to SG10 were run twice against the three files above (192 tests),
+with identical counts. The gate's coverage run then found two branches of
+`tally` that no recording reaches, so `ollama.test.ts` gained seven tests
+of `extra_content` shapes no recording has: a string, an array, no
+`google` key, a `google` that is not an object, a signature that is not a
+string, null, and a signature beside other keys. SG11 and SG12 were added
+for the two branches that can be mutated meaningfully. The final run, all
+12 against the final tests (199 tests):
+
+| Id   | Mutation                                               | Failed    |
+| ---- | ------------------------------------------------------ | --------- |
+| SG1  | the non-streamed result spreads the parsed message     | 16 of 199 |
+| SG2  | a content event spreads the parsed delta               | 18 of 199 |
+| SG3  | extra_content is never counted                         | 28 of 199 |
+| SG4  | the signature's length is never recorded               | 23 of 199 |
+| SG5  | a streamed chunk is not counted                        | 2 of 199  |
+| SG6  | a non-streamed answer is not counted                   | 26 of 199 |
+| SG7  | no log line for a non-streamed answer                  | 10 of 199 |
+| SG8  | the signature itself is recorded where its length goes | 23 of 199 |
+| SG9  | no log line for a streamed answer                      | 1 of 199  |
+| SG10 | extra_content declared as required (bug-log 71)        | 50 of 199 |
+| SG11 | a null extra_content is counted                        | 1 of 199  |
+| SG12 | a signature that is not a string is measured           | 1 of 199  |
+
+12 of 12 caught. SG1 and SG2 are the refactors the ruling guards against:
+the strip is the field-by-field construction, and a leak needs something
+spread through.
+
+**Not mutated, because the mutants are equivalent:** the `isRecord` guards
+on `extra_content` and on `google` in `tally`. Reading `.google` or
+`.thought_signature` off a string, number or array already gives
+`undefined`, so removing either guard changes no result. The shapes are
+tested all the same.
+
+**One slow run, read before believing it.** In the final run SG1 took 653
+s, where it took 12 s in the two runs before and every other mutation
+took 13 to 20 s. Its 16 failures are the 15 tests aimed at it plus one
+unrelated test: `createOllamaProvider.stream: the answer > time the
+consumer takes between reads does not count against the timeout`, a
+timing test on the streaming path, which SG1 does not touch. It passed in
+both earlier runs. The CPU was at 26% when checked midway through the
+next mutation. This is read as the machine being held up during SG1, as
+in earlier unexplained slow spells; it was not reproduced, and the cause
+is not known. SG1 counts as caught on its 15 aimed tests.
+
+The runner's output from all three runs was checked to hold no signature
+text. No marker was left, and the source was unchanged afterwards.

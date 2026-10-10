@@ -9684,6 +9684,140 @@ test files passed 167 of 167. Mutations RA1 to RA8
 (`scripts/mutations/rate-limit.ts`): **8 of 8 caught**. Details are in the
 testing guide.
 
+#### Decision 3 built (2026-10-10): the strip made deliberate, and counted
+
+No live call was made.
+
+**What `extra_content` carries in the recordings.** In all 12 recorded
+Gemini answers it is exactly `{google: {thought_signature: <string>}}`,
+with no other key at either level:
+
+- the 10 non-streamed answers carry it on `message`;
+- the 2 streamed answers carry it on the finish chunk's `delta`;
+- the signatures are 132 characters long in 10 answers, 952 in p12 and
+  1,004 in p13.
+
+`extra_content` is Google's namespace and could carry more than we have
+seen, so **the strip is described by what it drops**: everything a
+provider sends beyond the gateway's own shape, `extra_content` whole,
+whatever it holds. It is not "the thought signature".
+
+**How the strip is made deliberate (item 1).**
+
+- **Zod was never the only barrier.** The adapter's result
+  (`complete()`), every stream event (`chunkEvents`), the gateway's
+  response (`server.ts`) and every streamed chunk (`stream.ts`) are each
+  built field by field from named values. A `.passthrough()` or looser
+  schema alone changes none of them.
+- **A leak needs something spread through.** The tests are aimed at
+  exactly that:
+  - the adapter's non-streamed result must have exactly the keys `content`,
+    `created`, `dropped`, `finishReason`, `id` and `usage` for every
+    recording;
+  - every stream event may hold only `type`, `text` and `reason`;
+  - the client's message must have exactly `content`, `refusal` and
+    `role`, and every streamed `delta` only `role`, `content` and
+    `refusal`;
+  - no 16-character stretch of any signature may appear in the result,
+    the response or any log line.
+- **Shown to fail:** mutations SG1 (the result spreads the parsed
+  message) and SG2 (a content event spreads the parsed delta), the two
+  refactors that would carry `extra_content` through, are caught by 15
+  and 18 tests aimed at them in the final run.
+- **Read on purpose, in code.** `extra_content` is now declared in both
+  schemas, as `z.unknown().optional()` with the comment "Read only to be
+  counted (tally), never kept". The adapter's header comment says the drop
+  is the field-by-field construction and points at the replay test.
+
+**The replay (item 2).** `test/integration/gemini-recordings.test.ts`
+serves each of the 12 recorded answers, byte for byte with its recorded
+content type, through the real adapter and through the real gateway: the
+10 non-streamed answers on the non-streamed path, s2 and s3 on the
+streamed path. s3 fails as recorded (usage on every chunk,
+`provider_bad_response`) before its `extra_content` chunk is read, so it
+is checked for no leak and no count. The signatures are read from the
+recordings only to test their absence, and only through boolean checks.
+Every count is compared in a form that prints numbers or a type name,
+never a string, so a fault that put the signature where its length goes
+(SG8) fails without printing it. That holds by construction; the
+mutation runner records only test names, and its output was checked to
+hold no signature text.
+
+**The count (item 3): a log line per answer, and nothing else.** There is
+no metrics surface. For each answer that carried `extra_content`, the
+gateway writes one `info` line, `"provider extra content dropped"`, with
+two fields:
+
+- `extraContent`: how many `extra_content` objects there were (message,
+  or every streamed delta);
+- `thoughtSignatureLengths`: the length in characters of each
+  `extra_content.google.thought_signature` string.
+
+Details:
+
+- An `extra_content` without a thought signature adds to the count and
+  to no length, so the difference shows that something else was there,
+  without naming it.
+- For a stream, the line is written when the stream ends, however it
+  ends.
+- An answer that fails is not counted: `empty_response` before the count
+  when not streamed, and anything before the chunk that carries it when
+  streamed (s3).
+- The adapter reads the signature only to take its length; nothing keeps
+  the string.
+- The tests check, for every recording, exactly one such line with the
+  right count and length, and that no part of any signature, and no part
+  of the request (the email address and the word "refund" it was sent
+  with), appears in any log line.
+- The README's sentence on what logs contain and the user manual's Logs
+  section now say this.
+
+Section 15's rulings said a new field in the log's fixed set is put to
+the user first. This is a separate line, not a field added to the
+request lines, and it was asked for in this form ("say exactly what is
+written and where").
+
+**A side benefit of the lengths, not the reason for the ruling.** Section
+13 (item 4) recorded, as a hypothesis on n = 2, that the signature's
+length tracks hidden thinking tokens: 952 and 1,004 characters on the two
+calls with hidden thinking (p12, p13), against 132 on the seven without.
+Accumulating lengths in the log is the cheapest way to add evidence for
+or against it. The ruling stands on the strip and on making its cost
+visible, not on this.
+
+**The quality cost, as recorded in the ruling.** Later turns may degrade,
+since Google recommends sending the signature back for thinking models.
+The counts make that cost visible rather than assumed: every answer that
+carried a signature the gateway dropped writes a line.
+
+**A slip while building it (bug-log 71).** Declaring
+`extra_content: z.unknown()` without `.optional()` made it a required
+key in this Zod version. Every answer without it was then rejected as
+`bad_response`: 102 tests failed at once, before anything was committed.
+It was fixed with `.optional()`, and SG10 now puts it back and is caught
+by 50 tests.
+
+**Proof.** The replay test was run against the code before the change:
+23 of 25 failed, each on the missing count (no `dropped` in the result, no
+log line, no `stream.dropped`). No leak assertion failed: today's strip
+already held on all 12 recordings. After the change the replay, adapter
+and strict-fake files passed 192 of 192.
+
+The gate's coverage run then found two branches of the tally that no
+recording reaches. Seven adapter tests were added for `extra_content`
+shapes no recording has (a string, an array, no `google` key, a `google`
+that is not an object, a non-string signature, null, a signature beside
+other keys), together with SG11 and SG12. The `isRecord` guards on
+`extra_content` and `google` are not mutated: removing either changes no
+result, because reading a property off a string or number already gives
+`undefined`.
+
+Mutations SG1 to SG12 (`scripts/mutations/extra-content.ts`): **12 of 12
+caught** against the final tests. In that run SG1 took 653 s (12 s before),
+with one unrelated timing test failing beside its 15 aimed tests. The
+testing guide reads this as the machine being held up; it was not
+reproduced.
+
 <a id="adr-042"></a>
 
 ## ADR-042: Rule 1 is kept by compliance; the permission deny list is a partial backstop (2026-10-08)

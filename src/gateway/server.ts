@@ -23,8 +23,8 @@
 // becomes an `error` event at the end of the stream (stream.ts).
 
 import { Readable } from 'node:stream';
-import Fastify, { type FastifyInstance } from 'fastify';
-import type { ChatProvider } from '../providers/provider.js';
+import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
+import type { ChatProvider, DroppedExtras } from '../providers/provider.js';
 import { PlaceholderMapping } from '../redaction/mapping.js';
 import { restore, StreamRestorer } from '../redaction/restore.js';
 import { GatewayError, safeErrorDetails, toGatewayError } from './errors.js';
@@ -59,6 +59,32 @@ export interface ServerConfig {
   readonly logLevel: string;
   /** Where log lines go; stdout when omitted. Tests capture them here. */
   readonly logStream?: LogStream;
+}
+
+/**
+ * One `info` line per answer that carried `extra_content` (ADR-041 section
+ * 15, decision 3): how many, and each thought signature's length, nothing
+ * else. There is no metrics surface, so the count is the number of these
+ * lines; the content itself was dropped by the adapter.
+ */
+function logDropped(log: FastifyBaseLogger, dropped: DroppedExtras | undefined): void {
+  if (dropped === undefined || dropped.extraContent === 0) return;
+  log.info(
+    {
+      extraContent: dropped.extraContent,
+      thoughtSignatureLengths: dropped.thoughtSignatureLengths,
+    },
+    'provider extra content dropped',
+  );
+}
+
+/** Yields `events`, then runs `done` however the stream ends. */
+async function* thenRun(events: AsyncGenerator<string>, done: () => void): AsyncGenerator<string> {
+  try {
+    yield* events;
+  } finally {
+    done();
+  }
 }
 
 export function buildServer(config: ServerConfig, provider: ChatProvider): FastifyInstance {
@@ -138,10 +164,11 @@ export function buildServer(config: ServerConfig, provider: ChatProvider): Fasti
       return reply
         .header('content-type', 'text/event-stream; charset=utf-8')
         .header('cache-control', 'no-cache')
-        .send(Readable.from(events));
+        .send(Readable.from(thenRun(events, () => logDropped(request.log, stream.dropped?.()))));
     }
 
     const result = await provider.complete(outbound, controller.signal);
+    logDropped(request.log, result.dropped);
     // A refusal is model text like content: restored, with restoration
     // safety, as a text of its own (ADR-041 section 15, decision 1). As in
     // OpenAI's response, `refusal` is on every message, null when there is

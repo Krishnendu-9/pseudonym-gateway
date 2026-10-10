@@ -898,7 +898,11 @@ verify none of this on Windows or macOS. Production means Linux
 ([ADR-016](docs/decisions.md#adr-016)).
 
 Logs contain the method, route, status and timing of each request, never a
-body, a URL or an error message.
+body, a URL or an error message. Two kinds of line add numbers and nothing
+else: an empty answer from the provider (one line each), and fields the
+provider sent that Pseudonym drops. For Gemini's `extra_content` that is
+how many there were and each thought signature's length, never the
+signature itself ([ADR-041](docs/decisions.md#adr-041), section 15).
 
 The full threat model will be documented as the project matures.
 
