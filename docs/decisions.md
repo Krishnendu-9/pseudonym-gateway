@@ -9332,6 +9332,40 @@ phase, so it is written out here):
      Pacific (07:00 or 08:00 UTC) is before the 18:30 UTC start.
    - Pages change; this is what it said on 2026-10-10.
 
+**Observations from AI Studio before the run (read by the user on
+2026-10-10, recorded the same evening); observations, not findings.**
+Recorded after this section was registered; **not a registered condition**,
+and nothing here changes the two conditions above. None of the three calls
+had been made when this was written.
+
+- **Read 1, 2026-10-10 22:47 IST (17:17 UTC), time range 28 days:**
+  `gemini-3.5-flash-lite` at 4 of 15 RPM, 116 of 250K TPM, 11 of 500 RPD
+  (each the peak over the window).
+- **Read 2, 2026-10-10 22:52 IST (17:22 UTC), time range 1 day:** the same
+  model at 0 of 500 RPD.
+
+What they establish, against the two conditions:
+
+- **Condition 1 is met.** The limits read (15 RPM, 250K TPM, 500 RPD)
+  match what was registered above, and the confirmation was made before
+  any of the three calls, at the times given.
+- **Condition 2's timing was not met at these reads** (17:17 and 17:22 UTC,
+  before the 18:30 UTC start). The run waits for it.
+- **(b) is narrowed, not settled.** The 28-day view gives a peak over the
+  window without naming its day, so the user cannot confirm that the 11 is
+  the 2026-10-09 figure; it is not today's, since the 1-day view reads 0.
+  The page cannot tell successful requests from failed ones, so it cannot
+  say whether Attempt 5's six 400s count against the daily allowance.
+  Two inferences, the assistant's, not checked against any Google
+  documentation: (i) if the peak covers every day in the window and counts
+  them the same way, **no day in it reached 15**, so the day Attempt 5 ran
+  reads at most 11 about 20 hours after the run, which weakens the
+  "counter still catching up" explanation; (ii) the only calls recorded in
+  this ADR for this model are Attempt 4's 3 (2026-10-07) and Attempt 5's 15,
+  so 11 fits no other recorded day, though use of the key outside this
+  record cannot be ruled out. The user will read the Usage page and the
+  7-day range before the run.
+
 ### 15. Phase 7c: the three deferred decisions (options, 2026-10-10; waits for the user)
 
 Written on 2026-10-10. **Nothing here is decided, and no call to Google was
