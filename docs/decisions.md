@@ -10805,6 +10805,139 @@ that repeated p09 alone.
   V and M undefined for that call. Two calls cannot tell a fixed rule from
   a random one.
 
+#### Amendment 2026-10-11: part 1's open items, ruled (the user)
+
+Part 1 (decision A's provider, decision G's type) is built and committed
+(`6398978`). It left five items open. The user's rulings, written before
+any of them is built, in two rounds the same day; the second revised items
+1, 3 and 4 before this amendment was committed:
+
+**Order of work.** Part 2 (option 3, 4b, B's `models/` warning) first; then
+item 1 as its own step; then items 2, 3 and 4 **together, as one step**,
+because all three are credential safety. Item 5's comments land with that
+step (the assistant's placement; the rulings did not place them).
+
+**1. Streaming with usage on Gemini: bug 75, fixed as its own step.**
+
+- **What happens.** With `stream_options.include_usage: true`, Gemini
+  sends `usage` on every chunk, the finish chunk included, and no separate
+  usage-only chunk. In attempt-4/s3: five events; `usage` on all four data
+  chunks, as running totals (total tokens 31, 48, 50, then 50 on the finish
+  chunk); then `[DONE]`. The adapter takes any `usage` before the finish,
+  or a second one, as out of order (`src/providers/openai-compatible.ts`,
+  the stream's order check), so every such stream is a 502
+  `provider_bad_response` (pinned in
+  `test/integration/gemini-recordings.test.ts`). A streamed request
+  without `include_usage` is unaffected (s2).
+- **Why a bug, and since when.** The behaviour was recorded on 2026-10-07
+  as a measurement; it became a product bug when decision A made Gemini a
+  provider a deployment can choose (`6398978`). **It is not a profile
+  entry and not a documented limitation** (the user's ruling): profiles
+  record what a provider refuses; this is the gateway mishandling a
+  provider response that signals no error and carries a correct total.
+  Recorded beside the ruling: Gemini's shape is not OpenAI's documented
+  form, which ADR-019 records as `usage: null` on every chunk and one last
+  `choices: []` chunk carrying the usage. The ruling tolerates the
+  difference; it does not claim Gemini follows that form.
+- **Why the last one is the right one.** s3's totals are running totals,
+  and the sequence itself shows it; this is not a single data point. Total
+  tokens go 31, 48, 50, 50: never decreasing, ending on a plateau, which is
+  the signature of a running total. Read as per-chunk amounts instead, the
+  finish chunk, which carries no text, would add 50 tokens after the answer
+  ended, and the four would sum to 179 for an answer the final chunk calls 50. The assistant adds a second sign from the same chunks:
+  `prompt_tokens` is 29 on all four, so as per-chunk amounts the same
+  prompt would be counted four times (116).
+- **The fix, as ruled.** Usage on every chunk is tolerated, and the gateway
+  takes **the last chunk that carries usage**. If the sequence is ever not
+  non-decreasing (any of the three counts goes down from one usage-bearing
+  chunk to the next), it logs at `warn`, with no bodies, and still takes
+  the last. **It
+  does not fail the request**: a 502 over odd usage numbers is the bug
+  being fixed. The gateway still sends its client one usage chunk after
+  the finish, as ADR-019 specifies.
+- **Bug-log entry:** number 75 (`docs/bug-log.md`, written 2026-10-11, its
+  own commit).
+
+**2. The provider's key becomes a canary**, in every existing error
+scenario of the canary test, streamed and not. It must appear in no
+response body or header, no log line and no handled error. It is meant to
+reach the provider, so the mock provider's captured request is not a place
+the check looks. Until this lands, the four rules (never logged, never
+echoed, never in an error body, never in a recorded fixture) hold by
+construction only (part 1's report).
+
+**3. A rule for `http://` base URLs whenever a key is configured, written
+before any code.**
+
+- **The principle:** a credential must not cross a network in clear.
+- **The rule.** Whenever `PSEUDONYM_PROVIDER_API_KEY` is set, **for any
+  provider**:
+  - an `https://` base URL is accepted, as today;
+  - an `http://` base URL whose host is **loopback** starts, with a
+    start-up warning;
+  - any other `http://` base URL **refuses to start**, as an environment
+    error naming `PSEUDONYM_PROVIDER_BASE_URL`, never its value.
+
+  With no key set, nothing changes: any `http://` or `https://` URL is
+  accepted, as today. Gemini always has a key (decision A), so for Gemini
+  the rule always applies.
+
+- **Why it is keyed to the key, not the provider** (the user's ruling,
+  replacing a first draft keyed to `gemini`). The first draft left Ollama
+  with a key over a non-loopback `http://` URL as a case "not covered". That
+  case was not a gap: it showed the rule had been keyed to a stand-in for
+  "has a key" (the provider) instead of to the principle above.
+- **This changes Ollama's behaviour.** An Ollama configuration with a key
+  and a non-loopback `http://` base URL starts today; under this rule it
+  refuses to start. With a loopback `http://` URL and a key it starts with
+  the warning. Ollama with no key is unchanged.
+- **Loopback** means the host as the URL parser reads it is `localhost`, an
+  IPv4 address in 127.0.0.0/8, or `[::1]`. Anything else is not loopback,
+  including a name that merely resolves to one (`127.0.0.1.nip.io`) and an
+  IPv4-mapped IPv6 address. `localhost` is accepted by convention,
+  although a hosts file can point it elsewhere.
+- **The warning** names the variable and says the key is sent over plain
+  HTTP to a local address. It does not print the URL, which can itself
+  carry a user name and password.
+- **Why loopback is allowed.** Over `http://` the key travels in clear, in
+  the `Authorization` header, together with the redacted prompt. Loopback
+  traffic does not leave the machine, so a local proxy keeps working;
+  anything else crosses a network where the key can be read. The warning
+  is there because even a loopback URL sends the key to something other
+  than the provider's own endpoint.
+
+**4. The hygiene test scans for credentials**, by running
+`src/detection/secret.ts` over every file it already scans (the held-out
+file excepted, as for its other checks).
+
+- **Measured before writing this** (2026-10-11, a scratch probe outside the
+  repo, counts and paths only): 325 files. **3 known-format detections in 2
+  files** (`test/integration/canary.test.ts` 1,
+  `test/unit/detection/secret.timing.test.ts` 2), all typed fakes. **206
+  keyword detections in 44 files**, mostly prose and test configuration
+  such as `API_KEY = "[SECRET_1]"` (the decision record 26, the user manual
+  25, `secret.test.ts` 24, the bug log 23, `eval/generate.ts` 15).
+- **Ruled: (a), known formats only** (the user). Only a validated
+  detection, a known key format, fails the test. The other option was (b),
+  keyword detections too.
+  - **The primary reason:** (b) needs a 206-entry allowlist, and an
+    allowlist is where a real key hides: one more line, and nobody looks
+    twice. A check that needs a large exception list is weaker than a
+    narrower check with none.
+  - **The secondary reason:** it matches every existing hygiene check, each
+    of which flags only validated candidates.
+  - **The 3 typed fakes are put together at run time** instead, as ADR-009
+    and ADR-022 already do for keys, so the check starts with no exception.
+
+**5. `scripts/measure-gemini.ts` keeps its own copy** of Gemini's base URL
+and profile name. The script is frozen with its recordings: Attempts 1 to 6
+were made by it as it stands, and a re-run of a registered command must send
+what was registered. If it imported from `src/`, a later change to the
+product's URL or profile would silently change what that command sends. A
+comment at both copies says the duplication is deliberate and why: the
+script's two constants, and `PROVIDER_BASE_URL_DEFAULTS` in
+`src/config/env.ts` with `GEMINI_PROFILE` in `src/providers/gemini.ts`.
+
 <a id="adr-042"></a>
 
 ## ADR-042: Rule 1 is kept by compliance; the permission deny list is a partial backstop (2026-10-08)
