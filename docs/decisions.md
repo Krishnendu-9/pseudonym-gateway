@@ -7550,6 +7550,14 @@ on 2026-10-04 in conversation and never written down; this records it.**
   content**; it is **off by default**; and it comes **after Phase 8**.
 - The project brief's Phase 7 line is updated to match.
 
+**Note (2026-10-10, ADR-045).** The first sentence's "a request before
+and after redaction" conflicts with this section's own constraint, since
+a request before redaction is message content. ADR-045's ruling resolves
+the conflict in favour of the constraint. "Before and after" is ruled out
+as message content, and the dashboard, if built, renders the committed
+evaluation results (option 5). The wording above is left as written. The
+timing and "off by default" are unchanged.
+
 ### 4. 7a: Gemini's documentation against what the Ollama adapter assumes (read 2026-10-07)
 
 Sources, read on 2026-10-07: "OpenAI compatibility"
@@ -10075,3 +10083,327 @@ no real remote, and delete it at the end without following a link out of
 its directory (the guard test's cleanup already removes its `src` junction
 first, for that reason). A test that breaks any of these is outside the
 amendment and breaks rule 1.
+
+<a id="adr-045"></a>
+
+## ADR-045: Where the dashboard's counts come from (2026-10-10; accepted: option 5)
+
+**Status.** Accepted (the user, 2026-10-10): **option 5**, the committed
+evaluation results, not live traffic. The ruling and its reasoning are at
+the end. Nothing is built or stubbed (rule 12). Proposed the same day. It
+was written ahead of time because some options change the Phase 8 Docker
+work (a second port, more services in the compose file). It does not
+change ADR-041 section 3: if the dashboard is built, it comes **after
+Phase 8**, shows **counts only, never message content**, and is **off by
+default**.
+
+**Context.** The gateway has no source of counts. The two log lines added
+on 2026-10-10 are records of single events: the `provider_empty_response`
+error line and the "provider extra content dropped" line (ADR-041 section
+15). A log is not a running total. Creating one is a design decision, not
+plumbing. Counters are state that outlives a request, in a gateway whose
+design says "no state carries between requests, only between messages of
+the same request" (ADR-013, `redact.ts`). An in-process counter holds no
+value, but it is still cross-request state, so any option that adds one
+amends ADR-013 in letter, if not in spirit.
+
+### What is counted (settled before the options)
+
+ADR-041 section 3 recorded the page as "a request before and after
+redaction", then limited it to counts only. Showing a request before
+redaction is content, so it is ruled out. In counts, "before and after"
+means **what the gateway found in what clients sent, against what reached
+the provider and what came back**. Concretely:
+
+| Group                      | Quantity                                               | Dimension (the only one)                                                                                               |
+| -------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| Requests                   | requests handled, by outcome                           | 200, or each error `code` in `src/gateway/errors.ts` (a closed list)                                                   |
+| Before → after (redaction) | distinct values replaced; requests with at least one   | each placeholder namespace: `DETECTION_TYPES` plus `LITERAL`                                                           |
+| After (restoration)        | placeholders restored; held back, by rule              | `restored` and each `HELD_BACK_RULES` entry (`RestoreCounts` already computes these per request)                       |
+| Provider behaviour         | empty answers, named refusals, `extra_content` dropped | none, except signature length in **fixed buckets** (for example ≤ 256, ≤ 1,024, > 1,024 characters), never raw lengths |
+| Names (when on)            | requests refused, by reason                            | each `NameFailure`                                                                                                     |
+
+- **Granularity:** totals per row of that table, and nothing finer. No
+  dimension by client, user, key, request, message, value, placeholder
+  index or time of an individual event.
+- **Window:** for the live options (1 to 4, 6), counters that only go up,
+  from process start (1, 3), from the store's creation (4) or over
+  whatever the log pipeline kept (2). Rates over a window are the reader's
+  job, not the gateway's. For option 5, one evaluation run: a dataset at a
+  commit, with the history `eval/baseline.json` already keeps.
+- **What no live count can show.** The gateway counts only what its
+  detectors caught. A value they miss is sent as written and counted
+  nowhere. Live counts can show "N Aadhaar numbers replaced" but never "M
+  sent as written". Only the evaluation measures misses (ADR-040), on
+  labelled data. This shapes the recommendation below.
+
+### The two traps, whichever option wins
+
+**1. Granularity is a privacy boundary.** Counts per data type are fine.
+Counts per value would be a leak and would grow without bound: each new
+value is a new series, so a counter keyed by value is also a memory leak
+that a client could drive. **The line:** every dimension value comes from a
+closed list fixed at compile time (the table above). Nothing is derived
+from request or response text: no value, no value key, no placeholder
+index, no length of a value (a 12 says Aadhaar), and no signature length
+except in fixed buckets.
+
+**A residual leak that per-type totals cannot remove: watching the
+counter.** Anyone who can read a live counter often enough can tie "AADHAAR
+went up by 1 at 10:42:05" to a request they know was sent then, and learn
+what kind of data it held. Options 1, 3 and 4 have it, and so does option
+2 if the per-request line is kept. Options 1 and 3 can only limit who can
+read the endpoint (its own port, bound to localhost or a private network).
+Options 5 and 6 do not have it: 6 because only the request's own client
+sees its counts.
+
+**How a test proves the line is not crossed**, for any live option:
+
+- (a) **types**: every label is a TypeScript union of the literal lists,
+  so a label of type `string` does not compile;
+- (b) **cardinality**: after the no-leak test's corpus (hundreds of
+  messages full of planted values) is sent through the gateway, the set of
+  series equals a fixed expected set, the same after 1 request as after
+  all of them;
+- (c) **no value in any form**: the endpoint's output, the log or the
+  store is run through the existing leak check, raw, without separators
+  and lowercased, for every planted value;
+- (d) **a mutation** that adds a value-derived label is caught by (b).
+
+**2. Per-replica counts under-report.** Behind a load balancer, an
+in-process counter shows one instance's share since that instance last
+started. A dashboard that presents it as "the gateway's" numbers is quietly
+wrong, the failure this project exists not to ship. So **every option must
+say what its numbers mean**, and the dashboard must print that meaning
+beside them ("replica `<id>`, since `<start time>`"), not leave it to a
+footnote.
+
+### The options
+
+**1. In memory, per process, on an endpoint, off by default.**
+
+- _Numbers mean:_ this process, since it started. Lost on restart; one
+  replica's share behind a load balancer.
+- _Costs:_ a small counter module, an endpoint, an ADR-013 amendment, and
+  the counter-watching leak, bounded only by who can reach the endpoint.
+  The gateway has no authentication, so on the main port every client
+  could read the counts of every other client's requests. It belongs on
+  its own port.
+- _Container and compose:_ a second port, `EXPOSE`d but not published by
+  default; compose maps it only when the flag is on. Health check and
+  ADR-016 hardening unchanged.
+- _Flag:_ yes (`PSEUDONYM_COUNTS`, like `PSEUDONYM_NAMES`), with the port.
+- _New measurements:_ none to build it.
+- _Content proved absent by:_ trap 1's tests (a) to (d).
+
+**2. Structured log lines only, added up outside the gateway.**
+
+- _Numbers mean:_ whatever the log pipeline kept. Complete across replicas
+  if every replica's `info` logs are shipped and nothing is dropped,
+  rotated away, sampled or filtered by a raised level. It under-reports
+  silently otherwise, and nothing in the gateway can tell.
+- _Costs:_ **no new state in the gateway**, which is its strength. Today's
+  logs do not hold redaction counts per type, so one new per-request line
+  would be needed: types found, restoration counts. That is a field-set
+  change, put to the user first (ADR-041 section 15). It also makes the
+  log hold, per request id and time, which kinds of data that request
+  carried: finer than any total, and durable. The adding-up (a script,
+  Loki, Vector) lives outside the image. Another line per request: the
+  `extra_content` line already took Gemini requests from 2 to 3 lines.
+- _Container and compose:_ image unchanged; compose gains a logging
+  driver or a collector only if the dashboard is in it.
+- _Flag:_ yes for the new line (or `debug` level), to stay off by default.
+- _New measurements:_ log volume, on real request shapes.
+- _Content proved absent by:_ the canary test's no-value check, extended
+  to the new line, plus a closed field set (the line's keys and value
+  types fixed and tested).
+
+**3. A Prometheus-style exporter (`/metrics`, text exposition format).**
+
+- _Numbers mean:_ per process since start, as in 1. **But the scrape
+  contract makes the totals honest if used as designed:** Prometheus
+  scrapes every replica as a separate target and sums them, and `rate()` /
+  `increase()` handle restarts. A dashboard built on one target's raw
+  numbers has trap 2 again.
+- _Costs:_ as 1, plus a format: `prom-client` (a dependency, ADR-level per
+  rule 6), or the exposition format hand-written for a fixed set of
+  counters (small; rule 7 prefers it). A dashboard needs a Prometheus
+  server and Grafana or similar: two more services. OpenTelemetry metrics
+  (OTLP push) are a variant with the same meaning, more dependencies and a
+  collector service.
+- _Container and compose:_ a second port as in 1; compose gains
+  `prometheus` (scrape config) and `grafana` (dashboard JSON), each with
+  its own image, volume and configuration files to review.
+- _Flag:_ yes, with the port.
+- _New measurements:_ none to build it.
+- _Content proved absent by:_ trap 1's tests (a) to (d), run against the
+  scrape output.
+
+**4. An external store (Redis, SQLite).**
+
+- _Numbers mean:_ with Redis shared by every replica, a true total across
+  replicas since the store was created. That is the only option whose
+  numbers cover the whole deployment by themselves. With SQLite, a file
+  per container unless shared, and SQLite across hosts is not a
+  multi-writer store.
+- _Costs:_ the dependency Phase 0 deliberately avoided (rule 6, 7); a
+  network call on the request path, or a buffer that can lose counts on
+  crash; a new failure mode. It must never block or fail a request, so
+  counts are dropped when the store is down, and under-reporting comes
+  back unless a "writes failed" counter is itself shown. A store is
+  persistent state that outlives the process: the furthest from ADR-013.
+  It also needs authentication and its own hardening.
+- _Container and compose:_ image gains a client library; compose gains a
+  `redis` service, a network, a volume, credentials (secrets, not
+  environment variables), and a health dependency.
+- _Flag:_ yes, plus the store's address and credentials.
+- _New measurements:_ the cost per request of the write, and behaviour
+  with the store down.
+- _Content proved absent by:_ trap 1's tests (a) to (d), run against a
+  dump of the store; plus a check that the client never sends a key built
+  from request data.
+
+**5. No live counts: the dashboard renders the committed evaluation
+results.**
+
+- _Numbers mean:_ exactly what the README's results mean today:
+  - per data type, on the two labelled datasets at a commit: redacted out
+    of planted, precision, and **values sent as written** (ADR-040);
+  - the echo measurement (ADR-033);
+  - the model rewrite rates (ADR-017);
+  - the person-name results (ADR-035, ADR-036);
+  - "before and after" as the evaluation already defines it: the history
+    of accepted baselines in `eval/baseline.json`, and detected against
+    sent.
+- _What it cannot show that the others can:_
+  - anything about real traffic: volume, which types real clients send,
+    the real mix, drift over time;
+  - how often the provider sends empty answers, refusals, 429s or
+    `extra_content` in practice;
+  - name detection refusing in production;
+  - anything about a particular deployment.
+
+  It is a page about the gateway's measured behaviour, not about its use.
+
+- _What it shows that none of the live options can:_ **misses.** Values
+  sent as written, the number the project's promise is actually about,
+  and the one an interviewer asks. Live counts are blind to misses by
+  construction.
+- _Costs:_ a generator that reads `eval/baseline.json`,
+  `eval/model-rewrites.json` and the names baselines and writes a static
+  page; plus a check that the page matches the files, as the README block
+  is checked today. No state, no endpoint, no flag, and no new privacy
+  surface: the inputs hold per-type counts only (ADR-021 checked that no
+  label is stored).
+- _Container and compose:_ **none.** The page is not served by the
+  gateway; it lives in the repository or on a static host. "Off by
+  default" holds trivially.
+- _New measurements:_ none.
+- _Content proved absent by:_ the inputs are counts by construction and
+  already checked; the generated page goes through the repository hygiene
+  scan like the README; a test pins that the generator reads only those
+  files.
+
+**6. (added) Each response carries its own request's counts, and the
+client adds them up.**
+
+- _Numbers mean:_ that one request; any total is the client's own, over
+  its own traffic only.
+- _Costs:_ no gateway state. A non-OpenAI response header (for example
+  `x-pseudonym-replaced: AADHAAR=1,EMAIL=2`): clients ignore unknown
+  headers, so this does not break compatibility. The counts are visible to
+  anything that sees the response: proxies, browser developer tools,
+  client logs. They describe the client's own message, but per request,
+  which is the finest granularity in this list.
+- _Container and compose:_ none.
+- _Flag:_ yes, off by default.
+- _New measurements:_ none.
+- _Content proved absent by:_ the header's grammar is closed (type names
+  from the list, integers), tested with the no-leak corpus as in trap 1.
+
+### Which options change the Phase 8 Docker work
+
+- **Options 1 and 3:** the Dockerfile `EXPOSE`s a second port, and
+  `HOST=0.0.0.0` inside the container (ADR-016's Phase 8 note) needs
+  deciding for that port separately. Compose maps it only behind the
+  flag. Option 3 with its dashboard adds two services and their
+  configuration.
+- **Option 4:** adds a service, a network, a volume, secrets and a
+  startup dependency; the image gains a client library.
+- **Option 2:** the image is unchanged; compose may gain logging
+  configuration or a collector.
+- **Options 5 and 6:** no change at all. The Phase 8 Dockerfile and
+  compose file are one service, as planned.
+
+Deciding now therefore settles whether Phase 8 builds a one-service
+compose file with one port, or plans for more.
+
+### Recommendation (the assistant's; not a decision)
+
+**Option 5.** It adds no state and no privacy surface, changes nothing in
+Phase 8, and shows the number the project's promise is about (misses).
+That is the number no live option can show. Its limit is real and should
+be printed on the page: it describes the gateway's measured behaviour on
+labelled data, not any deployment's traffic. **If live counts are ever
+wanted, option 3**, behind a flag, on its own port bound to a private
+interface, with trap 1's four tests, and with "per replica, since start"
+printed beside every number. Its scrape contract is the one standard way
+the per-replica trap is handled honestly. Option 4 is not recommended:
+it is the only one with whole-deployment totals by itself, and it costs a
+dependency, persistent state and a new failure mode, against a project
+whose design avoids all three.
+
+### Ruling (the user, 2026-10-10): option 5
+
+The dashboard, if built, renders the committed evaluation results, not
+live traffic. ADR-041 section 3's timing stands: after Phase 8, off by
+default. Nothing is built by this ruling.
+
+**The user's reasoning:**
+
+- **The decisive argument: live counts cannot show misses.** The
+  project's stated promise includes "how much Pseudonym detects is
+  measured and published". A live dashboard could never show the one
+  number the README is honest about, values sent as written, because
+  nothing at run time knows about a value the detectors missed. It would
+  fill a screen with reassuring numbers that count only what was caught.
+  That is this project's central failure mode wearing a feature's
+  clothes. (The argument was the assistant's, in "What is counted" above;
+  the ruling rests on it.)
+- **A live counter is a side channel whatever its granularity.** The
+  timing finding above (watching a counter ties a type to a request whose
+  time the watcher knows) means **"counts only" was never sufficient on
+  its own**. **Any future live option needs access control, not just
+  aggregation**: who can read the counter matters as much as what it
+  counts. This holds beyond this ruling: it is a standing condition on
+  any live metric this gateway might ever expose.
+- **"Before and after", as ADR-041 first worded it, is ruled out as
+  message content.** ADR-041 section 3 described the page as showing "a
+  request before and after redaction", and in the same section limited it
+  to "counts only, never message content". The two cannot both hold: a
+  request before redaction is message content. **ADR-041's wording
+  conflicted with its own constraint. This ruling resolves the conflict
+  in favour of the constraint, rather than quietly reinterpreting the
+  wording.** "Before and after" survives only in its evaluation sense:
+  baselines before and after a change, and detected against sent. A
+  dated note in ADR-041 section 3 points here.
+- **Docker stays one service on one port.** Option 5 changes nothing in
+  the Phase 8 Dockerfile or compose file, which is why this was decided
+  before Phase 8 rather than after.
+
+**Option 6, considered and not built (the user's ruling).** Each response
+carrying its own request's counts in a header has real merits, stated
+fairly:
+
+- it needs no state in the gateway;
+- it adds no port;
+- it opens no channel between clients: each client sees only its own
+  request's counts, so the counter-watching leak does not arise;
+- it is genuinely useful to a client that wants confirmation the gateway
+  acted on its request.
+
+It is **a good idea left on the table for a reason of scope, not of
+soundness**. Its costs, stated above (a non-OpenAI header, visible to
+proxies and client logs, at per-request granularity), are a client's
+own data shown back to it. **It is not to be built** under this ruling.
+Building it later would be a new decision.
