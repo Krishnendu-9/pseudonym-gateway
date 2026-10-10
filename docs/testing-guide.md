@@ -3829,120 +3829,182 @@ fixed (load, other processes, updates). It **cannot establish cause**
 either way. Any later stall or its absence is recorded here against this
 entry, with the date and the work that ran.
 
-- **2026-10-10, Phase 8:** no stall. The work: one mutation list (3
-  mutations, about 7 s each), the name-worker test file run alone, and one
-  full gate (`npm test` 3,217 tests, the coverage run, `npm run eval`,
-  `test:names`, `eval:names`), with Docker Desktop stopped before the gate.
-- **2026-10-10, Phase 8 follow-up (ADR-047):** no stall. The work: one
-  mutation list (4 mutations, 4–5 s each), and one full gate (`npm test`
-  3,227 tests, coverage, `npm run eval`, `test:names`, `eval:names`). The
-  `npm test` sampler's longest gap was 10.0 s, one interval longer than
-  usual, with no test slow or failing.
-- **2026-10-10, the Windows telemetry line (ADR-046 amendment D): one
-  unexplained failure.** The first `npm test` of the gate failed 1 of
-  3,230 tests: `live-run-guard.test.ts`, "refuses a staged plan before
+### Two symptoms, not one (restructured 2026-10-10, after dcd9917)
+
+**Everything above this heading was written before any outcome, and stands
+as written.** It treats "the stalls" as one class of event with one
+candidate cause. The events since show two symptoms with different
+mechanisms:
+
+| Symptom                    | Events                                                                                                                                | What it is                             |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| **A. Slowness**            | the machine-sampler test's timeout; mutation SG1 at 653 s against 12 s; the 15:31 `npm test` at 142 s against about 80 s              | work that took far longer than it does |
+| **B. A deleted directory** | `ENOENT` in `live-run-guard.test.ts` at 15:31–15:34 on a directory the test had just made, and that nothing in the repository removes | something removed a file system entry  |
+
+**Nothing establishes that they share a cause.** The one link is that B
+happened during one of A's slow runs. One co-occurrence is not a shared
+mechanism, and B has happened once. **Asking one hypothesis to explain
+both is probably why neither has an explanation:** a mechanism that fits
+one symptom tends not to fit the other, as scanning shows below.
+
+**Where the conflation came from.** It came from the user's framing (the
+user's own account, 2026-10-10), which this guide followed. The version
+committed in dcd9917 also argued from it, in a way corrected under A below.
+
+Each symptom now carries its own candidates and its own evidence. The run
+records follow both.
+
+### A. Slowness
+
+**Events:**
+
+- the machine-sampler test's timeout ("The machine-sampler flake,
+  measured", above): 1 of 3 full runs;
+- mutation SG1 at 653 s against a normal 12 s ("One slow run, read before
+  believing it", above);
+- the first `npm test` of the gate for the Windows telemetry line
+  (ADR-046 amendment D): it started at **15:31:51 IST** and took **142 s**
+  and 27 samples, against about 80 s and 16 samples on the run straight
+  after. Its lowest free memory was 4,704 MB.
+
+**Candidate: Defender's real-time scanning** (this section's original
+hypothesis). Scanning is a plausible mechanism for slowness: every file
+written or opened can be scanned before the program gets it, at a cost
+in time, with no detection needed.
+
+**The pre-registered condition fired, on this symptom.** It said: "A
+further stall after this date weakens the hypothesis materially." The
+15:31 run was slow, about 4 hours after the exclusion (about 11:20 IST).
+**Scanning of the project's own files did not cause it**, because they
+were excluded.
+
+**What survives, and on what basis.** The pre-registered caveat said a
+later stall "would not rule out scanning of files outside this folder,
+such as the temporary directory … or Node's own installation". So
+scanning **outside the project folder** (the system temp folder, Node's
+installation) survives for slowness. It survives because that caveat was
+written first. There is no positive evidence that the 142 s went to
+scanning anything.
+
+**Correction to dcd9917.** That version argued that the hypothesis
+"narrows to scanning of temporary files" because **the directory that
+vanished was under the temp folder.** That reasoned from symptom B to a
+candidate for symptom A. The vanished directory's location says nothing
+about where a slow run spent its time. The narrowing stands only on the
+caveat. The basis is corrected here; the hypothesis it leaves is the same.
+
+**What weakens it.** The pre-registered condition firing, as above. **Not**
+the 0 Defender detections that day: scanning clean files costs time
+without detecting anything, so a day with no detections is what this
+candidate predicts anyway. That count bears on B, not on A.
+
+**Another candidate already on record: memory pressure** (bug-log 57). In
+the runs measured there, every failing step had at most 1,799 MB free, and
+every passing step at least 3,573 MB. The 15:31 run's lowest was 4,704 MB,
+above both. That weakens memory pressure as the cause of this run.
+
+**What would test scanning for slowness.** Point `TMP` and `TEMP` for test
+runs at a folder inside the excluded project folder, so that temp files are
+not scanned either. Fewer slow runs over comparable work would be weak
+support, since slow runs are rare. Slow runs that continue would put
+scanning of temp files out, leaving Node's installation and causes
+unrelated to scanning.
+
+### B. A deleted directory
+
+**Event:**
+
+- **When:** 15:31–15:34 IST, during the slow run above.
+- **Where:** `live-run-guard.test.ts`, "refuses a staged plan before
   anything else".
-  - Every assertion about the script passed: exit 1, the refusal message,
-    no key named.
-  - Then `readdirSync(out)` threw `ENOENT`: the empty directory the test's
-    own `beforeEach` had made with `mkdtempSync` under the system temp
-    folder (`live-run-guard-out-…`) no longer existed.
-  - Nothing in the repository deletes it before that line. The script
-    under test has no delete call. The six other test files that use the
-    temp folder each remove only the directory they made.
-  - That run was slow: 142 s and 27 samples, against about 80 s and 16
-    samples in the next run. Free memory went down to 4,704 MB.
-  - The file alone then passed 32 of 32, and the full suite 3,230 of 3,230.
+- **What passed:** every assertion about the script: exit 1, the refusal
+  message, no key named.
+- **What failed:** `readdirSync(out)` threw `ENOENT`. That is the empty
+  directory the test's own `beforeEach` had made with `mkdtempSync`
+  under the system temp folder
+  (`%LOCALAPPDATA%\Temp\live-run-guard-out-…`).
+- **Ruled out in the repository:**
+  - the script under test has no delete call;
+  - the six other test files that use the temp folder each remove only
+    the directory they made;
+  - no test in the file runs concurrently, and the failing test is the
+    first in its `describe`.
+- **Afterwards:** the file alone passed 32 of 32, and the full suite
+  3,230 of 3,230.
 
-  Recorded here, not in the bug log: no root cause. The next section
-  records what it does to this entry's hypothesis.
+Not in the bug log: no root cause.
 
-### The condition fired: 2026-10-10, 15:31–15:34 IST
+**Scanning is not a candidate for this symptom.** Defender's record shows
+**0 detections on 2026-10-10** (`Get-MpThreatDetection`, read without
+elevation), and Defender removes files only on a detection. Scanning a
+clean file can hold it open for a moment, which tends to give "busy" or
+"permission" errors, not a missing directory. Nothing on record makes
+scanning a mechanism for an empty directory disappearing.
 
-**Fired, as written.** This entry said, before any outcome: "A further
-stall after this date weakens the hypothesis materially." The failure
-above happened after the exclusion:
-
-| When              | What                                      |
-| ----------------- | ----------------------------------------- |
-| about 11:20 IST   | the project folder excluded from Defender |
-| 15:31:51 IST      | the failing `npm test` started (142 s)    |
-| 15:31:51–15:34:13 | the failure, somewhere inside this window |
-
-The run was failing and slow, which is the kind of event this entry was
-written for. **The condition has fired. The hypothesis is materially
-weakened** as stated: scanning of the project's own files is not what
-caused it, because the project folder was excluded at the time.
-
-**What survives, and why that is honest.** The same paragraph, written
-before the evidence, said a later stall "would not rule out scanning of
-files outside this folder, such as the temporary directory". The directory
-that vanished was under the system temp folder
-(`%LOCALAPPDATA%\Temp\live-run-guard-out-…`), which is not excluded. So the
-hypothesis **narrows to scanning of temporary files**; it does not die.
-That narrowing is allowed only because the caveat was written down first.
-Read after the fact, the same move would be a hypothesis saved by
-redefining it.
-
-**What weakens even the narrowed form.** Defender's own record shows **0
-detections on 2026-10-10** (`Get-MpThreatDetection`, read without
-elevation). Defender removes files only on a detection. Scanning a clean
-file can hold it open for a moment, and that tends to give "busy" or
-"permission" errors, not a missing directory. An empty directory that
-disappears (`ENOENT`) is not a known effect of antivirus scanning.
-
-**A second candidate for this symptom (a hypothesis): Windows Storage
-Sense.** It deletes temporary files automatically, and could remove a
-directory under `%TEMP%` while a test still holds a path to it.
+**Candidate: Windows Storage Sense (a hypothesis).** It deletes temporary
+files automatically, and could remove a directory under `%TEMP%` while a
+test still holds a path to it.
 
 - **Why it fits:** a directory the test created, that nothing in the
-  repository deletes, vanishing mid-run with `ENOENT`, fits a cleaner
-  better than a scanner.
-- **The setting on this machine** (`HKCU\…\StorageSense\Parameters\StoragePolicy`):
-  `01=1` (on), `2048=1` (every day), `04=1` (delete temporary files apps
-  are not using). Those meanings come from third-party documentation, not a
-  Microsoft page. The same sources say the cleanup engine may follow a
-  different key, so they may not describe what actually runs.
+  repository deletes, vanishing mid-run, fits a cleaner.
+- **The setting on this machine**
+  (`HKCU\…\StorageSense\Parameters\StoragePolicy`):
+  - `01=1`: on;
+  - `2048=1`: runs every day;
+  - `04=1`: deletes temporary files apps are not using.
+
+  Those meanings come from third-party documentation, not a Microsoft
+  page. The same sources say the cleanup engine may follow a different
+  key, so they may not describe what actually runs.
+
 - **What weakens it:** the scheduled task
   (`\Microsoft\Windows\DiskFootprint\StorageSense`) last ran at **10:30:53
   IST**, about five hours before the failure, and that run ended in
-  **error** (`0x80040154`, a COM class not registered). Storage Sense can
-  also be started by Windows on low disk space, through another path, so
-  this does not rule it out.
-- **What "apps are not using" means** for an empty directory created
-  seconds earlier is not documented. Whether Storage Sense would remove one
-  is the open question.
+  **error** (`0x80040154`, a COM class not registered). Windows can also
+  start Storage Sense on low disk space, by another path, so this does not
+  rule it out.
+- **What is not known:** what "apps are not using" means for an empty
+  directory created seconds earlier.
 
-**What would tell the two apart.** Neither candidate can be shown from one
-failure. A single uncontrolled event fits more than one cause. The two
-predict different things:
+**What would test Storage Sense for this symptom.** One failure cannot show
+any candidate.
 
-1. **Where temp files go.** Point `TMP` and `TEMP` for test runs at a
-   folder outside both `%TEMP%` and the project, for example
-   `E:\pseudonym-test-tmp`.
-   - Storage Sense does not clean that folder; Defender still scans it.
-   - If the `ENOENT` recurs there, Storage Sense is out.
-   - If it never recurs there, that is weak support only: the rate is low,
-     so its absence is what rarity also predicts.
-2. **Timing.** On any further occurrence, read at once:
+1. **Move this project's temp files.** Point `TMP` and `TEMP` for test runs
+   at a folder outside `%TEMP%` (inside the project, or elsewhere), which
+   Storage Sense does not clean. If the `ENOENT` recurs there, Storage
+   Sense is out. If it never recurs, that is weak support only: one
+   occurrence so far, so absence is what rarity also predicts.
+2. **On any further occurrence, read at once:**
    - the Storage Sense task's `LastRunTime`;
    - Defender's Operational event log;
    - whether other recent items in `%TEMP%` vanished at the same moment.
 
-   A cleaner removes many items at once; a scan does not remove clean ones.
+   A cleaner removes many items at once.
 
-3. **Storage Sense's temp cleanup switched off** (`04`, in Settings) for a
-   period. If the `ENOENT` recurs with it off, Storage Sense is out. If it
-   stops, that is again only weak support.
+3. **Switch Storage Sense's temp cleanup off** (`04`, in Settings) for a
+   period. If the `ENOENT` recurs with it off, Storage Sense is out.
+
+The two tests under A and B can be one change: test runs' `TMP` and `TEMP`
+pointed inside the excluded project folder take temp files out of reach of
+both scanning and Storage Sense. Run that way, they separate nothing; that
+needs one change at a time.
 
 **Not to be done casually: excluding the whole temp folder from
 Defender.** That is a far broader trade than excluding one project folder.
 Every program's temporary files would go unscanned: installers, unpacked
 archives, browser downloads, and the folder malware most often stages in.
-One project folder is a narrow, known trade; the temp folder is the
-machine's. If an experiment is needed, option 1 above moves this project's
-temp files somewhere specific instead, and changes nothing for anything
+It would also not address B, for which scanning is not a candidate. Moving
+this project's temp files somewhere specific changes nothing for anything
 else.
+
+### Run records against both symptoms
+
+| Date and work                                                                                                                                                                                                        | A. Slowness                                                                        | B. Deleted directory  |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | --------------------- |
+| 2026-10-10, Phase 8: one mutation list (3 mutations, about 7 s each), the name-worker file alone, one full gate (`npm test` 3,217 tests, coverage, `eval`, `test:names`, `eval:names`), Docker Desktop stopped first | none                                                                               | none                  |
+| 2026-10-10, Phase 8 follow-up (ADR-047): one mutation list (4 mutations, 4–5 s each), one full gate (`npm test` 3,227 tests, coverage, `eval`, `test:names`, `eval:names`)                                           | none; the `npm test` sampler's longest gap was 10.0 s, one interval over the usual | none                  |
+| 2026-10-10, 15:31 IST, the Windows telemetry line (ADR-046 amendment D): the gate's first `npm test` (3,230 tests)                                                                                                   | **yes: 142 s against about 80 s**                                                  | **yes: one `ENOENT`** |
+| 2026-10-10, straight after: the file alone (32 tests), then `npm test` again (3,230 tests)                                                                                                                           | none (about 80 s)                                                                  | none                  |
 
 ## The Docker image (Phase 8, 2026-10-10, ADR-046, bug-logs 72 and 73)
 
