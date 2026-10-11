@@ -9601,12 +9601,27 @@ requests, answered 200, to this model on that day than the record shows.
    **Not checkable from here:** a deleted uncommitted folder (it leaves no
    trace in git), and any use of the key outside this repository (AI
    Studio itself, another tool, another person).
+5. **The user's recollection, not verified.** The user does not recall
+   using AI Studio, or the key, anywhere else on 2026-10-09, and cannot
+   certify it. It is recorded as a recollection only.
+6. **A supporting observation from the chart (the user's, 2026-10-11).**
+   The 28-day RPD chart for `gemini-3.5-flash-lite` reads 0 on 25 of its 28
+   days. The user named Oct 7 (3) and Oct 9 (11) as the non-zero days; 25 of
+   28 leaves three, and the third is Oct 10 (1, the first reading above).
+   _The assistant's reconciliation of the count; the user named two._ Every
+   non-zero day is a day with a recorded run (Attempt 4, Attempt 5,
+   Attempt 6), and no day without one shows any use. That is **consistent
+   with the key reaching this model only through recorded runs**. It does
+   not exclude extra calls on Oct 9 itself, which would be hidden inside
+   that day's 11. It also covers only this model, which is the only one S
+   concerns.
 
 **Conclusion: nothing in the record allows for two unrecorded requests, so
-S is refuted on the record.** It would survive only if something this
-record cannot see sent two requests to `gemini-3.5-flash-lite` on
-2026-10-09 and both were answered 200. Only the user can say whether the
-key was used outside this repository that day.
+S is refuted on the record, not beyond doubt.** It would survive only if
+something this record cannot see sent two requests to
+`gemini-3.5-flash-lite` on 2026-10-09 and both were answered 200. Against
+that there are the checks above, the user's recollection (not verified) and
+the chart's quiet days. None of them excludes it.
 
 **Two slips, recorded.**
 
