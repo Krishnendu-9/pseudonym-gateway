@@ -206,7 +206,16 @@ reports success on files it never read):
   from code or stored results, and `npm run eval` the generated block;
   numbers in prose that repeat evaluation output outside the block (the
   echo paragraph's "7 of 1,667", the shape-block prose) are checked by
-  neither.
+  neither. Since 2026-10-11 readme-facts also checks four code constants
+  (`Retry-After: 30`, the safety net's 9 digits, the 40-character keyword
+  window, the names timeout's 202 s) and the person-name figures measured
+  without AVX-512 against `eval/names-baseline.json` (501 of 612, 661/933,
+  933 detections, 5.85 per 1,000 words, 145/153, 3 of 59, 111 of 612,
+  1,998 messages); `scripts/mutations/readme-facts.ts`, 10 of 10 caught.
+  Still checked by nothing: the AVX-512 column (502, 934, 662/934) and the
+  held-out 41 of 45, which no stored file holds; every other figure is a
+  dated observation, and the README says so where the first number
+  appears.
 
 ## Ground rules for every test in this repo
 
