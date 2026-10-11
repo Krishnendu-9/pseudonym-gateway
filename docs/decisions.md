@@ -11313,6 +11313,149 @@ provider).
     artifact of the method (with a mutant in place its own `find` is gone
     from the source), not a catch, and not counted above.
 
+#### Amendment 2026-10-11: the s1/p09 pair's counter prediction (registered before the run)
+
+Written 2026-10-11 05:18 UTC (10:48 IST), before any call of the pair. No
+code, no call. It replaces, as the counter prediction, the pair's "side
+observation" above, which is not edited: that text was written while S and
+U still stood, and they are now refuted (section 14, "Across both days").
+The pair itself, its command, its definitions and the outcome mapping are
+unchanged and restated here only so that the whole prediction is in one
+place.
+
+**Where the hypotheses stand.** A and S (formed before Oct 9's 11) and U
+(fitted to it) are refuted. **V, M and P survive, and all three were fitted
+after seeing the 11.** Oct 10 was their first test outside that data and
+tested only whether an unknown-field 400 counts. This run is their second
+out-of-sample test and **the first that can separate V from M**. As
+registered in section 14:
+
+- **V:** a 400 for an invalid value counts; every other failure does not.
+- **M:** a model-level 400 counts; every other failure does not.
+- **P:** every 200 counts, and each failed call counts independently with
+  probability 1 in 3 (Oct 9's 2 of 6; the registered rate, unchanged).
+- Under all three, a call answered 200 counts once (section 14, item 3's
+  premise), whatever the adapter then makes of it.
+
+**The kinds of 400, by Google's message**, as section 14 grouped them:
+_unknown field_ = `Invalid JSON payload received. Unknown name …` (p03,
+p04, p16, p17); _invalid value_ = `Invalid <field>: <value>. Valid values
+are: …` (p14, p15); _model-level_ = `… is not enabled for this model` (p05)
+or exactly `Request contains an invalid argument.` (p09). A 400 with any
+other message is a **new kind**: V and M are undefined for that call, and P
+still predicts. V and M name 400s only, so neither counts a 404 (the rules'
+text, not a choice made now).
+
+**1. The pair (restated).** `s1` then p09, `gemini-3.5-flash-lite`, one
+run of one process from one commit, 15 s apart, the command registered
+above. If `s1` is answered 404, the two-form probe sends `s1` once more as
+`models/gemini-3.5-flash-lite` (written s1′); if that is not a 200 the run
+stops before p09; if it is, p09 is sent with the same name (p09′). **Two
+calls, or three with the fallback.** A call succeeds on HTTP 200 with the
+adapter's outcome `ok`, and fails on HTTP 400. The outcomes, as mapped
+before:
+
+- **`s1` succeeds, p09 fails:** clean attribution; `none` goes on the
+  `values` entry, citing p09 and this pair. _Predicted._
+- **Both succeed:** p09's original refusal did not reproduce (transient, or
+  Google changed); `none` stays off the list.
+- **Both fail:** something about `s1` changed; `none` is unattributable and
+  stays off.
+- **`s1` fails, p09 succeeds:** fits no hypothesis; the list does not
+  change.
+- **No result:** any other answer for either call (a 200 that `complete()`
+  rejects, no answer within 120 s, a status other than 200 or 400), or the
+  run stopping after s1′; recorded, no conclusion, `none` stays off.
+
+**2. The counter: the Oct 11 bar.** The RPD chart's Oct 11 bar for
+`gemini-3.5-flash-lite` opens at 08:00 UTC (13:30 IST) on 2026-10-11 under
+the chart's UTC-8 label, 07:00 UTC under UTC−7, and closes 24 hours later.
+A run after 08:00 UTC today and before 07:00 UTC tomorrow is in it under
+both readings. **It holds only this run's calls if nothing else is sent to
+this model in that window** (item 5); no call to it is recorded on
+2026-10-11 so far. The bar's reading under each surviving hypothesis:
+
+_Two calls (`s1` answered on its first send):_
+
+| Outcome                                       | V                                  | M                                | P (1 in 3)                         |
+| --------------------------------------------- | ---------------------------------- | -------------------------------- | ---------------------------------- |
+| `s1` 200, p09 400 model-level (**predicted**) | **1**                              | **2**                            | 1 at 66.7%, 2 at 33.3%             |
+| `s1` 200, p09 400 invalid value               | 2                                  | 1                                | 1 at 66.7%, 2 at 33.3%             |
+| `s1` 200, p09 400 unknown field               | 1                                  | 1                                | 1 at 66.7%, 2 at 33.3%             |
+| `s1` 200, p09 400 new kind                    | undefined                          | undefined                        | 1 at 66.7%, 2 at 33.3%             |
+| both 200                                      | 2                                  | 2                                | 2                                  |
+| both 400                                      | invalid-value 400s (0–2)           | model-level 400s (0–2)           | 0 at 44.4%, 1 at 44.4%, 2 at 11.1% |
+| `s1` 400, p09 200                             | 1, or 2 if `s1`'s is invalid value | 1, or 2 if `s1`'s is model-level | 1 at 66.7%, 2 at 33.3%             |
+
+_Three calls (`s1` 404, s1′ 200, then p09′):_
+
+| Outcome                                  | V         | M         | P (1 in 3)                         |
+| ---------------------------------------- | --------- | --------- | ---------------------------------- |
+| p09′ 400 model-level (predicted, if 404) | **1**     | **2**     | 1 at 44.4%, 2 at 44.4%, 3 at 11.1% |
+| p09′ 400 invalid value                   | 2         | 1         | 1 at 44.4%, 2 at 44.4%, 3 at 11.1% |
+| p09′ 400 unknown field                   | 1         | 1         | 1 at 44.4%, 2 at 44.4%, 3 at 11.1% |
+| p09′ 400 new kind                        | undefined | undefined | 1 at 44.4%, 2 at 44.4%, 3 at 11.1% |
+| p09′ 200                                 | 2         | 2         | 2 at 66.7%, 3 at 33.3%             |
+
+- **What the 404 changes.** It adds a failed call, so P gains one more
+  chance of 1 in 3; V and M do not count it. **This assumes a 404 for this
+  model name is counted in this model's bar at all**, which nothing has
+  shown (Attempts 1 to 3's 404s went to other model names). If it is not,
+  P's figures for three calls are the two-call ones. V and M are the same
+  either way.
+- If the run stops after s1′ (no result for the pair), the bar is still
+  read and computed by each rule from what Google answered (two calls); a
+  call with no answer within 120 s leaves every hypothesis undefined for
+  it, since whether Google processed it is unknown.
+- **Which readings separate V from M.** They differ exactly when the run's
+  invalid-value 400s and model-level 400s differ in number. **In the
+  predicted outcome, two calls or three, V gives 1 and M gives 2: the run
+  separates them.** An invalid-value p09 separates them the other way (V 2,
+  M 1). They are **not** separated if both calls succeed (2 and 2), if p09's
+  400 is an unknown field (1 and 1), if it is a new kind (both undefined),
+  or in any outcome where the two counts are equal.
+- **Against P.** No reading inside P's range can exclude it. In the
+  predicted two-call outcome, a 2 favours M over P by 3 to 1 (1 against
+  0.333) and a 1 favours V over P by 1.5 to 1 (1 against 0.667); with three
+  calls, 2.25 to 1 each way (1 against 0.444). A 0, or more than P's maximum
+  (2 with two calls, 3 with three), fits no surviving hypothesis and is
+  recorded as such.
+- _For the reader only, not a separate hypothesis:_ at the pooled rate 2 of
+  8 (1 in 4; Wilson 95% 7.1% to 59.1%), P's predicted-outcome figures would
+  be 1 at 75%, 2 at 25% (two calls) and 1 at 56.25%, 2 at 37.5%, 3 at
+  6.25% (three calls). P's registered rate stays 1 in 3.
+
+**How a reading is read.** It supports a hypothesis only if it equals that
+hypothesis's entry in the row for the actual outcome (for P, if it is in
+P's range, with the likelihoods above). **No hypothesis is added or
+re-fitted after the reading.** A reading of 1 also equals S's number; S
+stays refuted by Oct 9 and is not revived by it.
+
+**3. When to read.** The per-day hover on the 28-day range, no earlier
+than 30 minutes after the run's last call, and again on **2026-10-13 or
+later**. Both are reported. **The 2026-10-13 (or later) reading is the
+result**; the first is recorded as an early reading, and if the two
+differ, the later stands. (The Oct 10 bar's own second reading, registered
+for 2026-10-12 or later, is separate and unaffected: this run cannot land
+in it.)
+
+**4. The point prediction (the assistant's).** The outcome: **`s1` 200,
+p09 400 `INVALID_ARGUMENT` `Request contains an invalid argument.`, two
+calls, medium confidence**, as registered. The counter: **1, low
+confidence.** Given that outcome, V says 1 and M says 2, and nothing seen
+so far favours one over the other (Oct 9's 2 counted failures are p14 and
+p15 under V, p05 and p09 under M; that is how both were fitted). Weighting
+V, M and P equally, 1 comes out at 55.6% and 2 at 44.4%; the lean to 1 is
+P's, so a 1 is the weaker result for telling the three apart, and a 2 the
+stronger.
+
+**5. Scheduling constraint: decision H's end-to-end call does not run
+today.** Its one registered call to Gemini (decision H, above) would land
+in the same Oct 11 bar and make this counter unattributable. **It waits
+until after 13:30 IST (08:00 UTC) on 2026-10-12**, when the Oct 11 bar has
+closed under both axis readings. The same holds for any other call to
+`gemini-3.5-flash-lite` before then.
+
 <a id="adr-042"></a>
 
 ## ADR-042: Rule 1 is kept by compliance; the permission deny list is a partial backstop (2026-10-08)
