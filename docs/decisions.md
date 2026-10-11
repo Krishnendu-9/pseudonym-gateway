@@ -9507,6 +9507,123 @@ enabled for this model`, and p09's) counts and others do not.
   successful calls (Oct 7's 3 of 3 does not rule it out), even a 0 with
   p18 accepted fits.
 
+**The counter after Attempt 6: first reading (recorded 2026-10-11; the
+second reading, on 2026-10-12 or later, is the result, so the question is
+not closed).**
+
+- **The reading (the user's).** 2026-10-11 09:24 IST (03:54 UTC), the RPD
+  chart's Oct 10 bar for `gemini-3.5-flash-lite`, 28-day range, hovered:
+  **1 of 500.** Recorded as the registered first reading. It meets the
+  registered conditions: Attempt 6's last call ended at 18:56:40.965 UTC on
+  2026-10-10 (p18's `recordedOn`), before 07:00 UTC on 2026-10-11, so it is
+  in the Oct 10 bar under either axis reading; and the reading came about 9
+  hours later, not within 30 minutes. The Oct 10 bar was still open when
+  read (it closes at 07:00 or 08:00 UTC on 2026-10-11). No other call to
+  this model is recorded in it, and the `none` pair (section 16) may not
+  start before 08:00 UTC. **If the 2026-10-12 reading differs, the later
+  one is the result** (the registered rule).
+- **Against the registered row.** p16 and p17 were 400 unknown field and
+  p18 a 200, as predicted, so the row is "200 (predicted)": A 3, S 1, U 3,
+  V 1, M 1; P gives 1 at 44.4%. **The reading equals S, V and M and
+  contradicts A and U.** As registered, a 1 does not separate S, V and M,
+  and is not reported as support for S over P.
+
+**Across both days (the assistant's analysis, after the reading; no
+hypothesis is added).** With item 3's premise (a call answered 200 counts
+once), Oct 9 = 11 (read about 20 minutes and about 27 hours after Attempt 5) and Oct 10 = 1 (the first reading above). "Formed before the 11" means
+before Oct 9's figure was seen: A and S are section 13's question
+(failures count, or they do not). "Fitted to the 11" means built to
+explain it: section 14 says so of U, V and M ("Three more, fitted after
+seeing 11"), and P takes its rate from Oct 9. **All six were registered
+before Attempt 6 ran**, so none was fitted to Oct 10.
+
+| Hypothesis                                  | Origin                      | Oct 9: 9 × 200, 6 × 400 | Oct 10: 1 × 200, 2 × 400 (unknown field) | Status                                                    |
+| ------------------------------------------- | --------------------------- | ----------------------- | ---------------------------------------- | --------------------------------------------------------- |
+| A: every call counts                        | formed before the 11        | 15, read 11             | 3, read 1                                | **refuted on both days**                                  |
+| S: only 200s count                          | formed before the 11        | 9, read 11              | 1, read 1                                | **refuted by Oct 9**, unless two requests went unrecorded |
+| U: a 400 for an unknown field counts        | fitted to the 11            | 11                      | 3, read 1                                | **refuted by Oct 10**                                     |
+| V: a 400 for an invalid value counts        | fitted to the 11            | 11                      | 1, read 1                                | consistent with both                                      |
+| M: a model-level 400 counts                 | fitted to the 11            | 11                      | 1, read 1                                | consistent with both                                      |
+| P: each failure counts with probability 1/3 | fitted to the 11 (its rate) | 9 to 15; rate from here | 1 at 44.4%                               | consistent with both; no reading can refute it            |
+
+- **Both hypotheses formed before the 11 are refuted, and every one still
+  standing was built after seeing it.** V, M and P agree with Oct 9 by
+  construction. Oct 10 is the only test any of them has faced outside the
+  data it was built on, and it tested one thing: whether a 400 for an
+  unknown field counts. V and M passed it with the same prediction S made.
+  So surviving is weak evidence for V, M or P.
+- **U was fitted too.** It is the fitted hypothesis Oct 10 refuted, not one
+  formed in advance.
+- **8 failed calls, 2 counts.** Over both days 8 calls were answered 400 (6
+  on Oct 9, 2 on Oct 10), and under item 3's premise 2 were counted (11 − 9
+  and 1 − 1), both on Oct 9: 2 of 8, Wilson 95% interval 7.1% to 59.1% (the
+  assistant's arithmetic; Oct 9 alone gave 9.7% to 70.0%). Which two is
+  still not known.
+- **What the second reading can change.** A's and S's refutations rest on
+  Oct 9 alone, read twice, and do not depend on the Oct 10 bar. U's
+  refutation and the Oct 10 half of the 2 of 8 rest on the first reading.
+  A different later reading is read against the same row by each rule (a 3,
+  for example, would leave U consistent and contradict V and M).
+
+**Could two requests on Oct 9 have gone unrecorded? Checked 2026-10-11
+against the code and the recordings; no live call.** S needs two more
+requests, answered 200, to this model on that day than the record shows.
+
+1. **No client library sent these calls.** `package.json` has no OpenAI or
+   Google client. `scripts/measure-gemini.ts` calls the adapter, whose
+   `post()` makes one `fetch` per call with no retry
+   (`src/providers/openai-compatible.ts`). The script stops on a 429 ("no
+   retries") and on any status other than 200 or 400. The OpenAI SDKs'
+   retry list (section 13, read from their READMEs on 2026-10-10:
+   connection errors, 408, 409, 429, 5xx) does not include 400 anyway, but
+   no SDK was in the path.
+2. **The script's only second send is the two-form probe**: one call after
+   a 404 on `s1`. Attempt 5 sent p01 to p15 and no `s1` (`attempt.json`).
+   It has 15 meta files, each with a recorded status of 200 or 400, each
+   call ending 15.4 to 16.6 s after the one before, with 15 s spacing.
+3. **Node's own `fetch`.** Read from the source bundled in Node 22.23.3
+   (undici 6.28.1), the Node on this machine on 2026-10-11 (`.nvmrc`;
+   `attempt.json` does not record the Node version). It re-sends a request
+   by itself only after a 421 response on a reused connection
+   (`httpNetworkOrCacheFetch`), and it follows redirects. The recordings
+   keep only the final response, so they cannot exclude either. **Neither
+   can rescue S:** each adds a response that is not a 200 before the final
+   one, and the final 200 is already counted.
+4. **Outside the run.** The workflows hold no secret and name no Google
+   URL, so CI could not use the key. On 2026-10-09 the gateway had no
+   Gemini provider (built 2026-10-11). The attempt folders are numbered
+   without a gap (1 to 6), and the live-run guard required a clean tree
+   before Attempt 5, so an earlier run that day would have left a folder
+   that was then committed or deleted. **Not checked:** whether a
+   committed fixture folder was later deleted (`git log` on
+   `test/fixtures/gemini-7b`: the assistant's `git -C` form was denied by
+   the permission settings and was not re-run another way, rule 11).
+   **Not checkable from here:** a deleted uncommitted folder (it leaves no
+   trace in git), and any use of the key outside this repository (AI
+   Studio itself, another tool, another person).
+
+**Conclusion: nothing in the record allows for two unrecorded requests, so
+S is refuted on the record.** It would survive only if something this
+record cannot see sent two requests to `gemini-3.5-flash-lite` on
+2026-10-09 and both were answered 200. Only the user can say whether the
+key was used outside this repository that day.
+
+**Two slips, recorded.**
+
+- **The user's own summary on the night of 2026-10-10 treated the two days
+  separately, and so missed that S fails on Oct 9** (recorded at the
+  user's request).
+- **The registered text above made the same slip.** It says A and S "are
+  both already contradicted by Oct 9's 11", then keeps S in the prediction
+  table and names it among the three hypotheses behind the point
+  prediction ("S, V and M all give 1 if p18 is accepted"). The predicted
+  number is unaffected (V and M give 1 too), but its support was overstated
+  by one hypothesis that was already out. Section 16's side observation for
+  the `none` pair also lists S and U, and is not edited. Read as each
+  rule's own prediction, with A, S and U out, its predicted outcome (`s1`
+  200, p09 refused) separates M (2) from V (1); P fits either. This is a
+  reading of that registered table, not a new registration.
+
 ### 15. Phase 7c: the three deferred decisions (options, 2026-10-10; waits for the user)
 
 Written on 2026-10-10. **Nothing here is decided, and no call to Google was
@@ -10561,6 +10678,8 @@ placeholders kept. All three as predicted. By section 14's registered
 outcomes, option 3 refuses `seed` and `frequency_penalty` at any value, and
 refuses `presence_penalty` only away from 0, forwarding 0 unchanged. The
 counter part of section 14 is recorded separately, once read.
+_Added 2026-10-11: the first reading is at the end of section 14 ("The
+counter after Attempt 6: first reading")._
 
 **Does the registered definition assume a flat list? No.** Section 13's
 decision says "a field **or value** measured as refused", and section 14
