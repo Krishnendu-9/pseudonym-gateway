@@ -64,6 +64,14 @@ import { ProviderError, type ProviderChatRequest } from '../src/providers/provid
 import { PlaceholderMapping } from '../src/redaction/mapping.js';
 import { checkTree, gitIn } from './live-run-guard.js';
 
+// This URL and the profile name in `provider()` below duplicate
+// PROVIDER_BASE_URL_DEFAULTS (src/config/env.ts) and GEMINI_PROFILE
+// (src/providers/gemini.ts) on purpose (ADR-041 section 16, amendment
+// item 5). The script is frozen with its recordings: Attempts 1 to 6 were
+// made by it as it stands, and a re-run of a registered command must send
+// what was registered. Imported from src/, a later change to the product's
+// URL or profile would silently change what that command sends. Do not
+// replace either with an import.
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
 const SPACING_MS = 15_000;
 const TIMEOUT_MS = 120_000;
@@ -251,6 +259,7 @@ const provider = (baseUrl: string, modelName: string = model) =>
       maxResponseBytes: 1_048_576,
       maxStreamBytes: 33_554_432,
     },
+    // Not GEMINI_PROFILE, on purpose: see GEMINI_BASE_URL above.
     { name: 'gemini' },
   );
 

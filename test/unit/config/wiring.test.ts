@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { loadEnv } from '../../../src/config/env.js';
 import {
+  baseUrlWarning,
   chatProvider,
   modelNameWarning,
   nameOptions,
@@ -147,6 +148,47 @@ describe('refusals and the models/ warning', () => {
     expect(modelNameWarning(gemini('gemini-3.5-flash'))).toBeUndefined();
     expect(modelNameWarning(gemini('models/gemini-3.5-flash'))).toBeUndefined();
     expect(modelNameWarning(gemini('models/models/gemini-3.5-flash-lite'))).toBeUndefined();
+  });
+});
+
+// ADR-041 section 16, amendment item 3.
+describe('baseUrlWarning', () => {
+  const WARNING =
+    'PSEUDONYM_PROVIDER_BASE_URL is a plain http:// loopback address and ' +
+    'PSEUDONYM_PROVIDER_API_KEY is set: the key is sent unencrypted, in the ' +
+    'Authorization header, to a local address';
+
+  it("warns with a key and a loopback plain-HTTP URL, Ollama's default included", () => {
+    const base = { PSEUDONYM_MODEL: 'qwen3:8b', PSEUDONYM_PROVIDER_API_KEY: 'key' };
+    expect(baseUrlWarning(loadEnv(base))).toBe(WARNING);
+    for (const url of ['http://127.0.0.1:11434/v1', 'http://[::1]:8080/v1']) {
+      const env = loadEnv({ ...base, PSEUDONYM_PROVIDER_BASE_URL: url });
+      expect([url, baseUrlWarning(env)]).toEqual([url, WARNING]);
+    }
+  });
+
+  it('never prints the URL, its host, user name or password', () => {
+    const env = loadEnv({
+      PSEUDONYM_MODEL: 'qwen3:8b',
+      PSEUDONYM_PROVIDER_API_KEY: 'key',
+      PSEUDONYM_PROVIDER_BASE_URL: 'http://canary-user:canary-pass@127.0.0.1:11434/v1',
+    });
+    const warning = baseUrlWarning(env) ?? '';
+    expect(warning).toBe(WARNING);
+    for (const part of ['canary-user', 'canary-pass', '127.0.0.1', '11434']) {
+      expect([part, warning.includes(part)]).toEqual([part, false]);
+    }
+  });
+
+  it('no warning without a key, or over HTTPS', () => {
+    expect(baseUrlWarning(loadEnv({ PSEUDONYM_MODEL: 'qwen3:8b' }))).toBeUndefined();
+    const gemini = loadEnv({
+      PSEUDONYM_PROVIDER: 'gemini',
+      PSEUDONYM_MODEL: 'gemini-model',
+      PSEUDONYM_PROVIDER_API_KEY: 'gemini-key',
+    });
+    expect(baseUrlWarning(gemini)).toBeUndefined();
+    expect(baseUrlWarning(env)).toBeUndefined();
   });
 });
 

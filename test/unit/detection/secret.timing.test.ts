@@ -58,10 +58,13 @@ describe('secrets glued to other text', () => {
     expectLinearTime(make, 100_000, work);
   });
 
+  // The last two units are key-shaped, so they are put together at run time
+  // (ADR-022): typed whole, the hygiene test's credential check would flag
+  // them (ADR-041 section 16, amendment item 4).
   it.each([
     ['a dotless chain of JWT headers', 'eyJabcdefghij-'],
-    ['a chain of JWT header and payload parts', 'eyJabcdefghij.eyJabcdefghij-'],
-    ['a chain of keys', 'sk-Abc123456789012345678-'],
+    ['a chain of JWT header and payload parts', ['eyJabcdefghij', 'eyJabcdefghij-'].join('.')],
+    ['a chain of keys', ['sk', 'Abc123456789012345678-'].join('-')],
   ])('reads %s in linear time', (_name, unit) => {
     const make = (n: number): string => unit.repeat(Math.ceil(n / unit.length));
     expectLinearTime(make, 25_000, detect);

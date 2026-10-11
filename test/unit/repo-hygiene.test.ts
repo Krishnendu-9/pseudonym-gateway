@@ -14,7 +14,13 @@
 // passport or voter ID number on the same line as its keyword (ADR-031):
 // typed, it could be somebody's. A date of birth is not checked: a date
 // with no name beside it identifies nobody, and the tests of its costs type
-// ordinary dates next to birth words on purpose.
+// ordinary dates next to birth words on purpose. Nor a credential in a known
+// format (ADR-041 section 16, amendment item 4): an API key, token or
+// private key the secret detector validates (ADR-022). Typed, it could be a
+// real one, and a recorded provider fixture is where one would land; tests
+// put theirs together at run time (ADR-009, ADR-022). Keyword assignments
+// (`API_KEY = "[SECRET_1]"`) are not checked: 206 were measured, and an
+// allowlist that long is where a real key would hide.
 //
 // Failures report file and line only, never the number.
 
@@ -26,10 +32,17 @@ import { isValidCard } from '../../src/detection/card.js';
 import { hasContext } from '../../src/detection/context.js';
 import { ipCandidates, ipValueKey } from '../../src/detection/ip.js';
 import { passportCandidates } from '../../src/detection/passport.js';
+import { secretCandidates } from '../../src/detection/secret.js';
 import { upiCandidates } from '../../src/detection/upi.js';
 import { voterCandidates } from '../../src/detection/voter.js';
 import { isSafeIp } from '../../eval/lint.js';
-import { passportNumber, upiId, voterId } from '../../src/synthetic/identifiers.js';
+import {
+  passportNumber,
+  secret,
+  SECRET_KINDS,
+  upiId,
+  voterId,
+} from '../../src/synthetic/identifiers.js';
 import { createRng } from '../../src/synthetic/rng.js';
 import { PUBLISHED_TEST_CARDS } from '../fixtures/published-test-cards.js';
 
@@ -79,6 +92,10 @@ const hasIdWithKeyword = (line: string): boolean =>
   [...passportCandidates(line), ...voterCandidates(line)].some((candidate) =>
     hasContext(line, candidate, candidate.type),
   );
+
+// Known formats only: a validated detection (ADR-003, ADR-022).
+const hasKnownSecret = (line: string): boolean =>
+  [...secretCandidates(line)].some((candidate) => candidate.validated);
 
 const HELD_OUT = join(ROOT, 'eval', 'held-out.txt');
 
@@ -146,5 +163,24 @@ describe('repo hygiene: no real-looking personal values in files', () => {
     for (const reserved of ['203.0.113.5', '2001:0DB8::1', '::ffff:cb00:7105', '255.255.255.0']) {
       expect([reserved, hasPublicIp(`from ${reserved} today`)]).toEqual([reserved, false]);
     }
+  });
+
+  it('contains no API key, token or private key in a known format (the held-out file has its own lint)', () => {
+    expect(findings(hasKnownSecret, [HELD_OUT])).toEqual([]);
+  });
+
+  it('the credential check flags every known format put together at run time, not a keyword assignment', () => {
+    const r = createRng(1);
+    // Every generated kind except the two that are not formats (ADR-022).
+    const formats = SECRET_KINDS.filter((kind) => kind !== 'password' && kind !== 'token');
+    expect(formats.length).toBe(9);
+    for (const kind of formats) {
+      expect([kind, hasKnownSecret(`key ${secret(r, kind)} end`)]).toEqual([kind, true]);
+    }
+    const pem = ['-----BEGIN', 'RSA PRIVATE KEY-----'].join(' ');
+    expect(hasKnownSecret(pem)).toBe(true);
+    expect(hasKnownSecret(`password: ${secret(r, 'password')}`)).toBe(false);
+    expect(hasKnownSecret(`api_key = ${secret(r, 'token')}`)).toBe(false);
+    expect(hasKnownSecret('API_KEY = "[SECRET_1]"')).toBe(false);
   });
 });

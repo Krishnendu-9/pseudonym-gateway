@@ -47,7 +47,12 @@ const ALNUM = 'A-Za-z0-9';
 // (2026-09-30). Minimums are the documented lengths or shorter: providers
 // change their lengths, and a long prefix needs little after it to be
 // unmistakable.
-const PREFIXED = [
+//
+// Exported for one reader only: test/unit/eval/lint-secret-superset.test.ts,
+// which checks that the held-out lint's own key rule flags a key in every
+// format listed here. The lint itself never imports this (ADR-021 item 3:
+// it is written without the detectors).
+export const KEY_FORMATS: readonly string[] = [
   // OpenAI (sk-, sk-proj-, sk-svcacct-, sk-admin-), Anthropic (sk-ant-) and
   // the providers that copied the prefix. "sk-" is short, so these also
   // need a digit or a capital letter (checked below):
@@ -70,7 +75,8 @@ const PREFIXED = [
   `AIza[${ALNUM}_-]{35,}`,
   `npm_[${ALNUM}]{36,}`,
   `hf_[${ALNUM}]{30,}`,
-].join('|');
+];
+const PREFIXED = KEY_FORMATS.join('|');
 
 // A PEM private key block, to its END line; with no END line, to the end of
 // the text (fail closed: a key cut off by a length limit is still a key).

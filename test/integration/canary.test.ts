@@ -12,6 +12,11 @@
 // (an ordinary HTTP error) and after it (an error event at the end of a
 // 200 stream), a client that leaves mid-stream, and a successful stream.
 //
+// The provider's own API key is a canary too (ADR-041 section 16, amendment
+// item 2), in every scenario: never logged, never echoed, never in an error
+// body or a handled error. Each scenario that reaches the provider also
+// checks that the key did reach it, so a clean result is never vacuous.
+//
 // Canaries are generated in memory (ADR-009) or come from published test
 // lists (the Visa test card). A failure names the scenario, the canary's
 // label, where it was found and the form, never the value.
@@ -20,7 +25,7 @@ import { request as httpRequest } from 'node:http';
 import type { LightMyRequestResponse } from 'fastify';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import { passportNumber, voterId } from '../../src/synthetic/identifiers.js';
+import { passportNumber, secret, voterId } from '../../src/synthetic/identifiers.js';
 import { createRng } from '../../src/synthetic/rng.js';
 import { aadhaar, groupDigits, indianMobile, pan } from '../../src/synthetic/values.js';
 import {
@@ -52,7 +57,9 @@ const CANARIES = {
   email: 'canary.person@example.com',
   phone: `+91 ${indianMobile(rng)}`,
   name: 'Canarina Testwala',
-  apiKey: 'sk-canary-3f9a8b7c6d5e4f3a2b1c0d9e',
+  // Key-shaped, so put together at run time (ADR-022; the hygiene test's
+  // credential check, ADR-041 section 16, amendment item 4).
+  apiKey: ['sk', 'canary-3f9a8b7c6d5e4f3a2b1c0d9e'].join('-'),
   // The keyword-only types (ADR-031). A date of birth with its month as a
   // word, so its squashed form cannot turn up inside a log timestamp.
   passport: passportNumber(rng),
@@ -62,6 +69,32 @@ const CANARIES = {
 
 const ALL = Object.values(CANARIES).join(' and ');
 const AUTH = { authorization: `Bearer ${CANARIES.apiKey}` };
+
+// The provider's own key (ADR-041 section 16, amendment item 2): the
+// gateway's configuration, never part of a request, so it is not in ALL.
+// Every gateway here is started with it, and the mock providers echo the
+// headers they receive, as a provider's "invalid key" message might. It is
+// meant to reach the provider, so the mock's captured request is not a place
+// the check looks; everywhere else it is a canary like the rest. A
+// Gemini-shaped key, made in memory from its own seed, so the canaries above
+// keep their values (ADR-009, ADR-022).
+const PROVIDER_KEY = secret(createRng(4_243), 'google');
+const PLANTED = { ...CANARIES, providerKey: PROVIDER_KEY };
+
+const start = (overrides: Parameters<typeof startTestGateway>[0] = {}): Promise<TestGateway> =>
+  startTestGateway({ apiKey: PROVIDER_KEY, ...overrides });
+
+/**
+ * The positive control: the key reached the provider, so a scenario that
+ * finds no canary has had one to find. A boolean, so a failure never prints it.
+ */
+const keyReachedProvider = (g: TestGateway): boolean =>
+  g.provider.requests.length > 0 &&
+  g.provider.requests.every((r) => r.headers.authorization === `Bearer ${PROVIDER_KEY}`);
+
+/** What a provider that echoes everything it was sent would quote. */
+const echoed = (req: RecordedRequest): string =>
+  `${JSON.stringify(req.headers)} ${req.body} ${ALL}`;
 
 function describeError(error: unknown): string {
   if (!(error instanceof Error)) return String(error);
@@ -91,7 +124,7 @@ function findCanaries(scenario: string, captured: Captured): string[] {
   for (const [place, text] of places) {
     if (text === undefined) continue;
     const expanded = expandCaptured(text);
-    for (const [label, value] of Object.entries(CANARIES)) {
+    for (const [label, value] of Object.entries(PLANTED)) {
       const form = leakedForm(expanded, value);
       if (form) found.push(`${scenario}: canary ${label} in ${place} (${form})`);
     }
@@ -243,7 +276,7 @@ describe('canary: request errors never echo a value', () => {
     ];
 
   it.each(cases)('%s → %i', async (scenario, status, body, headers = {}) => {
-    gateway = await startTestGateway();
+    gateway = await start();
     const captured = await capture(gateway, () => post(gateway!, body(), { ...AUTH, ...headers }));
     expect(captured.status).toBe(status);
     expect(findCanaries(scenario, captured)).toEqual([]);
@@ -251,7 +284,7 @@ describe('canary: request errors never echo a value', () => {
   });
 
   it('an unknown path with canaries in the path and query → 404', async () => {
-    gateway = await startTestGateway();
+    gateway = await start();
     const url = `/v1/${encodeURIComponent(CANARIES.email)}?d=${encodeURIComponent(ALL)}`;
     const captured = await capture(gateway, () =>
       gateway!.app.inject({ method: 'GET', url, headers: AUTH }),
@@ -261,7 +294,7 @@ describe('canary: request errors never echo a value', () => {
   });
 
   it('too many distinct values of one type (PlaceholderLimitError) → 422', async () => {
-    gateway = await startTestGateway();
+    gateway = await start();
     const many = Array.from({ length: 10_000 }, (_, i) => `u${i}@example.com`).join(' ');
     const captured = await capture(gateway, () => post(gateway!, chatBody(`${ALL} ${many}`), AUTH));
     expect(captured.status).toBe(422);
@@ -273,7 +306,8 @@ describe('canary: request errors never echo a value', () => {
 describe('canary: provider failures never echo a value', () => {
   // The provider only ever sees placeholders. These responders put the
   // canaries into what it sends back anyway, so that any code path copying
-  // a provider's error body or a parse error's message would be caught.
+  // a provider's error body or a parse error's message would be caught. Each
+  // also quotes the headers it received, the provider's key among them.
   const cases: [string, number, Responder, number?][] = [
     [
       // A 400 since option 4b (ADR-041 sections 13 and 15); a 502 before.
@@ -281,40 +315,40 @@ describe('canary: provider failures never echo a value', () => {
       400,
       (req, res) => {
         res.writeHead(400, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ error: { message: `bad request: ${req.body} ${ALL}` } }));
+        res.end(JSON.stringify({ error: { message: `bad request: ${echoed(req)}` } }));
       },
     ],
     [
       'provider 404',
       502,
-      (_req, res) => {
+      (req, res) => {
         res.writeHead(404, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ error: { message: `model ${ALL} not found` } }));
+        res.end(JSON.stringify({ error: { message: `model not found: ${echoed(req)}` } }));
       },
     ],
     [
       'provider 500',
       502,
-      (_req, res) => {
+      (req, res) => {
         res.writeHead(500, { 'content-type': 'text/plain' });
-        res.end(`internal error ${ALL}`);
+        res.end(`internal error ${echoed(req)}`);
       },
     ],
     [
       'provider answers invalid JSON containing canaries',
       502,
-      (_req, res) => {
+      (req, res) => {
         res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(`{"choices": [${ALL}]}`);
+        res.end(`{"choices": [${echoed(req)}]}`);
       },
     ],
     [
       'provider answers with a tool call',
       502,
-      (_req, res) => {
+      (req, res) => {
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end(
-          completionBody(ALL).replace(
+          completionBody(echoed(req)).replace(
             '"message":{',
             `"message":{"tool_calls":[{"id":"${CANARIES.name}"}],`,
           ),
@@ -324,9 +358,9 @@ describe('canary: provider failures never echo a value', () => {
     [
       'provider answers with the wrong shape',
       502,
-      (_req, res) => {
+      (req, res) => {
         res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ choices: [{ text: ALL }] }));
+        res.end(JSON.stringify({ choices: [{ text: echoed(req) }] }));
       },
     ],
     [
@@ -340,15 +374,16 @@ describe('canary: provider failures never echo a value', () => {
   ];
 
   it.each(cases)('%s → %i', async (scenario, status, responder, timeoutMs) => {
-    gateway = await startTestGateway(timeoutMs === undefined ? {} : { timeoutMs });
+    gateway = await start(timeoutMs === undefined ? {} : { timeoutMs });
     gateway.provider.respondWith(responder);
     const captured = await capture(gateway, () => post(gateway!, everywhere(), AUTH));
     expect(captured.status).toBe(status);
     expect(findCanaries(scenario, captured)).toEqual([]);
+    expect(keyReachedProvider(gateway)).toBe(true);
   });
 
   it('provider unreachable (connection refused) → 502', async () => {
-    gateway = await startTestGateway();
+    gateway = await start();
     await gateway.provider.close();
     const captured = await capture(gateway, () => post(gateway!, everywhere(), AUTH));
     expect(captured.status).toBe(502);
@@ -368,7 +403,7 @@ describe('canary: provider failures never echo a value', () => {
   it.each([false, true])(
     'a provider adapter that throws an Error quoting canaries → 500 (stream: %s)',
     async (stream) => {
-      gateway = await startTestGateway({
+      gateway = await start({
         chatProvider: throwing(
           () => new Error(`adapter failed on ${ALL}\n    at fake (${CANARIES.email}:1:1)`),
         ),
@@ -386,7 +421,7 @@ describe('canary: provider failures never echo a value', () => {
   it.each([false, true])(
     'a provider adapter that throws a non-Error value → 500 (stream: %s)',
     async (stream) => {
-      gateway = await startTestGateway({ chatProvider: throwing(() => ALL) });
+      gateway = await start({ chatProvider: throwing(() => ALL) });
       const captured = await capture(gateway, () =>
         post(gateway!, { ...everywhere(), stream }, AUTH),
       );
@@ -398,7 +433,7 @@ describe('canary: provider failures never echo a value', () => {
 
 describe('canary: the success path and a client abort', () => {
   it('a successful request logs no canary and handles no error', async () => {
-    gateway = await startTestGateway({ placeholderInstruction: true });
+    gateway = await start({ placeholderInstruction: true });
     gateway.provider.respondWith((_req, res) => {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(completionBody('Done: [EMAIL_1], [AADHAAR_1].'));
@@ -407,6 +442,9 @@ describe('canary: the success path and a client abort', () => {
     expect(captured.status).toBe(200);
     expect(findCanaries('success', { logs: captured.logs, errors: captured.errors })).toEqual([]);
     expect(gateway.errors).toHaveLength(0);
+    // The response legitimately holds restored values, never the provider's key.
+    expect(leakedForm(expandCaptured(captured.response!), PROVIDER_KEY)).toBeUndefined();
+    expect(keyReachedProvider(gateway)).toBe(true);
     // The client's Authorization header is never forwarded. (The body still
     // carries the name and API-key canaries: names are detected from Phase
     // 6 and secrets from Phase 5, so today they go out as written - the
@@ -423,7 +461,7 @@ describe('canary: the success path and a client abort', () => {
   it('a client that disconnects mid-request: the provider call is aborted, logs stay clean', async () => {
     // A provider timeout far longer than the deadline below: the upstream
     // call must end because the client left, not because it timed out.
-    gateway = await startTestGateway({ timeoutMs: 20_000 });
+    gateway = await start({ timeoutMs: 20_000 });
     let upstreamClosed!: () => void;
     const closed = new Promise<void>((resolve) => (upstreamClosed = resolve));
     await gateway.app.listen({ port: 0, host: '127.0.0.1' });
@@ -451,6 +489,7 @@ describe('canary: the success path and a client abort', () => {
     // Let the gateway finish handling the aborted request.
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(gateway.provider.requests).toHaveLength(1);
+    expect(keyReachedProvider(gateway)).toBe(true);
     const captured = {
       logs: gateway.logs.join(''),
       errors: gateway.errors.map(describeError).join('\n'),
@@ -465,9 +504,9 @@ describe('canary: streaming (ADR-019)', () => {
     stream: true,
     stream_options: { include_usage: true },
   });
-  // Echoes the redacted request and the canaries, as a provider's error
-  // message might.
-  const echo = (req: RecordedRequest): string => `${req.body} ${ALL}`;
+  // Echoes the headers, the redacted request and the canaries, as a
+  // provider's error message might.
+  const echo = echoed;
   const first = piece('Working on it. ');
 
   // Failures before the first chunk: an ordinary HTTP error.
@@ -513,11 +552,12 @@ describe('canary: streaming (ADR-019)', () => {
   ];
 
   it.each(before)('before the first chunk: %s → %i', async (scenario, status, responder, opts) => {
-    gateway = await startTestGateway(opts ?? {});
+    gateway = await start(opts ?? {});
     gateway.provider.respondWith(responder);
     const captured = await capture(gateway, () => post(gateway!, streaming(), AUTH));
     expect(captured.status).toBe(status);
     expect(findCanaries(scenario, captured)).toEqual([]);
+    expect(keyReachedProvider(gateway)).toBe(true);
   });
 
   // Failures after the first chunk: 200, then an error event.
@@ -587,7 +627,7 @@ describe('canary: streaming (ADR-019)', () => {
   it.each(tooLarge)(
     'too large: %s → provider_response_too_large',
     async (scenario, responder, opts) => {
-      gateway = await startTestGateway(opts ?? {});
+      gateway = await start(opts ?? {});
       gateway.provider.respondWith(responder);
       const captured = await capture(gateway, () => post(gateway!, streaming(), AUTH));
       const body = captured.response!.slice(captured.response!.indexOf('\n') + 1);
@@ -600,13 +640,14 @@ describe('canary: streaming (ADR-019)', () => {
         'provider_response_too_large',
       ]);
       expect(findCanaries(scenario, captured)).toEqual([]);
+      expect(keyReachedProvider(gateway)).toBe(true);
     },
   );
 
   it.each(after)(
     'after the first chunk: %s → error event',
     async (scenario, responder, code, opts) => {
-      gateway = await startTestGateway(opts ?? {});
+      gateway = await start(opts ?? {});
       gateway.provider.respondWith(responder);
       const captured = await capture(gateway, () => post(gateway!, streaming(), AUTH));
       expect(captured.status).toBe(200);
@@ -615,11 +656,12 @@ describe('canary: streaming (ADR-019)', () => {
       expect(body.error?.error.code).toBe(code);
       expect(body.done).toBe(false);
       expect(findCanaries(scenario, captured)).toEqual([]);
+      expect(keyReachedProvider(gateway)).toBe(true);
     },
   );
 
   it('an adapter whose stream throws an Error quoting canaries → error event, internal_error', async () => {
-    gateway = await startTestGateway({
+    gateway = await start({
       chatProvider: {
         complete: async () => {
           throw new Error('unused');
@@ -642,7 +684,7 @@ describe('canary: streaming (ADR-019)', () => {
   });
 
   it('a failure after restored values were sent: the error event and the logs hold no canary', async () => {
-    gateway = await startTestGateway();
+    gateway = await start();
     gateway.provider.respondWith((req, res) =>
       streamed([piece('Mailed [EMAIL_1] about [AADHAAR_1]'), sseData({ error: echo(req) })])(
         req,
@@ -658,10 +700,12 @@ describe('canary: streaming (ADR-019)', () => {
     expect(
       findCanaries('flush then error', { ...rest, response: JSON.stringify(body.error) }),
     ).toEqual([]);
+    expect(leakedForm(expandCaptured(captured.response!), PROVIDER_KEY)).toBeUndefined();
+    expect(keyReachedProvider(gateway)).toBe(true);
   });
 
   it('a successful stream logs no canary and handles no error', async () => {
-    gateway = await startTestGateway({ placeholderInstruction: true });
+    gateway = await start({ placeholderInstruction: true });
     gateway.provider.respondWith(
       streamed(ollamaStreamEvents(['Done: [EMAIL_1], ', '[AADHAAR_1].'], { usage: true })),
     );
@@ -671,13 +715,15 @@ describe('canary: streaming (ADR-019)', () => {
       findCanaries('stream success', { logs: captured.logs, errors: captured.errors }),
     ).toEqual([]);
     expect(gateway.errors).toHaveLength(0);
+    expect(leakedForm(expandCaptured(captured.response!), PROVIDER_KEY)).toBeUndefined();
+    expect(keyReachedProvider(gateway)).toBe(true);
     const outbound = expandCaptured(gateway.provider.requests[0]!.body);
     const detectable = ['aadhaar', 'card', 'pan', 'email', 'phone'] as const;
     expect(detectable.filter((label) => leakedForm(outbound, CANARIES[label]))).toEqual([]);
   });
 
   it('a client that disconnects mid-stream: the provider stream is closed, logs stay clean', async () => {
-    gateway = await startTestGateway({ timeoutMs: 20_000 });
+    gateway = await start({ timeoutMs: 20_000 });
     let upstreamClosed!: () => void;
     const closed = new Promise<void>((resolve) => (upstreamClosed = resolve));
     await gateway.app.listen({ port: 0, host: '127.0.0.1' });
@@ -710,6 +756,7 @@ describe('canary: streaming (ADR-019)', () => {
       errors: gateway.errors.map(describeError).join('\n'),
     };
     expect(findCanaries('client abort mid-stream', captured)).toEqual([]);
+    expect(keyReachedProvider(gateway)).toBe(true);
     const lines = gateway.logs.map((l) => JSON.parse(l) as Record<string, unknown>);
     expect(lines.some((l) => l.msg === 'stream failed')).toBe(false);
   });

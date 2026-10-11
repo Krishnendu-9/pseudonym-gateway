@@ -75,6 +75,23 @@ export function modelNameWarning(env: Env): string | undefined {
   );
 }
 
+/**
+ * A start-up warning when the provider's key will be sent over plain HTTP
+ * (ADR-041 section 16, amendment item 3). loadEnv already refused every
+ * plain-HTTP base URL that is not loopback while a key is set, so this is
+ * the loopback case: it starts, and says so. Names the variables, never the
+ * URL, which can carry a user name and password.
+ */
+export function baseUrlWarning(env: Env): string | undefined {
+  if (env.PSEUDONYM_PROVIDER_API_KEY === undefined) return undefined;
+  if (new URL(env.PSEUDONYM_PROVIDER_BASE_URL).protocol !== 'http:') return undefined;
+  return (
+    'PSEUDONYM_PROVIDER_BASE_URL is a plain http:// loopback address and ' +
+    'PSEUDONYM_PROVIDER_API_KEY is set: the key is sent unencrypted, in the ' +
+    'Authorization header, to a local address'
+  );
+}
+
 export function serverConfig(env: Env): ServerConfig {
   const refusals = modelRefusals(env);
   return {

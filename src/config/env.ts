@@ -7,11 +7,38 @@ type Provider = (typeof PROVIDERS)[number];
  * The base URL each provider gets when PSEUDONYM_PROVIDER_BASE_URL is unset.
  * Ollama's is a local install's; Gemini's is the OpenAI-compatible endpoint
  * every Phase 7 measurement was sent to (ADR-041; scripts/measure-gemini.ts).
+ * Each is HTTPS or loopback, so the plain-HTTP rule below never refuses a
+ * default (pinned by a test).
+ *
+ * scripts/measure-gemini.ts keeps its own copy of Gemini's URL, on purpose
+ * (ADR-041 section 16, amendment item 5): the script is frozen with the
+ * recordings it made, and a re-run of a registered command must send what
+ * was registered. Change this one and the script must not follow.
  */
 export const PROVIDER_BASE_URL_DEFAULTS: Readonly<Record<Provider, string>> = {
   ollama: 'http://localhost:11434/v1',
   gemini: 'https://generativelanguage.googleapis.com/v1beta/openai/',
 };
+
+/**
+ * Whether a URL's host, as the URL parser reads it, is this machine (ADR-041
+ * section 16, amendment item 3): `localhost`, an IPv4 address in
+ * 127.0.0.0/8, or `[::1]`. A name that merely resolves to one
+ * (`127.0.0.1.nip.io`, `localhost.`) is not, nor is an IPv4-mapped IPv6
+ * address (`[::ffff:7f00:1]`). The parser has already lower-cased names,
+ * written every IPv4 form (`127.1`, `0x7f000001`) as four decimal parts, and
+ * shortened IPv6 (`[0:0:0:0:0:0:0:1]` is `[::1]`).
+ */
+export function isLoopbackHost(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '[::1]' || /^127(?:\.\d{1,3}){3}$/.test(hostname);
+}
+
+/** A plain-HTTP URL to anywhere but this machine. Anything else, unparsable included, is not. */
+function crossesNetworkInClear(url: unknown): boolean {
+  if (typeof url !== 'string' || !URL.canParse(url)) return false;
+  const { protocol, hostname } = new URL(url);
+  return protocol === 'http:' && !isLoopbackHost(hostname);
+}
 
 // "true"/"false" only: z.coerce.boolean() would turn the string "false" into true.
 const booleanFlag = (fallback: 'true' | 'false') =>
@@ -45,7 +72,8 @@ const envSchema = z
     // Defaults to the provider's own (PROVIDER_BASE_URL_DEFAULTS), applied
     // below once the provider is known.
     PSEUDONYM_PROVIDER_BASE_URL: z.url({ protocol: /^https?$/ }).optional(),
-    // Required for gemini (below); a local Ollama ignores it.
+    // Required for gemini (below); a local Ollama ignores it. While it is
+    // set, a plain-HTTP base URL must be loopback (below).
     PSEUDONYM_PROVIDER_API_KEY: z.string().min(1).optional(),
     // Local models on a CPU can take minutes for a long answer. Streaming
     // applies it to every wait instead: the headers, then each next piece.
@@ -97,6 +125,22 @@ const envSchema = z
   .refine(
     (env) => !(env.PSEUDONYM_PROVIDER === 'gemini' && env.PSEUDONYM_PROVIDER_API_KEY === undefined),
     { path: ['PSEUDONYM_PROVIDER_API_KEY'], when: () => true },
+  )
+  // A credential must not cross a network in clear (ADR-041 section 16,
+  // amendment item 3). With a key set, for any provider, a plain-HTTP base
+  // URL must be loopback; such a URL starts with a warning (baseUrlWarning,
+  // wiring.ts). With no key, any URL is accepted. Only a URL that is set is
+  // checked: every default passes (above). The issue names the variable,
+  // never the URL, which can itself carry a user name and password. Like the
+  // check above, it runs even when another variable is wrong and reads two
+  // fields, checked for type, so a half-parsed object is safe.
+  .refine(
+    (env) =>
+      !(
+        env.PSEUDONYM_PROVIDER_API_KEY !== undefined &&
+        crossesNetworkInClear(env.PSEUDONYM_PROVIDER_BASE_URL)
+      ),
+    { path: ['PSEUDONYM_PROVIDER_BASE_URL'], when: () => true },
   )
   .transform((env) => ({
     ...env,

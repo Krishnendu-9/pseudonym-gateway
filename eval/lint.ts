@@ -29,9 +29,35 @@ const PAN_SHAPE = /(?<![\p{L}\p{N}_])[A-Za-z]{5}[0-9]{4}[A-Za-z](?![\p{L}\p{N}_]
 // digits): no check digit, so the shape alone could be somebody's.
 const ID_SHAPE = /(?<![\p{L}\p{N}_])[A-Za-z](?:[A-Za-z]{2})?[0-9]{7}(?![\p{L}\p{N}_])/u;
 const ADDRESS = /[^\s@]@[^\s@]/u;
-// The start of a provider key, a JWT or a private-key block.
-const SECRET_SHAPE =
-  /(?<![A-Za-z0-9])(?:sk-[A-Za-z0-9]|[spr]k_(?:live|test)_|rzp_(?:live|test)_|gh[pousr]_|github_pat_|AKIA[0-9A-Z]|xox[baprs]-|AIza[0-9A-Za-z]|eyJ[A-Za-z0-9])|-----BEGIN/u;
+// The start of a provider key, a JWT or a private-key block. This list is
+// the lint's own, not imported from the secret detector (ADR-021 item 3):
+// it may flag more than the detector, never less, and a test checks that
+// (test/unit/eval/lint-secret-superset.test.ts), so a flag still says "this
+// looks like a key", never "the detector knows this". Where a prefix is
+// also an ordinary word or identifier (ASIA, npm_, hf_), the detector's
+// minimum length follows it.
+const SECRET_SHAPE = new RegExp(
+  '(?<![A-Za-z0-9])(?:' +
+    [
+      'sk-[A-Za-z0-9_-]',
+      '[spr]k_(?:live|test|prod)_',
+      'rzp_(?:live|test)_',
+      'gh[pousr]_',
+      'github_pat_',
+      'glpat-',
+      'AKIA[A-Za-z0-9]',
+      'ASIA[A-Za-z0-9]{16}',
+      'whsec_',
+      'xox[abeoprs]-',
+      'xapp-',
+      'AIza[A-Za-z0-9_-]',
+      'npm_[A-Za-z0-9]{36}',
+      'hf_[A-Za-z0-9]{30}',
+      'eyJ[A-Za-z0-9_-]',
+    ].join('|') +
+    ')|-----BEGIN',
+  'u',
+);
 
 // Reserved for documentation and testing (RFC 2606, RFC 6761): the label
 // "example", or a name ending in .test, .invalid or .localhost.

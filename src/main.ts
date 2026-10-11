@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadEnv } from './config/env.js';
 import {
+  baseUrlWarning,
   chatProvider,
   modelNameWarning,
   nameFinder,
@@ -69,6 +70,12 @@ if (hardening === undefined) {
 // section 16, decision B): it starts, but its refusals are not checked.
 const modelWarning = modelNameWarning(env);
 if (modelWarning !== undefined) process.stderr.write(`provider warning: ${modelWarning}\n`);
+
+// A key going over plain HTTP to a loopback address (ADR-041 section 16,
+// amendment item 3): it starts, but says so. Any other plain-HTTP address
+// with a key was refused by loadEnv.
+const urlWarning = baseUrlWarning(env);
+if (urlWarning !== undefined) process.stderr.write(`provider warning: ${urlWarning}\n`);
 
 // Names on: the gateway starts only with a name list that matches its pinned
 // hash, model files that match theirs, and a model that loads in its worker

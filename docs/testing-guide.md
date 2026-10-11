@@ -163,13 +163,45 @@ reports success on files it never read):
   tests; their outputs are pinned elsewhere (span SHA-256s, the list's
   hash test).
 - **Repo hygiene**: scans `src`, `test`, `scripts`, `eval`, `docs` and
-  `README.md`, files ending `.ts .js .mjs .cjs .json .md .txt`. Not read:
+  `README.md`, files ending `.ts .js .mjs .cjs .json .md .txt .sse` (`.sse`
+  added in Phase 7b for the recorded provider streams; until then the
+  `.sse` fixture was on the list below). Not read:
   `.env.example`, `.github/workflows/ci.yml`, `package.json`,
   `package-lock.json`, `tsconfig.json`, `vitest.config.ts`,
-  `eslint.config.js`, `LICENSE`, the dotfiles, and the `.sse` fixture
-  under `test/`. Run once over those 15 files on 2026-10-03: every rule
-  clean. Its "scans a meaningful number of files" test guards against
-  scanning nothing.
+  `eslint.config.js`, `LICENSE` and the dotfiles. Run once over those
+  files (and the `.sse` fixture) on 2026-10-03: every rule clean. Its
+  "scans a meaningful number of files" test guards against scanning
+  nothing.
+  - **A deliberate gap: three of its checks skip `eval/held-out.txt`.**
+    The passport/voter check, the IP check and the credential check
+    (known key formats, ADR-041 section 16, amendment item 4) never look
+    at the held-out file. A finding reports a file and a line, so a hit
+    there would point the detectors' author at a held-out case, which the
+    blind-set rule forbids (ADR-021; the held-out set is never read or
+    searched, and nobody finds out which of its cases do what). The file
+    has its own lint instead (`eval/lint.ts`, run on it by
+    `held-out.test.ts` and `npm run eval:lint`), written without the
+    detectors. For keys its `typed-secret` rule flags the start of a key,
+    JWT or private-key block typed outside a slot. The Aadhaar, card and
+    UPI checks do scan the held-out file.
+  - **The key part of that gap is closed (2026-10-11).** Until then the
+    lint's prefix list was shorter than the detector's (GitLab `glpat-`,
+    Stripe `whsec_` and `sk_prod_`, npm `npm_`, Hugging Face `hf_`, AWS
+    `ASIA`, Slack `xapp-`, `xoxe-`, `xoxo-`, and four narrower
+    first-character rules), so such a key typed into the held-out file
+    was flagged by neither check. All thirteen are fixed, and
+    `test/unit/eval/lint-secret-superset.test.ts` keeps it closed: it
+    builds a key in every format the detector validates (read from the
+    detector's `KEY_FORMATS`), plus JWTs and a PEM line, and fails if the
+    lint does not flag one. A format added to the detector without the
+    lint fails that test. The lint still does not import the detector
+    (ADR-021 item 3 and its note): it may flag more, never less.
+  - **Still open for the held-out file:** the passport/voter and IP
+    checks have no test tying the lint to them. Passport and voter shapes
+    have the lint's own `typed-id` rule. For IP addresses the lint checks
+    only literals inside slots (`ip-not-reserved`) and, in plain text, the
+    8-digit limit, so a public IPv4 address typed as plain text with 8
+    digits or fewer is flagged by neither check.
 - **README numbers**: `readme-facts.test.ts` checks the numbers that come
   from code or stored results, and `npm run eval` the generated block;
   numbers in prose that repeat evaluation output outside the block (the

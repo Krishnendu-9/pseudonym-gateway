@@ -39,8 +39,10 @@ export const MUTATIONS: readonly Mutation[] = [
     what: 'a missing key is hidden while another variable is wrong',
     file: ENV,
     tests: CONFIG_TESTS,
-    find: ', when: () => true }',
-    replace: ' }',
+    // Anchored on the key's path: since the credential step (ADR-041
+    // section 16, amendment item 3) the base-URL check has a `when` too.
+    find: "{ path: ['PSEUDONYM_PROVIDER_API_KEY'], when: () => true }",
+    replace: "{ path: ['PSEUDONYM_PROVIDER_API_KEY'] }",
   },
   {
     id: 'GP4',

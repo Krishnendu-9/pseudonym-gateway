@@ -1883,6 +1883,30 @@ enough to survive noise also survives small regressions.
    prefix. UPI IDs and secrets are never typed: a typed UPI ID could be a
    real one, and a key-shaped string can get a push blocked by GitHub
    secret scanning.
+
+   _Note, 2026-10-11 (item 3 unchanged):_ the lint's key-prefix list is
+   kept at least as wide as the secret detector's known formats **by a
+   test, no longer by hand** (`test/unit/eval/lint-secret-superset.test.ts`).
+   The test reads the detector's format list (`KEY_FORMATS`, exported from
+   `src/detection/secret.ts` for this test only), builds a key in every
+   format at run time (every prefix, with every alphabet character first),
+   plus JWTs and a PEM line, and fails if the detector validates one the
+   lint does not flag, so a format added to the detector without the lint
+   fails CI. The lint still never imports the detector, so the property
+   above holds: the lint may flag more than the detector, never less, and
+   a flag says "this looks like a key", never "the detector knows this".
+   The lists had drifted by hand: the lint lacked nine prefixes (`glpat-`,
+   `whsec_`, `sk_prod_`, `npm_`, `hf_`, `ASIA`, `xapp-`, `xoxe-`, `xoxo-`),
+   and the test found four narrower first-character rules (`sk-` before
+   `_` or `-`, `AKIA` before a lower-case letter, `AIza` before `_` or
+   `-`, a JWT whose parts continue `eyJ_` or `eyJ-`); all thirteen are
+   fixed. `ASIA`, `npm_` and `hf_` carry the detector's minimum length in
+   the lint, since each is also an ordinary word or identifier. The
+   held-out file passes the widened lint (run on 2026-10-11; its result
+   read as a total only). Mutations: `scripts/mutations/lint-secret-superset.ts`,
+   14 of 14 caught (D1 gives the detector a new format; the test reports
+   all 62 of its keys unflagged).
+
 4. **Scoring** (`eval/score.ts`). A value is _redacted_ when every one of
    its own characters is inside some detection of any type (separators and
    fixed text such as `+91` need not be); one character out makes it
@@ -11213,6 +11237,81 @@ to any provider).
   files were re-run against the first version of the fix, before the names
   were added: refusals 17 of 17, extra-content 12 of 12, option3-4b 26 of
   26, rate-limit 8 of 8; none mutates the lines the names changed.
+- **Re-run against the final code (2026-10-11, before the credential
+  step).** The sentence above was reasoned, not run: the four lists were
+  run against the first version of the fix. All four re-run against the
+  committed fix (`c037c33`): option3-4b 26 of 26, rate-limit 8 of 8,
+  refusals 17 of 17, extra-content 12 of 12; none skipped.
+
+#### Credential safety built (2026-10-11): items 2, 3 and 4, and item 5's comments
+
+**Built as ruled** (the amendment on part 1's open items; no call to any
+provider).
+
+- **Item 2, the key as a canary.** `test/integration/canary.test.ts`
+  starts every gateway with a Gemini-shaped provider key, made in memory
+  from its own seed (ADR-009), and checks it in every response, log line
+  and handled error, like the other canaries. It is not in any request.
+  The mock providers now quote the headers they receive in what they send
+  back, as a provider's "invalid key" message might. Every scenario that
+  reaches the provider also checks that the key did reach it (a boolean,
+  so a failure never prints it), so a clean result has had a key to find.
+  The success paths also check the key is not in the response.
+- **Item 3, plain-HTTP base URLs.** `src/config/env.ts`: with
+  `PSEUDONYM_PROVIDER_API_KEY` set, for any provider, a set `http://` base
+  URL whose host is not loopback (`isLoopbackHost`: `localhost`,
+  127.0.0.0/8, `[::1]`, as the URL parser reads the host) refuses to
+  start, naming `PSEUDONYM_PROVIDER_BASE_URL` only, listed beside other
+  wrong variables. A loopback one starts with `baseUrlWarning`
+  (`src/config/wiring.ts`, printed by `main.ts`), which names the two
+  variables and never the URL. Only a set URL is checked; a test pins that
+  every default is HTTPS or loopback. **Read from the parser:** `127.1`,
+  `0x7f000001` and `2130706433` are read as `127.0.0.1`, and
+  `[0:0:0:0:0:0:0:1]` as `[::1]`, so they count as loopback;
+  `localhost.` (trailing dot) does not.
+- **Item 4, the hygiene scan.** `test/unit/repo-hygiene.test.ts` runs
+  `secretCandidates` over every line of every file it scans, held-out file
+  excepted, and fails on a validated (known-format) detection. Run before
+  the fakes were rebuilt, it failed at exactly the three the probe found
+  (`canary.test.ts` 1, `secret.timing.test.ts` 2: a JWT header-and-payload
+  chain and an `sk-` chain); each is now put together at run time, with
+  the same value. A positive control flags each of the nine generated key
+  formats and a PEM BEGIN line, and passes a keyword assignment.
+- **Item 5.** Comments at both copies: the script's `GEMINI_BASE_URL` and
+  its `{ name: 'gemini' }`, `PROVIDER_BASE_URL_DEFAULTS` and
+  `GEMINI_PROFILE`.
+- **Existing assertions changed:** none. No configuration in the tests,
+  the Docker smoke check or `.env.example` sets a key with a non-loopback
+  `http://` URL, so none that started before now refuses. Changed test
+  inputs, not assertions: the canary's mock providers quote headers (six
+  non-streamed responders and the streaming `echo`), and the two typed
+  key fakes are joined at run time. `scripts/mutations/gemini-provider.ts`
+  GP3's `find` is anchored on the key's path, since the new check has a
+  `when` too.
+- **Mutations:** `scripts/mutations/credential-safety.ts`, 22 of 22
+  caught: U1 to U12 (the rule), W1 to W4 (the warning), K1 to K5 (the
+  adapter puts the key in an error's message or cause, keeps a provider's
+  error body, puts the key in a successful answer, or never sends it), H1
+  (the hygiene check counting keyword detections too).
+- **Does the key canary catch what nothing else did? Measured, not
+  reasoned** (the user asked; first written as reasoning, and half wrong).
+  K1 and K2, exactly as tracked, were run against every `main` and
+  `timing` test file but `repo-hygiene.test.ts` (125 files; hygiene fails
+  on the old canary's typed key with or without a mutant), first with
+  `canary.test.ts` as it is at HEAD, then with this step's version. An
+  unmutated run with HEAD's version passed 3,346 of 3,346.
+  - **K2 (the key as the error's `cause`): caught only by the new
+    canary.** At HEAD no test caught it; with this step, four canary
+    scenarios (provider 400, 404, 500, and a streamed 400 before the first
+    chunk).
+  - **K1 (the key in the error's message): not unique.** At HEAD five
+    `ollama.test.ts` tests already caught it ("status N → http, with the
+    status and no body", which pin the message); this step adds the same
+    four canary scenarios. The reasoning that it would have survived was
+    wrong.
+  - Both runs also failed `mutation-lists.test.ts` under both mutants: an
+    artifact of the method (with a mutant in place its own `find` is gone
+    from the source), not a catch, and not counted above.
 
 <a id="adr-042"></a>
 
