@@ -2549,8 +2549,9 @@ own. So typed IFSCs may appear in tests and in the held-out file
    returned a bot-protection script page instead of the file, and I did
    not try to get around it. The page itself gives bank names, not codes.
    So the codes come from Razorpay's open-source copy of RBI's files
-   (`github.com/razorpay/ifsc`, MIT licence, `src/IFSC.json`, last changed
-   2026-09-01): the 260 four-letter keys that have at least one branch.
+   (`github.com/razorpay/ifsc`, MIT licence, Copyright (c) 2020 Razorpay,
+   `src/IFSC.json`, last changed 2026-09-01): the 260 four-letter keys that
+   have at least one branch.
    Its `banknames.json` has 1,511 codes, but the other 1,251 have no
    branch in RBI's list (payment-system participants and sub-members that
    use a sponsor bank's code), so an IFSC can never start with them.
@@ -7076,6 +7077,105 @@ runner-image change. It will **not be a continuation of this one.** This
 schedule existed to collect counted runs for a stopping rule that has now
 closed, and the run counts recorded above are final for that rule.
 
+### Amendment 2026-10-11: the licence chain, ruled (the user)
+
+The two open points under "The model's licence" (above) and two loose ends
+in the same chain, ruled by the user. The options were set out by the
+assistant the same day; the readings are not legal advice. **Recorded
+here; nothing else is changed yet.** The README, the code comment and the
+request to Xenova are pending (listed at the end).
+
+**Point 1: the downloaded files state no licence. Ruled: option (a) plus
+option (b).**
+
+- **(a)** The README states that Xenova's repository
+  (`Xenova/bert-base-multilingual-cased-ner-hrl`, at the pinned commit)
+  gives no licence, and that the files are used on the strength of its
+  card's statement that they are Davlan's AFL-3.0 model converted to ONNX.
+  The residual uncertainty is disclosed: if the card's statement were
+  wrong, the project would have no stated licence for these files.
+- **(b)** Alongside that, a request is opened asking Xenova to state
+  `afl-3.0` on the repository. **The user opens it** (a post on Hugging
+  Face is made in the user's name, not the assistant's). If Xenova adds the
+  licence, it arrives as a new commit. If the four files' bytes are
+  unchanged, their SHA-256 values match, and the pin can move to that
+  commit with no new measurement (a mirror of the same bytes needs none,
+  above). If Xenova never answers, (a) stands alone.
+- **(c) refused: convert Davlan's weights ourselves.** It would cost a
+  Python toolchain (declined in 6a), a new pin, every names figure
+  re-measured, and the held-out 41/45 lost for good: "What the held-out
+  measurement froze" (above) says that figure cannot be re-earned. **An
+  unrepeatable measurement is not worth trading for a licence tidy-up.**
+
+**Point 2: the training data's terms. Ruled: option (a), with one sentence
+from (c).**
+
+- The README lists Davlan's training sets (CoNLL 2002 and 2003, ANERcorp,
+  Europeana Newspapers, I-CAB, Latvian NER, Paramopama + Second HAREM,
+  MSRA), says their terms were not checked, and says that whether a
+  dataset's terms reach a model trained on it is legally unsettled.
+- From (c), one sentence: **names are off by default, and an operator who
+  enables the feature should assess those terms for their own use.**
+- **(b) refused: check each dataset's terms.** Eight corpora, and reading
+  them cannot settle the question that matters (whether their terms reach
+  the model).
+- **(d) refused: switch to a model with cleaner provenance.** It would
+  orphan every names figure for a question that stays open anyway.
+
+**Loose end 1: Razorpay's IFSC data. Ruled: add the copyright notice MIT
+asks for, wherever the data is cited.** The bank codes in
+`src/detection/ifsc.ts` come from `github.com/razorpay/ifsc` (ADR-025),
+whose licence is "The MIT License (MIT)", "Copyright (c) 2020 Razorpay"
+(read from the repository's `LICENSE` on 2026-10-11). The citations name
+the licence but not the copyright line, which MIT asks for; **this closes
+a known non-compliance.** Added today where this record cites the data
+(ADR-025). Pending, as one line each: `src/detection/ifsc.ts` (its header
+comment), `README.md` and `docs/user-manual.md`. _The assistant's note,
+for the user to weigh, not a ruling:_ MIT's text asks that "the above
+copyright notice and this permission notice" be included; a one-line
+notice naming the licence (with a link) is the common practice, but the
+literal reading also wants the permission notice's text, for example in
+the header of the file that holds the codes.
+
+**Loose end 2: the recorded Gemini answers. Closed, on the user's
+reading.** The repository publishes Gemini's recorded answers as fixtures
+(`test/fixtures/gemini-7b/`). **The user's reading, 2026-10-11, of
+Google's Gemini API Additional Terms**
+(`https://ai.google.dev/gemini-api/terms`): Google "won't claim ownership
+over that content"; responsibility for how it is used and shared sits with
+the user; and there is no general prohibition on publishing output. The
+redistribution restriction (no caching, framing, syndicating, reselling,
+analysing or training on results) applies specifically to Grounding with
+Google Search, which this project does not use. **To be revisited if
+grounding is ever enabled.** Recorded as the user's reading, with its date
+and link; the assistant did not read the terms for this.
+
+**What constrains the choice, as set out before the rulings (unchanged by
+them).** AFL-3.0 permits the use; running the model for other people over
+a network is an External Deployment, which AFL treats as distribution; the
+conditions (keep notices, no endorsement by the licensor's name, a
+reasonable effort to obtain users' assent when distributing, the licence
+ending for a patent claimant) fall on whoever deploys it, which is why
+`fetch:model` prints the licence and its link. The project's MIT `LICENSE`
+is unaffected: the model is neither bundled in the repository nor in the
+Docker image. No dependency is copyleft. Google's free-tier terms do not
+bear on the model's licence (the name model runs locally and never reaches
+Google).
+
+**Checked for the Docker image, not acted on:** `@huggingface/tokenizers`
+0.2.0, as installed, ships `LICENSE` (Apache-2.0, 11,357 bytes),
+`README.md`, `package.json`, `dist/` and `types/`, and **no `NOTICE`
+file** (none anywhere in the package; `package.json` declares
+`Apache-2.0`). Apache-2.0 §4(d) asks that a distributed work's `NOTICE`
+file be kept; with none shipped there is nothing of that kind to carry,
+and §4(a)'s copy of the licence is already inside the package. Whether the
+upstream source repository has a `NOTICE` was not checked. The image is
+not published.
+
+**Pending (the user's or a later step's):** the README text for points 1
+and 2 and the Razorpay line; the Razorpay line in `src/detection/ifsc.ts`
+and `docs/user-manual.md`; the request to Xenova (the user).
+
 <a id="adr-037"></a>
 
 ## ADR-037: Person names in the request path, against a fake model (Phase 6b step 3, 2026-10-03; amends ADR-003, ADR-013)
@@ -10821,6 +10921,19 @@ A stream in which `usage` arrives before the finish, or more than once,
 used to fail with `provider_bad_response`; it now succeeds, for every
 provider, not only Gemini (bug-log 75; "Bug 75 fixed", below). The README
 must tell someone upgrading that requests which used to fail now succeed._
+
+_Added 2026-10-11 (the user): with the free-tier terms, the README says
+that Google's terms for the Unpaid Services say "Do not submit sensitive,
+confidential, or personal information to the Unpaid Services", and that
+preventing exactly that is what this gateway does: the product is the
+mitigation for the provider's own stated restriction. (Section 4 records
+the shorter quote, "Do not submit sensitive, confidential, or personal
+information"; the README quotes the terms as written at the time it is
+built.) *The assistant's note, for the wording:* the README must keep this
+within the promise. The gateway keeps the personal values it detects from
+reaching the provider; detection is measured, not complete, and person
+names are off by default, so a value it misses is still submitted as
+written._
 
 **The two error codes, checked against OpenAI's documentation
 (2026-10-11).** `unsupported_parameter` and `unsupported_value` were
