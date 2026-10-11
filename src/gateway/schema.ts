@@ -95,7 +95,7 @@ function unsupportedFeature(body: Record<string, unknown>): GatewayError | undef
     if (!isRecord(entry)) continue;
     const at = `messages[${i}]`;
     if (Object.hasOwn(entry, 'name')) {
-      return unsupported(`${at}.name is not supported: names cannot be redacted yet`);
+      return unsupported(`${at}.name is not supported: a message name is never redacted`);
     }
     if (entry.role === 'tool' || entry.role === 'function' || Object.hasOwn(entry, 'tool_calls')) {
       return unsupported(`${at}: tool and function calling is not supported`);

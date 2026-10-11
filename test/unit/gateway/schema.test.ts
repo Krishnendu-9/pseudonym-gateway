@@ -126,7 +126,7 @@ describe('parseChatRequest: unsupported features, each with its own message', ()
   it.each([
     [
       { role: 'user', name: 'x', content: 'hi' },
-      'messages[0].name is not supported: names cannot be redacted yet',
+      'messages[0].name is not supported: a message name is never redacted',
     ],
     [
       { role: 'tool', content: 'hi', tool_call_id: 'x' },
@@ -176,7 +176,7 @@ describe('parseChatRequest: unsupported features, each with its own message', ()
       { role: 'user', name: 'x', content: 'b' },
     ];
     expect(rejection({ model: 'm', messages }).message).toBe(
-      'messages[1].name is not supported: names cannot be redacted yet',
+      'messages[1].name is not supported: a message name is never redacted',
     );
   });
 });

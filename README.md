@@ -123,6 +123,14 @@ What Pseudonym does:
   message text and `stop` are redacted, numeric settings are forwarded,
   `user` is dropped, and anything else is rejected rather than forwarded
   ([ADR-014](docs/decisions.md#adr-014)).
+- **Two providers.** A local Ollama (the default) or Gemini, through
+  Google's OpenAI-compatible endpoint, behind one adapter with a profile
+  per provider. What a provider refuses is measured, never assumed from its
+  documentation, and kept in its profile by exact model name; a request
+  carrying a refused parameter is answered 400 before anything is sent
+  ([ADR-041](docs/decisions.md#adr-041); see
+  [Running locally](#running-locally) and
+  [Unsupported input](#unsupported-input)).
 - **Stateless by design.** Chat APIs resend the full history on every request, so
   Pseudonym re-pseudonymises it deterministically each time. The same value
   always gets the same placeholder (`[EMAIL_1]` in every message), without
@@ -902,7 +910,8 @@ rule was not changed after seeing this.
 ## Unsupported input
 
 Pseudonym handles text chat messages (system, user and assistant roles),
-streamed or not. Everything else is **rejected with a 4xx error**, never
+streamed or not. It reads text, not documents: a file, an image or a PDF
+is rejected, never opened. Everything else is **rejected with a 4xx error**, never
 forwarded unredacted ([ADR-014](docs/decisions.md#adr-014)):
 
 - a message `name` (it is never redacted, whether person names are on or
@@ -917,6 +926,22 @@ forwarded unredacted ([ADR-014](docs/decisions.md#adr-014)):
 - other endpoints (embeddings, `/v1/models`, …), bodies over 256 KiB, and
   anything that is not `application/json` (the body limit:
   [ADR-015](docs/decisions.md#adr-015)).
+
+**Parameters the provider is measured refusing.** For a provider and model
+with measured refusals, a request carrying one is answered with a 400 at
+once. Today that is Gemini's `gemini-3.5-flash-lite`: `seed` and
+`frequency_penalty` at any value, `presence_penalty` unless it is 0, and
+`reasoning_effort` set to `xhigh` or `max`. The code is
+`unsupported_parameter` for a field refused at any value and
+`unsupported_value` for a refused value, and `param` names the field; the
+message names neither the provider, the model nor the value. The check
+runs before name detection, before redaction and before anything is sent,
+so **a refused request sends nothing to the provider at all**. A refusal
+the profile does not know is still sent: the provider's own 400 then comes
+back as `provider_rejected_request` (below), and by then the redacted
+request has already gone out. Each entry rests on a recorded probe of that
+model (2026-10-09 and 2026-10-10;
+[ADR-041](docs/decisions.md#adr-041), section 16).
 
 The `user` and `safety_identifier` fields are accepted and dropped: they
 exist to identify the end user to the provider. Error messages never repeat
@@ -943,6 +968,51 @@ matches them: 516,575 bytes in 2,335
 events, 2,332 of them tokens, about 221 bytes per token
 ([ADR-020](docs/decisions.md#adr-020)).
 
+**Refusals and empty answers.** A refusal the provider names in its own
+`refusal` field reaches the client in OpenAI's shape: `content: null` and
+the refusal text, restored like any answer, restoration safety included;
+streamed, it arrives as `delta.refusal` chunks. A non-streamed message
+always carries `refusal`, `null` when there was none, as OpenAI's own
+response does. An answer with no text, no refusal and `finish_reason:
+"stop"` cannot be told from a refusal, so it is a 502
+`provider_empty_response`, streamed or not. Neither provider has been
+recorded naming a refusal: none of the 12 recorded Gemini answers carries
+a `refusal` key, and nor does the recorded Ollama stream
+([ADR-041](docs/decisions.md#adr-041), section 15).
+
+**Fields Pseudonym does not know are stripped from answers.** An answer is
+rebuilt field by field, so nothing else a provider adds reaches the client.
+Gemini adds `extra_content` (a `thought_signature`) to every answer, 12 of
+12 recorded (2026-10-07 to 2026-10-10); it is stripped, and only counted
+in the log (see [Threat model](#threat-model-summary)).
+
+## Upgrading: behaviour that changed
+
+Three changes on 2026-10-11 make some requests behave differently from
+before ([ADR-041](docs/decisions.md#adr-041), section 16):
+
+- **A provider 400 is a 400, no longer a 502.** It reaches the client as
+  `provider_rejected_request` ("the provider rejected the request", `param`
+  null), where it used to be a 502 `provider_error`. This holds for every
+  provider, Ollama included: Ollama answers a prompt longer than its
+  context window with an HTTP 400, which is now this 400. It is logged once
+  at `warn` with the provider's name and the status, and nothing of either
+  body. A client that retried a 502 will not retry this, which is the
+  point: the same request would be refused again.
+- **Streams with usage early or more than once now succeed.** A stream in
+  which `usage` arrives before the finish, or on more than one chunk, used
+  to fail with `provider_bad_response`; it now succeeds, for every
+  provider. Gemini sends `usage` on every chunk, as running totals, so
+  every Gemini stream with `stream_options.include_usage` used to fail. The
+  last usage is passed on, once, after the finish, as before. If a count
+  went down from one chunk to the next, one `warn` line, "provider usage
+  counts decreased", names which of prompt, completion and total did,
+  never their values (bug-log 75).
+- **A key with a plain-HTTP base URL off this machine refuses to start.**
+  See [Start-up messages](#start-up-messages): any configuration that
+  sets `PSEUDONYM_PROVIDER_API_KEY` with such a URL, Ollama's included,
+  used to start and now does not.
+
 ## Threat model (summary)
 
 **Protects against:** the AI provider seeing detected personal values, and
@@ -961,6 +1031,26 @@ anything your application
 logs before
 calling Pseudonym; a compromised Pseudonym host; prompt injection that
 manipulates answers (only the URL-exfiltration path is mitigated).
+
+**Google's free tier.** Gemini's API terms for the Unpaid Services say that
+Google uses the content submitted "to provide, improve, and develop Google
+products" and that "human reviewers may read, annotate, and process your
+API input and output" (terms last modified 2026-04-28, read 2026-10-07),
+and they ask: "Do not submit sensitive, confidential, or personal
+information to the Unpaid Services" (as read on 2026-10-11). Pseudonym
+narrows that exposure to the values it detects; it does not remove it.
+In the generated main cases with names off, the default, 198 of 1,683
+labelled personal values are sent as written: all 153 person names, and
+45 of the other 1,530 values (the results block above, 2026-10-06). That
+gap is why the figures are published, per type, rather than a claim that
+nothing personal leaves. Names are off by default because they failed the
+speed and false-positive limits set before measuring, not because the gap
+is small: with them off, every name goes to Google as written. An operator
+using the free tier either switches them on, with their measured cost and
+the names they still miss, or accepts that every name is sent
+([ADR-035](docs/decisions.md#adr-035),
+[ADR-040](docs/decisions.md#adr-040),
+[ADR-041](docs/decisions.md#adr-041)).
 
 **Inside Pseudonym:** the mapping from placeholders back to real values
 exists only in memory for one request, and is never logged, stored or put in
@@ -1061,8 +1151,9 @@ for it, is in the [decision record](docs/decisions.md).
 
 ## Running locally
 
-Requires Node.js 22.20+ and, to actually talk to a model,
-[Ollama](https://ollama.com) with a model pulled. The demo model, a 4B
+Requires Node.js 22.20+ and, to actually talk to a model, either
+[Ollama](https://ollama.com) with a model pulled or a Gemini API key
+([below](#gemini-instead-of-ollama)). The demo model, a 4B
 instruct model that runs on a CPU, is
 `ollama pull qwen3:4b-instruct-2507-q4_K_M` (already set in
 `.env.example`). The tests do not need Ollama.
@@ -1121,6 +1212,51 @@ person names on it answers 503 `{"status":"unhealthy"}` while the name model
 is held by a call past its timeout, and from a crash on, until the process
 is restarted
 ([ADR-037](docs/decisions.md#adr-037)).
+
+### Gemini instead of Ollama
+
+Set `PSEUDONYM_PROVIDER=gemini`, `PSEUDONYM_PROVIDER_API_KEY` and
+`PSEUDONYM_MODEL` (for example `gemini-3.5-flash-lite`, the model whose
+refusals were measured). The key is required: without it Pseudonym refuses
+to start. The base URL defaults to
+`https://generativelanguage.googleapis.com/v1beta/openai/`. Google calls
+this OpenAI-compatible endpoint "still in beta", and everything this README
+says about Gemini was measured against that compatibility layer (2026-10-07
+to 2026-10-10), not against OpenAI's own API, which this project does not
+call because it costs money. Before sending anything, read
+[Google's free-tier terms](#threat-model-summary)
+([ADR-041](docs/decisions.md#adr-041)).
+
+### Start-up messages
+
+Written to standard error. None of them prints a key, a URL or any request
+text.
+
+- `provider warning: PSEUDONYM_MODEL "…" differs only by a leading
+"models/" from "…"`: the configured model is one `models/` prefix away
+  from a model with measured refusals. It starts, but requests for it are
+  not checked against those refusals before sending.
+- `provider warning: PSEUDONYM_PROVIDER_BASE_URL is a plain http://
+loopback address and PSEUDONYM_PROVIDER_API_KEY is set`: a key is sent
+  unencrypted to an address on this machine. It starts.
+- `Invalid environment variables: PSEUDONYM_PROVIDER_BASE_URL`, when a key
+  is set and the base URL is plain `http://` to anywhere but this machine
+  (`localhost`, 127.0.0.0/8 or `[::1]`, as the URL parser reads the host; a
+  name that merely resolves to one does not count). It refuses to start, so
+  that a key never crosses a network in clear. **This is a breaking change
+  for any configuration that sets a key with such a URL, Ollama's
+  included:** it used to start. With no key set, any URL is accepted as
+  before.
+- `Invalid environment variables: PSEUDONYM_PROVIDER_API_KEY`, with
+  `PSEUDONYM_PROVIDER=gemini` and no key. It refuses to start.
+- `names warning: ONNX Runtime's telemetry cannot be turned off on
+Windows`: names on, Windows only (see the
+  [threat model](#threat-model-summary)).
+- `hardening off: PSEUDONYM_DISABLE_HARDENING=true; dumps and the debugger
+are not checked`, or `hardening warning: …` and `hardening problem: …`
+  from the start-up guard; a problem refuses to start
+  ([ADR-016](docs/decisions.md#adr-016),
+  [ADR-047](docs/decisions.md#adr-047)).
 
 ## Running in Docker
 
