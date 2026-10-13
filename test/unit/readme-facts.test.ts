@@ -109,6 +109,46 @@ describe('the README says what the names baseline stored', () => {
   });
 });
 
+// The threat model's free-tier figures: how many labelled personal values
+// the generated main cases send as written with names off (ADR-040), read
+// from the baseline `npm run eval` compares with. The stored sent count is
+// a total per part, not per type, so the split into names and the rest is
+// checked two ways: every PERSON value is missed by detection (so none is
+// redacted, and all are among those sent), and the rest of the sent count
+// equals the other types' values that detection left unredacted.
+describe('the README says what the evaluation baseline stored', () => {
+  const baseline = JSON.parse(readFileSync(join(ROOT, 'eval', 'baseline.json'), 'utf8')) as {
+    measuredOn: string;
+    generated: {
+      types: Record<string, { values: number; redacted: number; missed: number }>;
+      sent: Record<string, { values: number; sent: number }>;
+    };
+  };
+  const { types, sent } = baseline.generated;
+  const main = sent.main!;
+  const names = types.PERSON!;
+  const n = (x: number): string => x.toLocaleString('en-US');
+
+  it('values sent as written in the main cases, names off', () => {
+    expect(README).toContain(
+      `${n(main.sent)} of ${n(main.values)} labelled personal values are sent as written`,
+    );
+    expect(README).toContain(`(the results block above, ${baseline.measuredOn})`);
+  });
+
+  it('every person name among them, and the rest', () => {
+    expect(names.missed).toBe(names.values);
+    expect(README).toContain(`all ${n(names.values)} person names`);
+    const otherSent = main.sent - names.values;
+    const otherValues = main.values - names.values;
+    const otherUnredacted = Object.entries(types)
+      .filter(([type]) => type !== 'PERSON')
+      .reduce((sum, [, t]) => sum + t.values - t.redacted, 0);
+    expect(otherSent).toBe(otherUnredacted);
+    expect(README).toContain(`${n(otherSent)} of the other ${n(otherValues)} values`);
+  });
+});
+
 describe('the README says what the model measurement stored', () => {
   const stored = JSON.parse(readFileSync(join(ROOT, 'eval', 'model-rewrites.json'), 'utf8')) as {
     model: string;

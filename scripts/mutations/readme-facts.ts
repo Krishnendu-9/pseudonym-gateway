@@ -6,6 +6,8 @@
 // Written with the change they check. R1 to R9 change a number in the
 // README, the drift these checks exist for; B1 changes the stored baseline
 // instead, so the README no longer matches what eval:names compares with.
+// R10 to R13 and E1 to E3 (added 2026-10-13) do the same for the
+// threat model's free-tier figures and eval/baseline.json.
 
 import type { Mutation } from '../mutate.js';
 
@@ -78,5 +80,53 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: TESTS,
     find: '"recall": {\n      "hit": 501,',
     replace: '"recall": {\n      "hit": 500,',
+  },
+  readme(
+    'R10',
+    'the README says 199 of 1,683 values are sent',
+    'names off, the default, 198 of 1,683',
+    'names off, the default, 199 of 1,683',
+  ),
+  readme(
+    'R11',
+    'the README says all 152 person names are sent',
+    'all 153 person names, and',
+    'all 152 person names, and',
+  ),
+  readme(
+    'R12',
+    'the README says 46 of the other values are sent',
+    '45 of the other 1,530 values',
+    '46 of the other 1,530 values',
+  ),
+  readme(
+    'R13',
+    'the README dates the results block a day later',
+    '(the results block above, 2026-10-06)',
+    '(the results block above, 2026-10-07)',
+  ),
+  {
+    id: 'E1',
+    what: 'the stored baseline says 199 main values sent',
+    file: 'eval/baseline.json',
+    tests: TESTS,
+    find: '"values": 1683,\n        "sent": 198',
+    replace: '"values": 1683,\n        "sent": 199',
+  },
+  {
+    id: 'E2',
+    what: 'the stored baseline says one person name was found',
+    file: 'eval/baseline.json',
+    tests: TESTS,
+    find: '"partial": 0,\n        "missed": 153,\n        "detections": 0,',
+    replace: '"partial": 0,\n        "missed": 152,\n        "detections": 0,',
+  },
+  {
+    id: 'E3',
+    what: 'the stored baseline says one more card was redacted',
+    file: 'eval/baseline.json',
+    tests: TESTS,
+    find: '"CARD": {\n        "values": 153,\n        "redacted": 150,',
+    replace: '"CARD": {\n        "values": 153,\n        "redacted": 151,',
   },
 ];
