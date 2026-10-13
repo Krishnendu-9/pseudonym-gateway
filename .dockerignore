@@ -7,6 +7,8 @@
 !tsconfig.json
 !tsconfig.build.json
 !src/
+# Razorpay's MIT notice for the IFSC bank codes in src/ (ADR-046 amendment F).
+!THIRD-PARTY-NOTICES.md
 
 # Named again, last, because the last matching line wins: a "!" line added
 # above can never let these back in. .env holds the provider key; eval/

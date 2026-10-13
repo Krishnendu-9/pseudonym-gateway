@@ -55,6 +55,9 @@ ENV HOST=0.0.0.0 \
 # runs as the image's unprivileged "node" user, so it cannot change its own
 # code.
 COPY package.json ./
+# The MIT notice the compiled ifsc.js points to: the image is a copy of the
+# software (ADR-046 amendment F).
+COPY THIRD-PARTY-NOTICES.md ./
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/dist/src ./dist/src
 USER node

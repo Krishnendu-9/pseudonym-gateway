@@ -4,8 +4,9 @@
 //
 // It checks the built image, not the Dockerfile or .dockerignore:
 //  1. contents, from a listing of the whole exported filesystem: /app holds
-//     only dist/src, node_modules and package.json, and there is no .env
-//     file, eval/, test/, docs/, models/ or held-out set in it;
+//     only dist/src, node_modules, package.json and THIRD-PARTY-NOTICES.md
+//     (not empty), and there is no .env file, eval/, test/, docs/, models/
+//     or held-out set in it;
 //  2. configuration: a non-root user, the environment the image promises
 //     and a health check;
 //  3. the ADR-016 start-up guard is live: it refuses a core dump limit, an
@@ -126,14 +127,14 @@ const differences = (actual: Set<string>, expected: readonly string[]): string =
 const paths = await imagePaths();
 const app = paths.filter((p) => p.startsWith('app/'));
 const appTop = new Set(app.map((p) => head(p, 2)));
-const APP_TOP = ['app/dist', 'app/node_modules', 'app/package.json'];
+const APP_TOP = ['app/dist', 'app/node_modules', 'app/package.json', 'app/THIRD-PARTY-NOTICES.md'];
 check(
   'the image has a filesystem listing with /app in it',
   paths.length > 1000 && app.length > 0,
   `${paths.length} paths`,
 );
 check(
-  '/app holds only dist, node_modules and package.json',
+  '/app holds only dist, node_modules, package.json and THIRD-PARTY-NOTICES.md',
   appTop.size === APP_TOP.length && APP_TOP.every((p) => appTop.has(p)),
   differences(appTop, APP_TOP),
 );
@@ -152,6 +153,20 @@ for (const file of [
 ]) {
   check(`the image contains ${file}`, paths.includes(file));
 }
+// The MIT notice the compiled ifsc.js points to (ADR-046 amendment F): there,
+// and not empty, read by the image's own unprivileged user. The size comes
+// from wc in the image, not from the listing: tar's verbose format differs
+// between GNU tar and bsdtar.
+const notice = docker(
+  ['run', '--rm', '--entrypoint', 'wc', image, '-c', '/app/THIRD-PARTY-NOTICES.md'],
+  60_000,
+);
+const noticeBytes = Number(notice.stdout.trim().split(/\s+/)[0]);
+check(
+  '/app/THIRD-PARTY-NOTICES.md is there and not empty',
+  notice.status === 0 && noticeBytes > 0,
+  notice.status === 0 ? `${noticeBytes} bytes` : `exit ${notice.status}`,
+);
 const base = (p: string): string => p.slice(p.lastIndexOf('/') + 1);
 const envFiles = paths.filter((p) => base(p) === '.env' || base(p).startsWith('.env.'));
 check('no .env or .env.* file anywhere in the image', envFiles.length === 0, envFiles.join(', '));
