@@ -11822,6 +11822,209 @@ and this bar; each under section 14 item 3's premise that a call answered
   One bar, two calls, and a 3 to 1 ratio do not exclude P. Nor do they
   show whether the quota Google enforces counts as this display does.
 
+### 17. Decision H: the end-to-end calls (registered 2026-10-14 01:30 IST, 2026-10-13 20:00 UTC; before any call and before the run script)
+
+Written before any end-to-end call, and before the script that will make
+them exists. Committed and pushed before the run; the live-run guard
+refuses otherwise.
+
+**What it is for.** Everything about Gemini so far rests on unit tests,
+recorded fixtures and the adapter driven on its own. `measure-gemini.ts`
+runs `parseChatRequest`, `redactRequest` and the adapter. It never starts
+the server, never restores an answer and never runs name detection.
+**No real request has gone through the whole pipeline (detect, redact,
+send, restore) with Gemini configured as the product's provider.** These
+calls do that.
+
+**1. Two calls, not one: a recorded deviation from decision H.** Decision H
+registered one end-to-end call. This registers two, on the user's ruling:
+
+- **E1, names off** (the default).
+- **E2, names on.**
+
+The reason (the user's): E2 is not redundant. The name path has never run
+against a real provider: the worker thread, the PERSON namespace, and
+whether a model gives back `[PERSON_1]` the way a fake does. A model may
+not round-trip a placeholder it has not seen before. _The assistant's
+view:_ agreed. One more call costs 1 of 500 a day. A single call with names
+on would leave the default configuration untested end to end, and a single
+call with names off would leave the name path untested.
+
+A second, smaller deviation: decision H said its registration would be
+written "once the code exists". The gateway exists; the run script does
+not. This registration is written first, so **the script implements what
+is registered here and cannot shape it.**
+
+**2. The requests, fixed now.** Both: `POST /v1/chat/completions`, model
+`gemini-3.5-flash-lite` (the profile's model, so option 3 is live),
+`stream` not set, no other parameter, placeholder instruction off (the
+default), restoration safety on (the default). Every value is synthetic
+and safe to type in a file (rule 4, ADR-009): the published Visa test
+card, an `example.com` address, an address from the documentation range
+203.0.113.0/24, an IFSC, and a made-up name.
+
+- System message, both calls: `Be brief.`
+- **E1**, user message:
+
+  > Please check my refund. My card 4111 1111 1111 1111 was charged twice,
+  > the receipt went to billing.desk@example.com, I last logged in from
+  > 203.0.113.42, and the refund should go to IFSC HDFC0001234. In one
+  > sentence, repeat these four details back to me exactly as I gave them.
+
+- **E2**, user message: `My name is Meera Iyer.` followed by one space and
+  E1's message, unchanged.
+
+The planted values: the card (as written, and its 16 digits without
+spaces), the email address, the IP address, the IFSC and, in E2, the name
+(as written, and lower-cased).
+
+**The outgoing text predicted** (detection is deterministic, so this is
+exact). E1's user message, as sent to Google:
+
+> Please check my refund. My card [CARD_1] was charged twice, the receipt
+> went to [EMAIL_1], I last logged in from [IP_1], and the refund should
+> go to IFSC [IFSC_1]. In one sentence, repeat these four details back to
+> me exactly as I gave them.
+
+E2's is `My name is [PERSON_1].`, one space, then the same text. The
+system message goes unchanged.
+
+**3. The run script (to be written after this, committed and pushed before
+the run).** Requirements, so that the proof below exists:
+
+- It builds the gateway in-process **with the same wiring `main.ts` uses**
+  (`loadEnv`, `serverConfig`, `chatProvider`, and for E2 the name finder
+  from `startNameDetection` and `loadNameModel`). It listens on 127.0.0.1
+  and sends each request over HTTP, as a client would. The start-up guard
+  in `main.ts` is not part of what is tested.
+- `PSEUDONYM_PROVIDER=gemini`, `PSEUDONYM_MODEL` and `PSEUDONYM_NAMES` are
+  set by the script for each call, never taken from `.env`. Only the key
+  comes from `.env`.
+- **It captures every request to the provider's base URL** at `fetch`, the
+  last point inside the process before the bytes leave over TLS, and keeps
+  the body exactly as passed. The client's own request to the local server
+  is not captured as provider traffic.
+- **Before sending, it refuses** (exits, nothing sent) if any planted value
+  is in an outgoing provider body: as written, as digits without
+  separators, or lower-cased. This is `measure-gemini.ts`'s rule.
+- It records, per call:
+  - the client request;
+  - the gateway's status and body as the client received them;
+  - the outgoing provider body (`eN.sent.json`);
+  - the provider's status, response bytes and timings;
+  - the gateway's log lines;
+  - and, as the next unused `attempt-N` under `test/fixtures/gemini-7b/`,
+    an `attempt.json` with the commit, as every live run has.
+- **A dry run, before the live run:** the same script against a local stub
+  provider on 127.0.0.1 instead of Google. Same bodies, names on with the
+  real model. It writes outside the repository and sends nothing to Google.
+
+**4. Predicted outcome, per call.**
+
+|                                     | E1 (names off)                                                                       | E2 (names on)                                               |
+| ----------------------------------- | ------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
+| Gateway status to the client        | 200 (high)                                                                           | 200 (high)                                                  |
+| Google's status, finish             | 200, `stop` (high)                                                                   | 200, `stop` (high)                                          |
+| Outgoing body                       | the predicted text above; no planted value (certain if the dry run passes)           | the same, with `[PERSON_1]` (certain if the dry run passes) |
+| Card, email, IP, IFSC in the answer | all four restored (medium)                                                           | all four restored (medium)                                  |
+| The name in the answer              | (not sent)                                                                           | restored (low)                                              |
+| `extra_content`                     | none in the client's answer; one `info` line "provider extra content dropped" (high) | the same (high)                                             |
+
+"Restored" is ADR-017's classification (`eval/rewrites.ts`): each planted
+value is restored, held (restoration safety), rewritten (a form outside
+the grammar) or dropped. Invented placeholders are counted. The lower
+confidence for the name is the reason E2 exists: Gemini kept `[CARD_1]` and
+`[EMAIL_1]` verbatim in every `s1` so far, and has never been shown a
+`[PERSON_1]`.
+
+**What proves the provider received placeholders and never the values:
+`eN.sent.json`**, the outgoing provider body as captured at `fetch`. It is
+checked for every planted value in every form above. The gateway's log
+lines are checked the same way.
+
+- **Failure of the gateway's promise:** a planted value in an outgoing
+  body or a log line. Because of the refusal before sending, this shows as
+  **a run stopped before sending**, recorded and reported as the failure,
+  not as a leaked call.
+- **Failure of the round trip** (a gateway bug):
+  - a status other than 200 to the client when Google answered 200;
+  - a placeholder the model wrote in a form the grammar covers, outside
+    every unsafe region, left unrestored;
+  - `extra_content` reaching the client.
+- **Not a failure of the gateway:** the model rewriting or dropping a
+  placeholder (model behaviour, recorded and classified), or a provider
+  error (no result for that call).
+- **Dry-run gate:** if the dry run's outgoing text differs from the
+  registered text in any way, or holds a planted value, the live run waits
+  for an amendment. The bodies are not changed after the dry run without
+  one.
+- **What it cannot prove:** what Google received or kept. The capture
+  shows what left this process. TLS and everything past it are not
+  observable here.
+
+**5. The bar.** The bar for the display day 13:30 IST on 14 October to
+13:30 IST on 15 October (labelled Oct 14 on the chart's UTC-8 axis). Under
+UTC−7 it runs 12:30 to 12:30 IST. **The calls are in it under both readings
+if they start after 13:30 IST on 14 October and the last ends before 12:30
+IST on 15 October.**
+
+**The Oct 13 bar cannot be contaminated.** It closes at 13:30 IST on 14
+October under the UTC-8 reading and at 12:30 under UTC−7, so no call after
+13:30 IST can land in it under either reading. Its result reading
+(2026-10-15 or later) reads a closed bar, and these calls do not change it.
+Name detection runs locally and sends nothing to Google. The dry run sends
+nothing to Google.
+
+**6. A free observation: the Oct 14 bar.** M and P share section 14 item
+3's premise: a call answered 200 counts once, always. So whichever is
+right, **the bar should rise by exactly the number of calls Google answers
+200: by 2, if both are.**
+
+- **Baseline:** the bar read before the run (expected 0, recorded as read).
+- **A rise of more than the number of 200s:** something else was counted:
+  another request to this model in the bar, or a 200 counted twice. Either
+  undermines attributing any bar to a run.
+- **A rise of less:** a 200 went uncounted. That contradicts the premise
+  every hypothesis rests on, including the counts behind M, P and S's
+  refutation, and reopens the counter question.
+- **If a call is answered 400:** each rule recomputes as registered (M:
+  only a model-level 400 counts; P: 1 in 3). A call refused before sending
+  adds nothing.
+- **It does not separate M from P.** It tests what they share, at no extra
+  cost.
+
+**7. When, and the recordings.**
+
+- **Earliest start:** after 13:30 IST (08:00 UTC) on 14 October 2026, and
+  only once all of these hold:
+  - this section is committed and pushed;
+  - the run script is committed and pushed, with its offline tests;
+  - the dry run has passed;
+  - the Oct 14 bar's baseline has been read and recorded;
+  - the user has given the go-ahead.
+- **Latest:** the last call ends before 12:30 IST on 15 October. Later,
+  the calls stand but there is no counter result.
+- **Order:** E1, then E2, 15 s apart. Anything other than a 200 to the
+  client for E1 stops the run before E2. A 429, or any provider status
+  other than 200 or 400, stops it at once. Nothing is retried.
+- **Readings:**
+  - the bar's first reading no earlier than 30 minutes after the last call;
+  - the second on 2026-10-16 (IST) or later. The second is the result.
+- **Recordings:** in `test/fixtures/gemini-7b/attempt-N` (the next unused
+  N). **Before they are committed, the hygiene test is run with them on
+  disk.** It reads untracked files, and its credential scan reads every
+  `.json`.
+  - The client's answer holds the restored values. They are safe to type
+    by construction, but the model's own text may invent a value, which is
+    why the scan runs.
+  - A failure means the files are not committed, and the finding is
+    reported, not edited away.
+- **Disclosed:** E2 runs the name model on Windows, where ONNX Runtime's
+  telemetry cannot be turned off (ADR-046 amendment D). It carries no
+  request text.
+- **Not covered by this registration:** streaming end to end, an option 3
+  refusal end to end, and any model but `gemini-3.5-flash-lite`.
+
 <a id="adr-042"></a>
 
 ## ADR-042: Rule 1 is kept by compliance; the permission deny list is a partial backstop (2026-10-08)
