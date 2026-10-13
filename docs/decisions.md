@@ -9779,6 +9779,50 @@ the chart's quiet days. None of them excludes it.
   200, p09 refused) separates M (2) from V (1); P fits either. This is a
   reading of that registered table, not a new registration.
 
+#### Amendment 2026-10-14 00:35 IST (2026-10-13 19:05 UTC): the result, and the experiment closed
+
+Written after the second reading and before any further call. Nothing
+above is edited.
+
+**The second reading (the user's).** 2026-10-14 00:33 IST (2026-10-13
+19:03 UTC), the RPD chart's Oct 10 bar for `gemini-3.5-flash-lite`,
+28-day range, hovered: **1 of 500.** This is the reading registered "on
+2026-10-12 or later", and under the registered rule it is the result. It
+equals the first reading (1, at 2026-10-11 09:24 IST), so the two do not
+differ.
+
+**Against the registered row.** p16 and p17 were answered 400 unknown
+field and p18 200, as predicted, so the row is "200 (predicted)": A 3, S
+1, U 3, V 1, M 1, and P gives 1 at 44.4%.
+
+- **A and U predicted 3 and are refuted.**
+- **S was already refuted on the Oct 9 data** (it predicts 9, read 11),
+  and a reading of 1 does not revive it.
+- **V, M and P are all consistent with 1, and it does not separate them.**
+  V and M each give 1 with certainty; P gives it at 0.444.
+
+**The likelihood ratio, as registered:** a fixed rule over P is 1 against
+0.444, **about 2.25 to 1**. That is from a rate estimated on six calls, and
+it is the same for V and for M. **This is the weak outcome the registration
+anticipated** ("If p18 is accepted, a reading of 1 does not separate S, V
+and M"; a 0 or 1 is "not reported as support for S over P"). **It is not a
+result that distinguishes the survivors.** It refuted A and U, and nothing
+more.
+
+**"Still catching up" is ruled out for this bar too.** The Oct 10 bar read
+1 about 9 hours after Attempt 6's last call (2026-10-10 18:56 UTC), and 1
+again 2 days 15 hours later (2026-10-11 09:24 IST to 2026-10-14 00:33 IST),
+about 3.0 days after that call. A counter still catching up would have
+moved in that time. With Oct 9's two readings, about 27 hours apart
+(section 14, item 4), neither bar leaves room for that explanation.
+
+**Unchanged:** 2 of 8 failed calls counted over both days (Wilson 95% 7.1%
+to 59.1%), and which two on Oct 9 is still not known. U's refutation and
+the Oct 10 half of that count now rest on two equal readings, not one.
+
+**The experiment is closed.** No further reading of the Oct 10 bar is
+registered. V, M and P go into the s1/p09 pair (section 16) as they stood.
+
 ### 15. Phase 7c: the three deferred decisions (options, 2026-10-10; waits for the user)
 
 Written on 2026-10-10. **Nothing here is decided, and no call to Google was
@@ -11584,6 +11628,61 @@ in the same Oct 11 bar and make this counter unattributable. **It waits
 until after 13:30 IST (08:00 UTC) on 2026-10-12**, when the Oct 11 bar has
 closed under both axis readings. The same holds for any other call to
 `gemini-3.5-flash-lite` before then.
+
+#### Amendment 2026-10-14 00:36 IST (2026-10-13 19:06 UTC): the pair moves to a later display day (registered before the run)
+
+Written before any call of the pair. The amendment above is not edited.
+It named the Oct 11 bar, and **the pair never ran, so that bar received
+nothing from it.** Everything else in that amendment stands as written
+(the pair, its command, its definitions, the outcome mapping, both tables
+and the point prediction), except as changed here.
+
+**1. The bar.** The pair's calls will land in the bar for the display day
+running from **13:30 IST on 13 October 2026 to 13:30 IST on 14 October
+2026** (08:00 UTC to 08:00 UTC), as the chart's UTC-8 label places it; that
+label would name it Oct 13. The amendment above kept a second reading of
+the axis open (UTC−7, Pacific daylight time). Under it the same bar runs
+from 12:30 IST to 12:30 IST. So, as that amendment required of its window,
+**the run is in this bar under both readings only if its last call ends
+before 12:30 IST (07:00 UTC) on 14 October.**
+
+**2. The baseline.** The bar was read before the run by the user at
+2026-10-14 00:33 IST (2026-10-13 19:03 UTC): **0 of 500.** This is the
+baseline the prediction is measured against. The tables above count only
+the pair's own calls, so they predict the bar's reading only if it still
+holds nothing else when the pair runs. Any other call to
+`gemini-3.5-flash-lite` in this bar makes the reading unattributable
+(item 5).
+
+**3. When to read.** The first reading no earlier than 30 minutes after
+the run's last call. The second **on 2026-10-15 (IST) or later**, after
+the bar has closed under both readings. Both are reported. **The second
+reading is the result**: if the two differ, the later stands.
+
+**4. The hypotheses' predictions are unchanged.** In the predicted outcome
+(`s1` 200, p09 400 model-level, two calls) **V reads 1 and M reads 2**, and
+**P is as registered**: 1 at 66.7% and 2 at 33.3% with two calls, and the
+three-call figures in the second table. Every other row of both tables, the
+likelihoods against P, and the point prediction (1, low confidence) stand
+as written. **None depends on which bar the calls land in.** Each is a
+count of the pair's own calls under that hypothesis's rule, and no rule
+refers to a date. The bar matters in only two ways, both covered above:
+
+- the run must be inside one bar under both axis readings (item 1);
+- that bar must hold nothing else (items 2 and 5).
+
+The Oct 10 bar's second reading, now taken, equals its first (section 14,
+amendment of 2026-10-14). It changes no hypothesis's standing and no
+prediction. P's registered rate stays 1 in 3.
+
+**5. Decision H's end-to-end call must not share this bar.** It waits
+**until after 13:30 IST (08:00 UTC) on 14 October 2026**, when this bar has
+closed under both readings. The same holds for any other call to
+`gemini-3.5-flash-lite` before then.
+
+_The assistant's addition, not part of the user's ruling:_ if the pair does
+not run in this bar either, the bar receives nothing from it, and the
+counter prediction needs another amendment before any later run.
 
 <a id="adr-042"></a>
 
