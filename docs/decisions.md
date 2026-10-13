@@ -10928,6 +10928,11 @@ arrives before the first chunk (section 15).
   | `presence_penalty`  | `nonzero` |                | p05 (0.5) refused, p18 (0) accepted   |
   | `reasoning_effort`  | `values`  | `xhigh`, `max` | p14, p15 refused; p10 to p13 accepted |
 
+  _Added 2026-10-14: the entry shape is extended by an optional `accepted`
+  list on the `values` kind, with no fourth kind, and `none` joins the
+  refused values. See "Decision C, extended" under the s1/p09 pair's result
+  (after section 16's amendments)._
+
   Gemini's profile for any other model has no entries.
 
 - **D. `reasoning_effort: "none"` is not on the list** (the user overruled
@@ -11683,6 +11688,84 @@ closed under both readings. The same holds for any other call to
 _The assistant's addition, not part of the user's ruling:_ if the pair does
 not run in this bar either, the bar receives nothing from it, and the
 counter prediction needs another amendment before any later run.
+
+#### Result 2026-10-14 00:43 IST (2026-10-13 19:13 UTC): the s1/p09 pair (Attempt 7)
+
+The pair ran under the user's go-ahead of 2026-10-14, with the registered
+command, from commit `7fe446b` (the live-run guard: a clean tree, an
+ancestor of origin/main). It made two calls, with no 404 and so no
+`models/` fallback. Recorded in `test/fixtures/gemini-7b/attempt-7/`.
+
+- **Times:** from 2026-10-14 00:38:31.50 to 00:38:53.655 IST (2026-10-13
+  19:08:31.50 to 19:08:53.655 UTC). `s1` ended at 00:38:37.710 and p09
+  started 15.0 s later.
+- **`s1`:** 200, adapter `ok`. The answer kept both placeholders.
+- **p09** (`reasoning_effort: "none"`): 400 `INVALID_ARGUMENT`, with the
+  message exactly `Request contains an invalid argument.` This is **the
+  model-level kind, as registered.**
+
+**This is the registered outcome "`s1` succeeds, p09 fails": clean
+attribution.** `reasoning_effort: "none"` is now a measurement, not an
+attribution by elimination (decision D). It goes on the refused values,
+citing p09 (Attempt 5 and Attempt 7) and this pair. Google's own refusals
+of `xhigh` and `max` (p14, p15) still list `none` among the "Valid values";
+the measurement says otherwise, and the measurement is what the profile
+rests on.
+
+**The counter row is the predicted one:** V reads 1, M reads 2, and P gives
+1 at 66.7% and 2 at 33.3%. **The reading is still to come**, as registered:
+the first from 01:08:54 IST on 2026-10-14, and the result on 2026-10-15 or
+later. The last call ended before 12:30 IST, so the run is in the bar under
+both axis readings.
+
+**`s1`'s answer carried `extra_content` again**, as every recorded Gemini
+answer has (decision 3: stripped and counted).
+
+**Ruled the same day (the user): the `reasoning_effort` refusal names the
+allowed values.** Section 16 kept allowed values out of the `values`
+message: such a list would claim that every value outside it is refused,
+and only some values had been measured. **Now all seven values the
+gateway accepts for `reasoning_effort` have been measured on this model.**
+Checked against the recordings before writing:
+
+- `none`: 400 (Attempt 5 p09, Attempt 7 p09);
+- `minimal`, `low`, `medium`, `high`: each 200 with adapter `ok` (Attempt 5
+  p10 to p13, one call each, 2026-10-09 UTC);
+- `xhigh`, `max`: 400 (p14, p15).
+
+So the refused set (`none`, `xhigh`, `max`) and the allowed set
+(`minimal`, `low`, `medium`, `high`) together are exactly the schema's
+enum (`schema.ts`). To keep the rule kinds data only (decision C), a
+`values` rule may now carry `accepted` as well, with the probes that
+measured those values. The message names the allowed values only for a
+rule that carries `accepted`, and the profile test checks that refused and
+accepted are disjoint, together make up the field's whole enum, and each
+rests on a cited probe. Without `accepted`, the message is as before. One
+call per accepted value, on one day, is all the evidence for that half.
+
+**Decision C, extended (2026-10-14, the user's ruling; recorded against
+decision C, whose text is not edited).** Decision C made the entry shape a
+closed set of three rule kinds (`any`, `nonzero`, `values`), data only,
+each entry citing its probes. The extension:
+
+- **`accepted` is optional, and only on the `values` kind.** An entry
+  without it is exactly what decision C described, and its message is
+  unchanged.
+- **It stays data only:** a list of values and the probes that measured
+  them. No condition, no code in the profile.
+- **It adds no fourth rule kind.** What is refused is still decided by
+  `values` alone; `accepted` never changes whether a request is refused,
+  only what the refusal's message says.
+- **Why it exists:** a message naming allowed values makes a claim, that
+  each named value is accepted and that every other value is refused. The
+  claim needs citations, like any refusal. So the named values must be
+  listed in the profile, each backed by a cited probe that measured it,
+  and the profile test checks that the refused and accepted lists are
+  disjoint and together cover the field's whole enum.
+- **The evidence is uneven, and stays visible:** each accepted value rests
+  on one call (Attempt 5, p10 to p13), as do `xhigh` and `max` (p14,
+  p15). `none` rests on two (Attempt 5's p09, and Attempt 7's p09 with its
+  control `s1`).
 
 <a id="adr-042"></a>
 
