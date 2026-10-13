@@ -7176,6 +7176,22 @@ not published.
 and 2 and the Razorpay line; the Razorpay line in `src/detection/ifsc.ts`
 and `docs/user-manual.md`; the request to Xenova (the user).
 
+_Added 2026-10-14 (the user's ruling, given in conversation and recorded
+here): `THIRD-PARTY-NOTICES.md` at the repository root holds Razorpay's
+full MIT notice (the copyright line, the permission paragraph and the
+disclaimer), because MIT asks for "the above copyright notice and this
+permission notice", and the ruling above names only the copyright line;
+`src/detection/ifsc.ts`, the user manual and the README point to it. The
+Pending items above are closed (README in a23c4ba; `ifsc.ts` and the user
+manual with this file), except the request to Xenova, which stays the
+user's and is not recorded as opened. In the Docker image (built and
+checked 2026-10-14), the compiled `/app/dist/src/detection/ifsc.js` keeps
+the header comment, with the copyright line and the pointer to
+`THIRD-PARTY-NOTICES.md`: that comment is what carries the pointer in the
+image. The notices file itself is not in the image (ADR-046's allowlist),
+so the permission text is not either; adding it would touch the allowlist
+and the smoke test, and is not ruled._
+
 <a id="adr-037"></a>
 
 ## ADR-037: Person names in the request path, against a fake model (Phase 6b step 3, 2026-10-03; amends ADR-003, ADR-013)

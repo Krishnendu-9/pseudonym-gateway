@@ -308,17 +308,17 @@ Node 22.20 or newer is required (`.nvmrc` says 22.23.3). It listens on
 
 | Variable                                | Default                                  | Meaning                                                                                                                       |
 | --------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `PSEUDONYM_MODEL`                       | none (required)                          | The model Ollama runs; requests must name it exactly                                                                          |
-| `PSEUDONYM_PROVIDER`                    | `ollama`                                 | The only provider so far                                                                                                      |
-| `PSEUDONYM_PROVIDER_BASE_URL`           | `http://localhost:11434/v1`              | Ollama's OpenAI-compatible API                                                                                                |
-| `PSEUDONYM_PROVIDER_API_KEY`            | unset                                    | Sent as `Authorization: Bearer …` only if set (local Ollama ignores it)                                                       |
+| `PSEUDONYM_MODEL`                       | none (required)                          | The model the provider runs; requests must name it exactly                                                                    |
+| `PSEUDONYM_PROVIDER`                    | `ollama`                                 | `ollama` or `gemini` (since 2026-10-11; see "Providers")                                                                      |
+| `PSEUDONYM_PROVIDER_BASE_URL`           | the provider's own                       | `http://localhost:11434/v1` for Ollama; Gemini's in "Providers"                                                               |
+| `PSEUDONYM_PROVIDER_API_KEY`            | unset                                    | Sent as `Authorization: Bearer …` only if set (local Ollama ignores it); required for Gemini                                  |
 | `PSEUDONYM_PROVIDER_TIMEOUT_MS`         | 120000                                   | How long to wait for the model: the whole call, or when streaming each wait (Phase 4b)                                        |
 | `PSEUDONYM_MAX_BODY_BYTES`              | 262144 (256 KiB)                         | Larger requests get a 413 (ADR-015)                                                                                           |
 | `PSEUDONYM_MAX_RESPONSE_BYTES`          | 1048576 (1 MiB)                          | The most of a non-streamed provider answer Pseudonym reads (Phase 4b, ADR-020)                                                |
 | `PSEUDONYM_MAX_STREAM_BYTES`            | 33554432 (32 MiB)                        | The most of a streamed provider answer Pseudonym reads, counted on the wire (ADR-020 amendment)                               |
 | `PSEUDONYM_RESTORE_IN_UNSAFE_REGIONS`   | `false`                                  | `true` restores inside URLs too (not recommended)                                                                             |
 | `PSEUDONYM_PLACEHOLDER_INSTRUCTION`     | `false`                                  | Adds a short system message asking the model to copy placeholders exactly (ADR-017; off since it did not help the demo model) |
-| `PSEUDONYM_NAMES`                       | unset (off)                              | `true` turns person names on (Phase 6, ADR-037); until the name model is built in, the gateway then refuses to start          |
+| `PSEUDONYM_NAMES`                       | unset (off)                              | `true` turns person names on (Phase 6, ADR-037); see "Person names"                                                           |
 | `PSEUDONYM_DISABLE_HARDENING`           | `false`                                  | `true` turns the start-up guard off (ADR-047); only for development on Linux, never in production or a container              |
 | `HOST`, `PORT`, `LOG_LEVEL`, `NODE_ENV` | `127.0.0.1`, 3000, `info`, `development` | The usual; `NODE_ENV` turns nothing on or off (ADR-047)                                                                       |
 
@@ -378,17 +378,20 @@ section 15).
 
 Errors use OpenAI's shape, `{"error": {"message", "type", "param", "code"}}`:
 
-| Status | When                                                                                                                                                                                                                                                         |
-| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 400    | invalid or unsupported request (codes `invalid_json`, `invalid_request`, `unsupported_feature`, `model_not_found`; `stream_not_supported` existed until Phase 4b)                                                                                            |
-| 404    | any other endpoint                                                                                                                                                                                                                                           |
-| 413    | body over the limit                                                                                                                                                                                                                                          |
-| 415    | not `application/json` (a `charset` parameter is fine)                                                                                                                                                                                                       |
-| 422    | more than 9,999 different values of one type in one request (`too_many_values`)                                                                                                                                                                              |
-| 500    | Pseudonym's own bug (`internal_error`)                                                                                                                                                                                                                       |
-| 502    | the provider failed, answered with an error, answered with something unusable, or answered `stop` with no text and no refusal (`provider_empty_response`). Its own error message is never passed on: it can echo the prompt                                  |
-| 503    | the provider answered 429: it is limiting the gateway, whose key every client shares (`provider_rate_limited`). Comes with `Retry-After: 30`, the gateway's own value, never the provider's; the OpenAI SDKs wait that long before each of their two retries |
-| 504    | the provider did not answer within the timeout                                                                                                                                                                                                               |
+| Status | When                                                                                                                                                                                                                                                                                                                                              |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 400    | invalid or unsupported request (codes `invalid_json`, `invalid_request`, `unsupported_feature`, `model_not_found`; `stream_not_supported` existed until Phase 4b)                                                                                                                                                                                 |
+| 400    | a parameter the configured provider and model were measured refusing, refused before anything is sent: `unsupported_parameter` (refused at any value) or `unsupported_value` (refused at this value), with `param` naming the field (see "Providers")                                                                                             |
+| 400    | the provider answered 400 (`provider_rejected_request`, `param` null); a 502 before 2026-10-11                                                                                                                                                                                                                                                    |
+| 404    | any other endpoint                                                                                                                                                                                                                                                                                                                                |
+| 413    | body over the limit                                                                                                                                                                                                                                                                                                                               |
+| 415    | not `application/json` (a `charset` parameter is fine)                                                                                                                                                                                                                                                                                            |
+| 422    | more than 9,999 different values of one type in one request (`too_many_values`)                                                                                                                                                                                                                                                                   |
+| 500    | Pseudonym's own bug (`internal_error`)                                                                                                                                                                                                                                                                                                            |
+| 502    | the provider failed, answered with an error other than 400 or 429 (`provider_error`, with its status number), answered with something unusable, or answered `stop` with no text and no refusal (`provider_empty_response`). Its own error message is never passed on: it can echo the prompt                                                      |
+| 503    | the provider answered 429: it is limiting the gateway, whose key every client shares (`provider_rate_limited`). Comes with `Retry-After: 30`, the gateway's own value, never the provider's; the OpenAI SDKs wait that long before each of their two retries                                                                                      |
+| 503    | names on, and the names could not be found: the model failed, did not answer within the names timeout, has too many requests waiting, or has crashed (`name_detection_unavailable`, "name detection is unavailable"). The request is never sent without its names. Which of these it was is in the log only; no `Retry-After`. See "Person names" |
+| 504    | the provider did not answer within the timeout                                                                                                                                                                                                                                                                                                    |
 
 ### Logs
 
@@ -520,6 +523,19 @@ OpenAI's `chat.completion.chunk` shape with Pseudonym's model name:
    token counts;
 5. `data: [DONE]`.
 
+**Where the token counts come from** (since 2026-10-11, bug-log 75). A
+provider may send `usage` on any chunk, before the finish or more than
+once. Gemini sends it on every chunk, as running totals. Pseudonym keeps
+the last `usage` the provider sent and passes it on once, in the chunk of
+step 4, after the finish. Before 2026-10-11, usage before the finish or
+on more than one chunk failed the stream with `provider_bad_response`,
+for every provider. Every Gemini stream with `include_usage` failed that
+way. If the stream fails, no usage chunk is sent. If a count went down
+from one chunk to the next, the answer still goes through, and one `warn`
+line, `"provider usage counts decreased"`, gives the provider's name
+(`provider`) and which counts went down (`decreased`: any of `prompt`,
+`completion`, `total`), never their values (ADR-041 section 16).
+
 Restoration safety is the same as without streaming: a streamed answer and
 a non-streamed answer to the same model text read exactly the same.
 
@@ -564,11 +580,19 @@ a non-streamed answer to the same model text read exactly the same.
   is not a memory risk (ADR-020 amendment).
 - One streamed event may be at most 64 KiB (Ollama's are about 200 bytes).
 
-### Not yet checked against a real Ollama
+### Checked against a real Ollama (Phase 5d part 1, 2026-10-02)
 
-The stream format was built from Ollama's source code and tested against a
-mock that writes it the same way. Recording a real Ollama stream as a test
-fixture is a follow-up once Ollama is installed.
+When Phase 4b was built, the stream format came from Ollama's source code
+and was tested only against a mock that writes it the same way. Since
+Phase 5d part 1, a real stream is a test fixture: one answer from Ollama
+0.35.0 running `qwen3:4b`, 2,335 events and 516,575 bytes
+(`test/fixtures/ollama-stream-qwen3-4b.sse`). Its shape is the one built
+here (reasoning chunks with empty `content`, a finish chunk with
+`delta: {}`, a usage chunk, `[DONE]`), and its chunk sizes match the
+figures under "Timeouts and limits". The tests parse it whole, byte by byte
+and cut at any point, and send it through the whole gateway, which restores
+the answer and leaves out the reasoning (ADR-019). Gemini's streams were
+recorded later, in Phase 7 ("Providers", below).
 
 ## Measuring detection: the evaluation (Phase 5a)
 
@@ -824,6 +848,10 @@ every bank with branches in RBI's list of NEFT-enabled branches (updated
 2026-09-15), taken from Razorpay's open-source copy of RBI's files because
 RBI's own files could not be downloaded. It includes old codes of merged
 banks (Andhra Bank, Vijaya Bank…).
+
+The bank codes come from [razorpay/ifsc](https://github.com/razorpay/ifsc),
+MIT licence, Copyright (c) 2020 Razorpay. The licence's full text is in
+[THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md).
 
 ### Any other four letters: only with a keyword
 
@@ -1325,9 +1353,8 @@ It downloads four files (178.5 MB in all) from a pinned commit of
 keeps each one only if its size and SHA-256 match the pinned values. On a
 mismatch it deletes the download, prints the file's name and both hashes,
 and exits with code 1. Files already in place and correct are kept. It
-prints the model's licence first: the repository states none; it is a
-conversion of Davlan's model (AFL-3.0), a fine-tune of Google's
-multilingual BERT (Apache-2.0); ADR-036 lists the open points.
+prints the model's licence first (as ruled on 2026-10-11: "Licence", under
+"Person names", below).
 
 **At start-up with names on**, the gateway checks, in this order, and
 refuses to start (exit code 1, one line on stderr) at the first that fails:
@@ -1364,7 +1391,7 @@ cost: they are slow, and they wrongly redact some ordinary words.
    ADR-036).
 2. `npm run fetch:model`: four files, 178.5 MB, from a pinned commit of
    `Xenova/bert-base-multilingual-cased-ner-hrl`, each kept only if its
-   SHA-256 matches (licence: the step 4a section above).
+   SHA-256 matches (licence: below).
 3. Set `PSEUDONYM_NAMES=true` and start the gateway.
 
 At start-up the gateway checks the name list, then the model files, then
@@ -1375,6 +1402,44 @@ or the model does not load). Starting takes about 1.1–1.7 s more than with
 names off on a laptop CPU. The first start after an install can take over
 10 s, names on or off (bug-log 66): allow for it in anything that waits for
 the gateway.
+
+### Licence
+
+As ruled on 2026-10-11 (ADR-036, licence amendment). This is not legal
+advice.
+
+- **The files state no licence.** Xenova's repository, which the files are
+  downloaded from, gives none at the pinned commit. They are used on the
+  strength of its card's statement that they are
+  [Davlan's model](https://huggingface.co/Davlan/bert-base-multilingual-cased-ner-hrl)
+  (AFL-3.0) converted to ONNX. Davlan's model is a fine-tune of Google's
+  multilingual BERT (`google-bert/bert-base-multilingual-cased`,
+  Apache-2.0). If the card's statement were wrong, there would be no stated
+  licence for these files.
+- **The files are never in this repository or the Docker image.** `npm run
+fetch:model` downloads them and prints the licence and its link
+  (`https://opensource.org/license/afl-3-0-php`) first. Pseudonym's own MIT
+  `LICENSE` is not affected, since the model is not bundled.
+- **What AFL-3.0 asks of whoever runs it for others.** AFL-3.0 treats
+  running the model for other people over a network as distribution.
+  Whoever does so keeps its notices and does not use the licensor's name to
+  endorse anything. They also make a reasonable effort to obtain their
+  users' assent to the licence. The licence ends for anyone who sues
+  claiming the model infringes a patent. These conditions fall on whoever
+  deploys Pseudonym with names on.
+- **The training data's terms were not checked.** Davlan's card lists
+  these training sets:
+  - CoNLL 2002 and 2003
+  - ANERcorp
+  - Europeana Newspapers
+  - I-CAB
+  - Latvian NER
+  - Paramopama + Second HAREM
+  - MSRA
+
+  Whether a dataset's terms reach a model trained on it is legally
+  unsettled. Names are off by default; an operator who switches them on
+  should assess those terms for their own use.
 
 ### How a name is found
 
@@ -1516,6 +1581,173 @@ machine. Speed differs a great deal more than the names: 308–332 ms per
 KiB on the i5-12450H under Windows, 450.7 on it under Linux with 4 CPUs,
 about 290–306 on the machines without AVX-512 on GitHub, and about 147–157
 on those with it.
+
+## Providers (Phase 7, 2026-10-07 to 2026-10-11; ADR-041)
+
+Pseudonym sends each redacted request to one provider, chosen by
+`PSEUDONYM_PROVIDER`. There are two: Ollama, a model running on your own
+machine, and Gemini, Google's hosted models. Both are called through the
+same OpenAI-compatible adapter. Each has a profile of its own, and the
+profile holds what was measured about that provider.
+
+### Choosing one
+
+| Setting                        | Ollama                                         | Gemini                                                                 |
+| ------------------------------ | ---------------------------------------------- | ---------------------------------------------------------------------- |
+| `PSEUDONYM_PROVIDER`           | `ollama` (the default)                         | `gemini`                                                               |
+| `PSEUDONYM_PROVIDER_BASE_URL`  | defaults to `http://localhost:11434/v1`        | defaults to `https://generativelanguage.googleapis.com/v1beta/openai/` |
+| `PSEUDONYM_PROVIDER_API_KEY`   | optional; a local Ollama ignores it            | required: without it Pseudonym refuses to start                        |
+| `PSEUDONYM_MODEL`              | required, e.g. `qwen3:4b-instruct-2507-q4_K_M` | required, e.g. `gemini-3.5-flash-lite`                                 |
+| Parameters measured as refused | none                                           | for `gemini-3.5-flash-lite` only (below)                               |
+| Where your redacted text goes  | your machine                                   | Google's servers, under Google's terms (below)                         |
+
+`PSEUDONYM_PROVIDER_BASE_URL` replaces the default when set. It must be an
+`http://` or `https://` URL, and with a key set, a plain `http://` URL must
+point at this machine ("Start-up messages", below). Every other setting
+(the timeout, the size limits, restoration safety) works the same way for
+both.
+
+### What was measured, and against what
+
+Google calls its OpenAI-compatible endpoint "still in beta". Everything
+this manual says about Gemini was measured against that compatibility
+layer, between 2026-10-07 and 2026-10-10, and recorded in
+`test/fixtures/gemini-7b/`. It was **not** measured against OpenAI's own
+API, which this project does not call because it costs money. What
+OpenAI's specification asks of a provider is checked another way: a
+strict fake provider in the test suite, written to that specification
+(ADR-041 sections 5 and 9). Only synthetic data was ever sent to Google
+(ADR-009).
+
+What the recordings showed, and what Pseudonym does about it:
+
+- Gemini adds `extra_content` (a `thought_signature`) to every answer. It
+  is stripped and only counted in the log ("Logs", under Phase 3).
+- With `include_usage`, Gemini sends `usage` on every chunk. The last one
+  is passed on ("Where the token counts come from", under Phase 4b).
+- Gemini refused some parameters for `gemini-3.5-flash-lite`. Pseudonym
+  refuses them itself, before sending anything (below).
+- No Gemini answer named a refusal in a `refusal` field ("What comes back",
+  under Phase 3).
+
+### The `models/` prefix
+
+Google's own model list gives every model's id with a leading `models/`
+(`models/gemini-3.5-flash-lite`). The profile's entries use the bare name,
+and the measurements sent the bare name. **The configured model must match
+an entry exactly.** If `PSEUDONYM_MODEL` differs from a model in the
+profile only by a leading `models/`, either way round, Pseudonym starts,
+but prints a warning ("Start-up messages", below). Requests for that model
+are then not checked against the measured refusals. A refused parameter is
+sent to Google, and Google's 400 comes back as `provider_rejected_request`
+after the redacted request has already gone out. Use the name exactly as
+the profile has it.
+
+### Parameters a model is measured refusing
+
+For a provider and model with measured refusals, a request that carries a
+refused parameter is answered with a 400 **at once**: before name
+detection, before redaction, before anything is sent. **A refused request
+sends nothing to the provider.** Four fields can have entries:
+`seed`, `frequency_penalty`, `presence_penalty` and `reasoning_effort`.
+Every entry rests on a recorded probe of that model, and a test checks
+each entry against its recording. Today there are entries only for Gemini's
+`gemini-3.5-flash-lite` (recorded 2026-10-09 and 2026-10-10):
+
+| Field               | Refused when            | `code`                  | `message`                                                                            |
+| ------------------- | ----------------------- | ----------------------- | ------------------------------------------------------------------------------------ |
+| `seed`              | set, at any value       | `unsupported_parameter` | `seed is not supported by the configured provider and model`                         |
+| `frequency_penalty` | set, at any value       | `unsupported_parameter` | `frequency_penalty is not supported by the configured provider and model`            |
+| `presence_penalty`  | set to anything but 0   | `unsupported_value`     | `presence_penalty must be 0 or unset for the configured provider and model`          |
+| `reasoning_effort`  | set to `xhigh` or `max` | `unsupported_value`     | `reasoning_effort does not support this value for the configured provider and model` |
+
+The answer is an ordinary OpenAI-shaped error, with `param` naming the
+field:
+
+```json
+{
+  "error": {
+    "message": "seed is not supported by the configured provider and model",
+    "type": "invalid_request_error",
+    "param": "seed",
+    "code": "unsupported_parameter"
+  }
+}
+```
+
+- A field left out or set to `null` is never refused: it is not sent.
+- If a request carries more than one refused field, the first in the order
+  of the table is reported.
+- The message names the field and nothing else: not the provider, not the
+  model, not the value sent. A `reasoning_effort` refusal does not list the
+  values that would be accepted, because only the refused ones were
+  measured.
+- `unsupported_parameter` and `unsupported_value` are codes OpenAI's API
+  has been seen returning, but they are not in OpenAI's documentation
+  (checked 2026-10-11).
+- `reasoning_effort: "none"` is not refused here. Whether this model
+  refuses it is not settled: one probe pointed that way only by
+  elimination, and Google's own error messages list `none` as valid.
+- **Any other model has no entries**, another Gemini model included, and
+  so does Ollama. A parameter such a model refuses is sent; the provider's
+  400 comes back as `provider_rejected_request` ("the provider rejected the
+  request", `param` null), and is logged once at `warn` with the provider's
+  name and the status, never either body.
+
+### Google's free tier
+
+Gemini's API terms (`https://ai.google.dev/gemini-api/terms`, last
+modified 2026-04-28) say this about the Unpaid Services, the free tier.
+These are the passages the project recorded, word for word (ADR-041,
+sections 4 and 16):
+
+> Google uses the content you submit … to provide, improve, and develop
+> Google products
+
+(read 2026-10-07; the "…" marks words the record leaves out)
+
+> human reviewers may read, annotate, and process your API input and
+> output
+
+(read 2026-10-07)
+
+> Do not submit sensitive, confidential, or personal information to the
+> Unpaid Services
+
+(read 2026-10-11)
+
+The record holds these passages, not a full copy of the terms. Read the
+terms themselves before sending anything. Pseudonym narrows that exposure;
+it does not remove it. A value it misses is sent as written, and with
+names off, the default, so is every person name. The README's threat
+model, "Google's free tier", gives the measured figures.
+
+## Start-up messages
+
+Written to standard error. None of them prints a key, a URL or any request
+text. Those that refuse to start exit with code 1.
+
+| Message                                                                                                                                                                                                                                | Cause                                                                                                                                                                                                                                                                                                                 | Starts? |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| `Invalid environment variables: <names>`                                                                                                                                                                                               | One or more variables are wrong. Lists their names, comma-separated, never their values. Among the causes: `PSEUDONYM_PROVIDER=gemini` with no key (`PSEUDONYM_PROVIDER_API_KEY`), and a key with a plain `http://` base URL off this machine (`PSEUDONYM_PROVIDER_BASE_URL`)                                         | No      |
+| `hardening off: PSEUDONYM_DISABLE_HARDENING=true; dumps and the debugger are not checked`                                                                                                                                              | `PSEUDONYM_DISABLE_HARDENING=true` (ADR-047). Only for development on Linux                                                                                                                                                                                                                                           | Yes     |
+| `hardening warning: core dumps, crash dumps and debugger attach cannot be verified on <platform>; production is supported on Linux only`                                                                                               | Any platform but Linux, as Node names it (`win32` for Windows, `darwin` for macOS)                                                                                                                                                                                                                                    | Yes     |
+| `hardening warning: the host pipes core dumps to a handler, which ignores the core size limit; disable core dump storage on the host`                                                                                                  | Linux, and `/proc/sys/kernel/core_pattern` starts with `\|`                                                                                                                                                                                                                                                           | Yes     |
+| `hardening problem: <flag> must not be set in production`                                                                                                                                                                              | A debugger, heap-snapshot or diagnostic-report flag in the command line or `NODE_OPTIONS` (`--inspect`, `--inspect-brk`, `--inspect-wait`, `--heapsnapshot-signal`, `--heapsnapshot-near-heap-limit`, `--report-on-signal`, `--report-on-fatalerror`, `--report-uncaught-exception`, `--abort-on-uncaught-exception`) | No      |
+| `hardening problem: --disable-sigusr1 must be set in production (SIGUSR1 starts the inspector)`                                                                                                                                        | Linux, started without `--disable-sigusr1` (`npm run dev` does not pass it)                                                                                                                                                                                                                                           | No      |
+| `hardening problem: core dumps must be disabled (ulimit -c 0)`                                                                                                                                                                         | Linux, core dump size limit not 0                                                                                                                                                                                                                                                                                     | No      |
+| `hardening problem: could not read the core dump size limit`                                                                                                                                                                           | Linux, `/proc/self/limits` unreadable or without that line                                                                                                                                                                                                                                                            | No      |
+| `provider warning: PSEUDONYM_MODEL "<model>" differs only by a leading "models/" from "<profiled model>", which the <provider> profile has measured refusals for; requests for this model are not checked against them before sending` | The `models/` prefix ("Providers", above)                                                                                                                                                                                                                                                                             | Yes     |
+| `provider warning: PSEUDONYM_PROVIDER_BASE_URL is a plain http:// loopback address and PSEUDONYM_PROVIDER_API_KEY is set: the key is sent unencrypted, in the Authorization header, to a local address`                                | A key, and a plain `http://` base URL on this machine (`localhost`, 127.0.0.0/8 or `[::1]`, as the URL parser reads the host)                                                                                                                                                                                         | Yes     |
+| `names warning: ONNX Runtime's telemetry cannot be turned off on Windows; see the README's threat model, "Disclosed: a dependency's telemetry"`                                                                                        | Names on, on Windows ("Running in a container", below)                                                                                                                                                                                                                                                                | Yes     |
+| `{"fatal":{"name":"NameStartupError","code":"…"}}`                                                                                                                                                                                     | Names on, and the name list, a model file or the model is wrong or missing (codes in the step 4a table)                                                                                                                                                                                                               | No      |
+
+The plain-`http://` refusal is new since
+2026-10-11: a configuration that sets a key with such a URL, Ollama's
+included, used to start, and now does not, so that a key never crosses a
+network in clear. A host name that merely resolves to this machine does
+not count as this machine. With no key set, any `http://` or `https://`
+URL is accepted as before.
 
 ## Running in a container (Phase 8, 2026-10-10, ADR-046)
 

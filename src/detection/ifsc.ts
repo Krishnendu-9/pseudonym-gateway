@@ -31,7 +31,9 @@ import type { Candidate } from './types.js';
 // script challenge and could not be downloaded, so the codes were taken
 // from Razorpay's open-source copy of those files (github.com/razorpay/ifsc,
 // MIT licence, src/IFSC.json, last changed 2026-09-01): the four-letter keys
-// that have branches. Of the 234 bank names on RBI's page, 179 match a name
+// that have branches. Copyright (c) 2020 Razorpay; the MIT licence text for
+// this data is in THIRD-PARTY-NOTICES.md (ADR-036, licence amendment of
+// 2026-10-11). Of the 234 bank names on RBI's page, 179 match a name
 // in that dataset exactly; the ones checked by hand among the rest differ
 // only in spelling (IDBI is IBKL, DBS is DBSS). Merged banks that still
 // have a branch in the list (Andhra Bank, Corporation Bank, Vijaya Bank…)

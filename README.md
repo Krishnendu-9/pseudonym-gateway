@@ -1409,4 +1409,6 @@ optional dependency loaded only with names on: ONNX Runtime
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). Material by others copied into this repository, the IFSC
+bank codes from Razorpay's dataset, keeps its own notice:
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
