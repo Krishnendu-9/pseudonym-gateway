@@ -11767,6 +11767,61 @@ each entry citing its probes. The extension:
   p15). `none` rests on two (Attempt 5's p09, and Attempt 7's p09 with its
   control `s1`).
 
+#### First reading 2026-10-14 01:11 IST (2026-10-13 19:41 UTC): the s1/p09 pair's bar
+
+Written after the registered first reading and before the result reading.
+Nothing above is edited.
+
+**The readings (the user's).** These are of the bar for the display day
+13:30 IST 13 October to 13:30 IST 14 October (labelled Oct 13), for
+`gemini-3.5-flash-lite`, 28-day range, hovered. The pair's last call ended
+at 00:38:53.655 IST.
+
+- **01:09 IST: 2 of 500.** **This is the registered first reading**, taken
+  after the earliest registered time (01:08:54), about 30 minutes after the
+  last call.
+- **01:07 IST: 2 of 500**, read before the earliest registered time. It is
+  **an early observation, not the registered reading.** It shows the
+  counter had already settled about 28 minutes after the last call.
+
+The baseline was 0 (00:33 IST), and the pair was two calls: `s1` answered
+200, p09 answered 400 model-level.
+
+**Against the registered mapping** (the predicted outcome, two calls):
+
+- **V predicted 1 and is refuted.**
+- **M predicted 2 and holds.**
+- **P gives 2 at 33.3%.** So the reading favours M over P by 3 to 1 (1
+  against 0.333), as registered. **This is the informative outcome the
+  registration identified** ("a 1 is the weaker result for telling the
+  three apart, and a 2 the stronger"), not the weak one.
+
+**What stands across every counter experiment** (Oct 9, the Oct 10 bar,
+and this bar; each under section 14 item 3's premise that a call answered
+200 counts once):
+
+| Hypothesis                                  | Origin                      | Status                                                            |
+| ------------------------------------------- | --------------------------- | ----------------------------------------------------------------- |
+| A: every call counts                        | formed before the 11        | refuted (Oct 9; Oct 10 bar)                                       |
+| S: only 200s count                          | formed before the 11        | refuted (Oct 9), on the record, not beyond doubt                  |
+| U: a 400 for an unknown field counts        | fitted to the 11            | refuted (Oct 10 bar)                                              |
+| V: a 400 for an invalid value counts        | fitted to the 11            | **refuted (this bar)**                                            |
+| M: a model-level 400 counts                 | fitted to the 11            | **survives**: right on the Oct 10 bar (1) and this bar (2)        |
+| P: each failure counts with probability 1/3 | fitted to the 11 (its rate) | **survives**, disfavoured here (3 to 1); no reading can refute it |
+
+- **M began with no credit.** It was fitted to the Oct 9 data, built to
+  give 11 there. **Since then it has made two forward predictions, both
+  correct:** the Oct 10 bar (1, a prediction it shared with S and V) and
+  this bar (2, which no other fixed rule made). **The second refuted its
+  last fixed-rule rival, V.**
+- **P is alive.** Its registered rate stays 1 in 3, not re-fitted. Under
+  item 3's premise, 3 of the 9 failed calls so far were counted: 2 of 6 on
+  Oct 9, 0 of 2 on the Oct 10 bar, and 1 of 1 here.
+- **The question is not settled.** **The result reading is still due, on
+  2026-10-15 (IST) or later**; if it differs from 2, it stands instead.
+  One bar, two calls, and a 3 to 1 ratio do not exclude P. Nor do they
+  show whether the quota Google enforces counts as this display does.
+
 <a id="adr-042"></a>
 
 ## ADR-042: Rule 1 is kept by compliance; the permission deny list is a partial backstop (2026-10-08)
