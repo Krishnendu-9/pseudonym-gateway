@@ -6,8 +6,10 @@
 //
 // The message names the field (one of REFUSABLE_FIELDS, never a request key)
 // and nothing else: not the model, not the provider, not the value sent
-// (section 16). The `values` message lists no allowed values: a list would
-// claim that every value outside it is refused, and only measured values are.
+// (section 16). The `values` message names allowed values only when the rule
+// lists them as `accepted`: a list would claim that every value outside it is
+// refused, which is true only where every value has been measured (ADR-041,
+// result of the s1/p09 pair; the profile test checks it).
 
 import {
   REFUSABLE_FIELDS,
@@ -56,7 +58,9 @@ function refusal(field: RefusableField, rule: RefusalRule): GatewayError {
       return new GatewayError(
         400,
         'unsupported_value',
-        `${field} does not support this value ${SCOPE}`,
+        rule.accepted === undefined
+          ? `${field} does not support this value ${SCOPE}`
+          : `${field} does not support this value ${SCOPE}; supported values: ${rule.accepted.join(', ')}`,
         {},
         field,
       );

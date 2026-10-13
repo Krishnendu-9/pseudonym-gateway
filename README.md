@@ -931,17 +931,21 @@ forwarded unredacted ([ADR-014](docs/decisions.md#adr-014)):
 with measured refusals, a request carrying one is answered with a 400 at
 once. Today that is Gemini's `gemini-3.5-flash-lite`: `seed` and
 `frequency_penalty` at any value, `presence_penalty` unless it is 0, and
-`reasoning_effort` set to `xhigh` or `max`. The code is
+`reasoning_effort` set to `none`, `xhigh` or `max`. The code is
 `unsupported_parameter` for a field refused at any value and
 `unsupported_value` for a refused value, and `param` names the field; the
-message names neither the provider, the model nor the value. The check
+message names neither the provider, the model nor the value. A refused
+`reasoning_effort` names the values the model accepts (`minimal`, `low`,
+`medium`, `high`): all seven values the gateway accepts for it were
+measured on this model, the accepted four once each. The check
 runs before name detection, before redaction and before anything is sent,
 so **a refused request sends nothing to the provider at all**. A refusal
 the profile does not know is still sent: the provider's own 400 then comes
 back as `provider_rejected_request` (below), and by then the redacted
 request has already gone out. Each entry rests on a recorded probe of that
-model (2026-10-09 and 2026-10-10;
-[ADR-041](docs/decisions.md#adr-041), section 16).
+model (2026-10-09, 2026-10-10 and 2026-10-13, UTC;
+[ADR-041](docs/decisions.md#adr-041), section 16 and the s1/p09 pair's
+result).
 
 The `user` and `safety_identifier` fields are accepted and dropped: they
 exist to identify the end user to the provider. Error messages never repeat

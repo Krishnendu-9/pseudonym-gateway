@@ -255,12 +255,13 @@ export const MUTATIONS: readonly Mutation[] = [
     replace: "presence_penalty: { kind: 'any',",
   },
   {
+    // Rewritten 2026-10-14: until the s1/p09 pair, P2 put none on the list.
     id: 'P2',
-    what: 'reasoning_effort none is put on the list (decision D)',
+    what: 'reasoning_effort none is taken off the list again',
     file: PROFILE,
     tests: PROFILE_TESTS,
-    find: "values: ['xhigh', 'max'],",
-    replace: "values: ['xhigh', 'max', 'none'],",
+    find: "values: ['none', 'xhigh', 'max'],",
+    replace: "values: ['xhigh', 'max'],",
   },
   {
     id: 'P3',
@@ -269,5 +270,47 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: PROFILE_TESTS,
     find: "'attempt-6/p18'",
     replace: "'attempt-6/p17'",
+  },
+  // Added 2026-10-14 with the accepted values (ADR-041, result of the s1/p09
+  // pair): the message that names them, and the profile that must justify it.
+  {
+    id: 'P4',
+    what: 'the values message ignores the accepted values',
+    file: REFUSALS,
+    tests: OPTION3_TESTS,
+    find: 'rule.accepted === undefined',
+    replace: 'true',
+  },
+  {
+    id: 'P5',
+    what: 'the accepted values are named with another separator',
+    file: REFUSALS,
+    tests: OPTION3_TESTS,
+    find: "rule.accepted.join(', ')",
+    replace: "rule.accepted.join(' ')",
+  },
+  {
+    id: 'P6',
+    what: 'one accepted value is left off, so the list no longer covers the enum',
+    file: PROFILE,
+    tests: PROFILE_TESTS,
+    find: "accepted: ['minimal', 'low', 'medium', 'high'],",
+    replace: "accepted: ['minimal', 'low', 'medium'],",
+  },
+  {
+    id: 'P7',
+    what: 'an accepted value is no longer backed by a cited probe',
+    file: PROFILE,
+    tests: PROFILE_TESTS,
+    find: "          'attempt-5/p13',\n",
+    replace: '',
+  },
+  {
+    id: 'P8',
+    what: "none's entry no longer cites the s1/p09 pair",
+    file: PROFILE,
+    tests: PROFILE_TESTS,
+    find: "          'attempt-7/p09',\n",
+    replace: '',
   },
 ];

@@ -1611,7 +1611,7 @@ both.
 
 Google calls its OpenAI-compatible endpoint "still in beta". Everything
 this manual says about Gemini was measured against that compatibility
-layer, between 2026-10-07 and 2026-10-10, and recorded in
+layer, between 2026-10-07 and 2026-10-13 (UTC), and recorded in
 `test/fixtures/gemini-7b/`. It was **not** measured against OpenAI's own
 API, which this project does not call because it costs money. What
 OpenAI's specification asks of a provider is checked another way: a
@@ -1652,14 +1652,15 @@ sends nothing to the provider.** Four fields can have entries:
 `seed`, `frequency_penalty`, `presence_penalty` and `reasoning_effort`.
 Every entry rests on a recorded probe of that model, and a test checks
 each entry against its recording. Today there are entries only for Gemini's
-`gemini-3.5-flash-lite` (recorded 2026-10-09 and 2026-10-10):
+`gemini-3.5-flash-lite` (recorded 2026-10-09, 2026-10-10 and 2026-10-13,
+UTC):
 
-| Field               | Refused when            | `code`                  | `message`                                                                            |
-| ------------------- | ----------------------- | ----------------------- | ------------------------------------------------------------------------------------ |
-| `seed`              | set, at any value       | `unsupported_parameter` | `seed is not supported by the configured provider and model`                         |
-| `frequency_penalty` | set, at any value       | `unsupported_parameter` | `frequency_penalty is not supported by the configured provider and model`            |
-| `presence_penalty`  | set to anything but 0   | `unsupported_value`     | `presence_penalty must be 0 or unset for the configured provider and model`          |
-| `reasoning_effort`  | set to `xhigh` or `max` | `unsupported_value`     | `reasoning_effort does not support this value for the configured provider and model` |
+| Field               | Refused when                    | `code`                  | `message`                                                                                                                          |
+| ------------------- | ------------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `seed`              | set, at any value               | `unsupported_parameter` | `seed is not supported by the configured provider and model`                                                                       |
+| `frequency_penalty` | set, at any value               | `unsupported_parameter` | `frequency_penalty is not supported by the configured provider and model`                                                          |
+| `presence_penalty`  | set to anything but 0           | `unsupported_value`     | `presence_penalty must be 0 or unset for the configured provider and model`                                                        |
+| `reasoning_effort`  | set to `none`, `xhigh` or `max` | `unsupported_value`     | `reasoning_effort does not support this value for the configured provider and model; supported values: minimal, low, medium, high` |
 
 The answer is an ordinary OpenAI-shaped error, with `param` naming the
 field:
@@ -1678,16 +1679,20 @@ field:
 - A field left out or set to `null` is never refused: it is not sent.
 - If a request carries more than one refused field, the first in the order
   of the table is reported.
-- The message names the field and nothing else: not the provider, not the
-  model, not the value sent. A `reasoning_effort` refusal does not list the
-  values that would be accepted, because only the refused ones were
-  measured.
+- The message names the field, never the provider, the model or the value
+  sent. A `reasoning_effort` refusal also names the values this model
+  accepts. It can, because all seven values the gateway accepts for that
+  field have been measured on this model: `minimal`, `low`, `medium` and
+  `high` were each accepted once (2026-10-09 UTC), and `none`, `xhigh` and
+  `max` were refused. A test checks that the two lists together cover
+  every value, each with its recording.
 - `unsupported_parameter` and `unsupported_value` are codes OpenAI's API
   has been seen returning, but they are not in OpenAI's documentation
   (checked 2026-10-11).
-- `reasoning_effort: "none"` is not refused here. Whether this model
-  refuses it is not settled: one probe pointed that way only by
-  elimination, and Google's own error messages list `none` as valid.
+- `reasoning_effort: "none"` is refused since 2026-10-14. A registered
+  pair of calls settled it: the same request was answered 200 without the
+  field and 400 with `none`. Google's own error messages still list `none`
+  as valid; Pseudonym follows the measurement.
 - **Any other model has no entries**, another Gemini model included, and
   so does Ollama. A parameter such a model refuses is sent; the provider's
   400 comes back as `provider_rejected_request` ("the provider rejected the

@@ -77,7 +77,7 @@ describe('refusedParameter', () => {
     expect(refusedParameter({ ...request({}), presence_penalty: -0 }, RULES)).toBeUndefined();
   });
 
-  it('values: the listed values are refused, the rest pass; none is not listed (decision D)', () => {
+  it('values: the listed values are refused, the rest pass', () => {
     for (const effort of ['xhigh', 'max']) {
       expect(body({ reasoning_effort: effort })).toEqual({
         error: {
@@ -105,10 +105,38 @@ describe('refusedParameter', () => {
     }
   });
 
-  it('the values message lists no allowed values', () => {
+  it('without accepted values, the values message lists no allowed values', () => {
     const message = body({ reasoning_effort: 'max' })?.error.message ?? '';
     for (const value of ['none', 'minimal', 'low', 'medium', 'high']) {
       expect(message).not.toContain(value);
+    }
+  });
+
+  it('with accepted values, the values message names them, in order, and not the value sent', () => {
+    const rules: ModelRefusals = {
+      reasoning_effort: {
+        kind: 'values',
+        values: ['none', 'xhigh', 'max'],
+        accepted: ['minimal', 'low', 'medium', 'high'],
+        probes: ['attempt-7/p09'],
+      },
+    };
+    for (const effort of ['none', 'xhigh', 'max']) {
+      expect([effort, body({ reasoning_effort: effort }, rules)]).toEqual([
+        effort,
+        {
+          error: {
+            message:
+              'reasoning_effort does not support this value for the configured provider and model; supported values: minimal, low, medium, high',
+            type: 'invalid_request_error',
+            param: 'reasoning_effort',
+            code: 'unsupported_value',
+          },
+        },
+      ]);
+    }
+    for (const effort of ['minimal', 'low', 'medium', 'high']) {
+      expect([effort, body({ reasoning_effort: effort }, rules)]).toEqual([effort, undefined]);
     }
   });
 

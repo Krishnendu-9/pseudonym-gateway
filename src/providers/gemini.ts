@@ -7,10 +7,13 @@
 // Its refusals are measured, never read from documentation, and keyed by
 // the exact model name (ADR-041 section 16, decisions B and C). Each entry
 // names the recordings it rests on, and gemini-profile.test.ts checks every
-// one against its recording. `reasoning_effort: "none"` is not listed:
-// p09's refusal was attributed by elimination only, and Google's own
-// messages list `none` as valid (decision D); the registered s1/p09 pair
-// settles it.
+// one against its recording. `reasoning_effort: "none"` was left off until
+// the registered s1/p09 pair (decision D): p09's refusal had been
+// attributed by elimination only, and Google's own messages list `none` as
+// valid. The pair (Attempt 7, 2026-10-14) measured it refused, so it is
+// listed. With it, every value the gateway accepts for `reasoning_effort`
+// has been measured, so the accepted ones are listed too, and the refusal
+// names them.
 //
 // Measured and not expressed here, because it is not a refusal: with
 // `stream_options.include_usage`, Gemini sends `usage` on every chunk, as
@@ -37,8 +40,20 @@ export const GEMINI_PROFILE: ProviderProfile = {
       presence_penalty: { kind: 'nonzero', probes: ['attempt-5/p05', 'attempt-6/p18'] },
       reasoning_effort: {
         kind: 'values',
-        values: ['xhigh', 'max'],
-        probes: ['attempt-5/p14', 'attempt-5/p15'],
+        values: ['none', 'xhigh', 'max'],
+        accepted: ['minimal', 'low', 'medium', 'high'],
+        // p09 twice: Attempt 7's is the s1/p09 pair, whose s1 (the control,
+        // the same request without the field) was answered 200.
+        probes: [
+          'attempt-5/p09',
+          'attempt-7/p09',
+          'attempt-5/p10',
+          'attempt-5/p11',
+          'attempt-5/p12',
+          'attempt-5/p13',
+          'attempt-5/p14',
+          'attempt-5/p15',
+        ],
       },
     },
   },

@@ -24,6 +24,21 @@ const message = z.strictObject({
   content: z.union([z.string(), z.array(textPart).min(1)]),
 });
 
+/**
+ * Every `reasoning_effort` the gateway accepts. Exported so that a profile
+ * naming accepted values can be checked to cover all of them (ADR-041,
+ * result of the s1/p09 pair).
+ */
+export const REASONING_EFFORTS = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+] as const;
+
 // OpenAI clients often send `null` for a setting they leave unset.
 const requestSchema = z.strictObject({
   model: z.string().min(1),
@@ -38,7 +53,7 @@ const requestSchema = z.strictObject({
   seed: z.int().nullish(),
   frequency_penalty: z.number().min(-2).max(2).nullish(),
   presence_penalty: z.number().min(-2).max(2).nullish(),
-  reasoning_effort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']).nullish(),
+  reasoning_effort: z.enum(REASONING_EFFORTS).nullish(),
   response_format: z
     .discriminatedUnion('type', [
       z.strictObject({ type: z.literal('text') }),

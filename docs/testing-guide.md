@@ -3768,6 +3768,24 @@ the 12 recorded Gemini answers (`test/fixtures/gemini-7b`, attempts 4 and
   exact; one `info` line per answer carries the count and the length;
   and no part of the signature or of the request is in any log line.
 
+**Two sets of recordings, and neither covers the other** (added
+2026-10-14).
+
+- **The replay test** exercises the 12 answers above, a fixed list:
+  attempt 4's `s1`, `s2`, `s3` and attempt 5's p01, p02, p06, p07, p08 and
+  p10 to p13. It reads each **answer body** and sends it through the
+  adapter and the gateway.
+- **The profile test** (`test/unit/providers/gemini-profile.test.ts`)
+  checks every recording the Gemini profile cites: attempt 5's p03, p04,
+  p05 and p09 to p15; attempt 6's p16, p17, p18; and attempt 7's p09. It
+  also reads attempt 7's `s1`, the pair's control. It reads only each
+  call's **meta file** (model, body sent, status), never an answer.
+- **They share only p10 to p13**, and test different things there. Attempt
+  6's p18 and attempt 7's `s1` are 200 answers that are not replayed, so
+  their `extra_content` is not checked by the replay. The 400s are never
+  replayed, since they carry no answer. The replay's list does not grow
+  when the profile cites a new recording.
+
 **Safe to fail.** The signatures are read from the recordings only to test
 their absence, through boolean checks. Every count is compared through
 `printable()`, which turns anything that is not a number into its type

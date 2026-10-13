@@ -114,6 +114,11 @@ export type RefusableField = (typeof REFUSABLE_FIELDS)[number];
  * C): refused at any value, refused unless the value is 0, or refused at the
  * listed values. Data only. `probes` names the recordings it rests on
  * (`attempt-N/id`, under test/fixtures/gemini-7b/).
+ *
+ * A `values` rule may also list the values measured accepted, but only when
+ * `values` and `accepted` together are every value the gateway accepts for
+ * that field, each measured (checked by the profile's test). The refusal's
+ * message then names them (ADR-041, result of the s1/p09 pair).
  */
 export type RefusalRule =
   | { readonly kind: 'any'; readonly probes: readonly string[] }
@@ -121,6 +126,7 @@ export type RefusalRule =
   | {
       readonly kind: 'values';
       readonly values: readonly (string | number)[];
+      readonly accepted?: readonly (string | number)[];
       readonly probes: readonly string[];
     };
 

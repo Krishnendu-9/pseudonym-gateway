@@ -189,6 +189,7 @@ describe('option 3: the other Gemini entries', () => {
     ['frequency_penalty', 0, 'unsupported_parameter'],
     ['frequency_penalty', 0.5, 'unsupported_parameter'],
     ['reasoning_effort', 'xhigh', 'unsupported_value'],
+    ['reasoning_effort', 'none', 'unsupported_value'],
   ] as const)('%s %s → 400 %s, nothing sent', async (field, value, code) => {
     const g = await refusing();
     const response = await post(g, { ...chatBody('hi'), [field]: value });
@@ -197,8 +198,20 @@ describe('option 3: the other Gemini entries', () => {
     expect(g.provider.requests).toHaveLength(0);
   });
 
-  it.each(['none', 'minimal', 'low', 'medium', 'high'])(
-    'reasoning_effort %s is sent (none stays with 4b until the s1/p09 pair, decision D)',
+  it('a refused reasoning_effort names the values this model accepts (all seven measured)', async () => {
+    const g = await refusing();
+    const response = await post(g, { ...chatBody('hi'), reasoning_effort: 'none' });
+    expect(error(response.body)).toEqual({
+      message:
+        'reasoning_effort does not support this value for the configured provider and model; supported values: minimal, low, medium, high',
+      type: 'invalid_request_error',
+      param: 'reasoning_effort',
+      code: 'unsupported_value',
+    });
+  });
+
+  it.each(['minimal', 'low', 'medium', 'high'])(
+    'reasoning_effort %s is sent (measured accepted, Attempt 5)',
     async (effort) => {
       const g = await refusing();
       const response = await post(g, { ...chatBody('hi'), reasoning_effort: effort });
