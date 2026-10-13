@@ -784,12 +784,10 @@ only the symptom; [ADR-036](docs/decisions.md#adr-036), step 4a).
 The timing tests check that detection and restoration take linear time:
 each times the same work on an input and on one four times as long, and
 fails if the time grows 8 times or more (linear code grows about 4
-times, quadratic about 16). They run after the other tests, at most three
-files at a time (one in CI), and they need the machine mostly to themselves. Measured
-on 2026-10-02: run alongside two other test suites, they failed 5 ratio
-checks and timed out 6 times in two runs (178 checks); on their own, one
-or three files at a time, they passed all 890 checks in 10 runs. A failure
-prints its input sizes and every run's time
+times, quadratic about 16). They run after the other tests and need the
+machine mostly to themselves; how often they fail when they do not, and
+what a failure prints:
+[testing guide](docs/testing-guide.md#phase-5d-part-2--timing-tests-in-their-own-project-2026-10-02-adr-032-bug-logs-46-and-47)
 ([ADR-023](docs/decisions.md#adr-023), [ADR-032](docs/decisions.md#adr-032)).
 Any test can also time out when the machine is short of memory (bug-log 57
 in the [bug log](docs/bug-log.md)): check free memory before a full run, as
