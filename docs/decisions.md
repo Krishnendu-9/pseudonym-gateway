@@ -12710,6 +12710,40 @@ Checked on 2026-10-10 by running each image (no live API call):
 The README's Linux entry now names the image in each sentence that
 mentions an upload.
 
+### Amendment F (2026-10-14, the user's ruling): the third-party notice in the image
+
+**What the image carried.** Checked on 2026-10-14 by building the image
+(ADR-036, the dated note after the licence amendment): the compiled
+`/app/dist/src/detection/ifsc.js` keeps its header comment, with
+Razorpay's copyright line and a pointer to `THIRD-PARTY-NOTICES.md`. The
+image did not hold that file (the allowlist named only the build's
+inputs), so it held the copyright line but not the permission notice, and
+**the pointer resolved to nothing inside the image.**
+
+**Ruled: the file is now included,** at `/app/THIRD-PARTY-NOTICES.md`.
+The reasoning is the user's. ADR-036 took MIT's literal reading for the
+repository: "the above copyright notice and this permission notice shall
+be included in all copies or substantial portions of the Software". The
+image is a copy of the software, so the same reading applies to it.
+
+**Cost: four changes, not the two first ruled.** The ruling named one
+allowlist entry and one smoke assertion. Two facts made that insufficient,
+and the user chose the smallest change that works:
+
+- `.dockerignore` only decides what reaches the build context. The runtime
+  stage copies named paths, so the Dockerfile also needs one `COPY` line.
+- The smoke check "/app holds only …" pins `/app`'s exact top level, so
+  its list (and its name) must gain the file, or it fails.
+
+So: one allowlist entry, one `COPY` line, one existing smoke check
+widened, and one new smoke assertion (the file is at that path and is not
+empty, read by the image's own unprivileged user). Nothing else in the
+image changes.
+
+**Not a live obligation.** The image is not published, so this is
+consistency with ADR-036's ruling, not a fix to something anyone has
+received.
+
 ---
 
 <a id="adr-047"></a>
