@@ -581,25 +581,15 @@ forwarded unredacted ([ADR-014](docs/decisions.md#adr-014)):
   anything that is not `application/json` (the body limit:
   [ADR-015](docs/decisions.md#adr-015)).
 
-**Parameters the provider is measured refusing.** For a provider and model
-with measured refusals, a request carrying one is answered with a 400 at
-once. Today that is Gemini's `gemini-3.5-flash-lite`: `seed` and
-`frequency_penalty` at any value, `presence_penalty` unless it is 0, and
-`reasoning_effort` set to `none`, `xhigh` or `max`. The code is
-`unsupported_parameter` for a field refused at any value and
-`unsupported_value` for a refused value, and `param` names the field; the
-message names neither the provider, the model nor the value. A refused
-`reasoning_effort` names the values the model accepts (`minimal`, `low`,
-`medium`, `high`): all seven values the gateway accepts for it were
-measured on this model, the accepted four once each. The check
-runs before name detection, before redaction and before anything is sent,
-so **a refused request sends nothing to the provider at all**. A refusal
-the profile does not know is still sent: the provider's own 400 then comes
-back as `provider_rejected_request` (below), and by then the redacted
-request has already gone out. Each entry rests on a recorded probe of that
-model (2026-10-09, 2026-10-10 and 2026-10-13, UTC;
-[ADR-041](docs/decisions.md#adr-041), section 16 and the s1/p09 pair's
-result).
+**Parameters the provider is measured refusing.** For a model with
+measured refusals (today Gemini's `gemini-3.5-flash-lite`), a request
+carrying a refused parameter is answered 400 before name detection,
+redaction or any call, so **it sends nothing to the provider**, while a
+refusal the profile does not know is sent, the redacted request goes out,
+and the provider's own 400 comes back (below); which fields and values,
+the exact errors and the probes behind each are in the
+[user manual](docs/user-manual.md#parameters-a-model-is-measured-refusing)
+([ADR-041](docs/decisions.md#adr-041), section 16).
 
 The `user` and `safety_identifier` fields are accepted and dropped: they
 exist to identify the end user to the provider. Error messages never repeat
@@ -821,34 +811,15 @@ call because it costs money. Before sending anything, read
 
 ### Start-up messages
 
-Written to standard error. None of them prints a key, a URL or any request
-text.
+The common causes of a first run refusing to start:
 
-- `provider warning: PSEUDONYM_MODEL "…" differs only by a leading
-"models/" from "…"`: the configured model is one `models/` prefix away
-  from a model with measured refusals. It starts, but requests for it are
-  not checked against those refusals before sending.
-- `provider warning: PSEUDONYM_PROVIDER_BASE_URL is a plain http://
-loopback address and PSEUDONYM_PROVIDER_API_KEY is set`: a key is sent
-  unencrypted to an address on this machine. It starts.
-- `Invalid environment variables: PSEUDONYM_PROVIDER_BASE_URL`, when a key
-  is set and the base URL is plain `http://` to anywhere but this machine
-  (`localhost`, 127.0.0.0/8 or `[::1]`, as the URL parser reads the host; a
-  name that merely resolves to one does not count). It refuses to start, so
-  that a key never crosses a network in clear. **This is a breaking change
-  for any configuration that sets a key with such a URL, Ollama's
-  included:** it used to start. With no key set, any URL is accepted as
-  before.
-- `Invalid environment variables: PSEUDONYM_PROVIDER_API_KEY`, with
-  `PSEUDONYM_PROVIDER=gemini` and no key. It refuses to start.
-- `names warning: ONNX Runtime's telemetry cannot be turned off on
-Windows`: names on, Windows only (see the
-  [threat model](#threat-model-summary)).
-- `hardening off: PSEUDONYM_DISABLE_HARDENING=true; dumps and the debugger
-are not checked`, or `hardening warning: …` and `hardening problem: …`
-  from the start-up guard; a problem refuses to start
-  ([ADR-016](docs/decisions.md#adr-016),
-  [ADR-047](docs/decisions.md#adr-047)).
+- `Invalid environment variables: PSEUDONYM_MODEL`: it is unset; it has no default.
+- `Invalid environment variables: PSEUDONYM_PROVIDER_API_KEY`: `PSEUDONYM_PROVIDER=gemini` with no key.
+- `Invalid environment variables: PSEUDONYM_PROVIDER_BASE_URL`: a key is set and the base URL is plain `http://` to another machine.
+
+This is not the complete list. The
+[user manual](docs/user-manual.md#start-up-messages) has all thirteen
+messages that refuse to start, with their conditions, and every warning.
 
 ## Running in Docker
 
