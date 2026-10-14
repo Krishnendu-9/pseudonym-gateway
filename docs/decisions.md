@@ -162,6 +162,7 @@ ADR-041's sections (numbered in the entry; ▸ marks a subsection):
 | 16 ▸ | Amendment 2026-10-14: the pair moves to a later display day, registered before the run                               | amendment (registration) |
 | 16 ▸ | Result 2026-10-14: the s1/p09 pair (Attempt 7)                                                                       | result                   |
 | 16 ▸ | First reading 2026-10-14: the pair's bar                                                                             | result                   |
+| 16 ▸ | Result reading 2026-10-15: the pair's bar, and the registration closed                                               | result                   |
 | 17   | Decision H: the end-to-end calls (registered 2026-10-14, before any call and before the run script)                  | registration             |
 
 | ADR                 | Title                                                                                                | Date       | Status                       | Amended by                                                                                                               |
@@ -12036,6 +12037,73 @@ and this bar; each under section 14 item 3's premise that a call answered
   2026-10-15 (IST) or later**; if it differs from 2, it stands instead.
   One bar, two calls, and a 3 to 1 ratio do not exclude P. Nor do they
   show whether the quota Google enforces counts as this display does.
+
+#### Result reading 2026-10-15 00:01 IST (2026-10-14 18:31 UTC): the s1/p09 pair's bar, and the registration closed
+
+Written after the registered result reading. Nothing above is edited.
+
+**The reading (the user's).** 2026-10-15 00:01 IST, the RPD chart's Oct 13
+bar for `gemini-3.5-flash-lite`, 28-day range, hovered: **2 of 500.** This
+is the reading registered "on 2026-10-15 (IST) or later", taken inside that
+window, after the bar had closed under both axis readings (13:30 IST on 14
+October under UTC-8, 12:30 IST under UTC−7). **Under the registered rule it
+is the result.** It equals the first reading (2, at 2026-10-14 01:09 IST),
+so the two do not differ.
+
+**Against the registered row.** Baseline 0 (00:33 IST on 14 October); two
+calls, no 404 and no fallback; `s1` answered 200, p09 answered 400
+model-level. This is the predicted outcome, two calls:
+
+- **V predicted 1 and is refuted.**
+- **M predicted 2 and holds.**
+- **P gives 2 at 33.3%.** The result favours M over P by **3 to 1** (1
+  against 0.333), as registered. **This is the informative outcome the
+  registration identified**, not the weak one.
+
+**"Still catching up" is ruled out for this bar too.** The bar read 2 about
+30 minutes after the pair's last call (00:38:53.655 IST on 14 October), and
+2 again 22 hours 52 minutes later (01:09 IST on 14 October to 00:01 IST on
+15 October), about 10 hours after the bar closed. A counter still settling,
+in either direction, would have moved in that time. With the Oct 9 and
+Oct 10 bars (section 14), no bar read so far leaves room for that
+explanation.
+
+**The registration is closed.** No further reading of the Oct 13 bar is
+registered. Section 17's calls cannot land in this bar (its item 5) and do
+not change this result.
+
+**The closed position across every counter experiment** (Oct 9, the Oct
+10 bar, the Oct 13 bar; each under section 14 item 3's premise that a call
+answered 200 counts once):
+
+| Hypothesis                                  | Origin                      | Status                                                       |
+| ------------------------------------------- | --------------------------- | ------------------------------------------------------------ |
+| A: every call counts                        | formed before the 11        | refuted (Oct 9; Oct 10 bar)                                  |
+| S: only 200s count                          | formed before the 11        | refuted (Oct 9), on the record, not beyond doubt             |
+| U: a 400 for an unknown field counts        | fitted to the 11            | refuted (Oct 10 bar)                                         |
+| V: a 400 for an invalid value counts        | fitted to the 11            | **refuted (Oct 13 bar, result reading)**                     |
+| M: a model-level 400 counts                 | fitted to the 11            | **survives**: right on the Oct 10 bar (1) and Oct 13 bar (2) |
+| P: each failure counts with probability 1/3 | fitted to the 11 (its rate) | **survives, disfavoured** (3 to 1 on the Oct 13 bar)         |
+
+- **A, S, U and V are refuted. M and P survive, with P disfavoured.**
+- **M was fitted to the Oct 9 data** (built to give 11 there), so that
+  fit is no evidence for it. **Since then it has made two correct forward
+  predictions, and only the second discriminated** among the hypotheses
+  still standing. The first, the Oct 10 bar's 1, was shared with S and V
+  and favoured every fixed rule over P by only about 2.25 to 1; it refuted
+  A and U, not M's rivals. The second, this bar's 2, was M's alone among
+  the fixed rules, refuted V, and favours M over P by 3 to 1.
+- **P's registered rate stays 1 in 3**, not re-fitted. Under item 3's
+  premise, 3 of the 9 failed calls so far were counted: 2 of 6 on Oct 9, 0
+  of 2 on the Oct 10 bar, 1 of 1 on the Oct 13 bar.
+
+**What is still not settled.**
+
+- **P is not excluded.** One reading at 3 to 1 is not enough to rule it
+  out, and no reading inside P's range can refute it.
+- **Nothing here shows whether the quota Google enforces counts the way
+  this display does.** Every experiment read the AI Studio chart; none
+  tested the limit itself.
 
 ### 17. Decision H: the end-to-end calls (registered 2026-10-14 01:30 IST, 2026-10-13 20:00 UTC; before any call and before the run script)
 
