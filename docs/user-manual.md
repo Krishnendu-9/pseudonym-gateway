@@ -1772,6 +1772,9 @@ those need care in a container:
 - `PSEUDONYM_PROVIDER_BASE_URL` must be an address the container can
   reach. `localhost` inside a container is the container itself. For an
   Ollama on the same machine use `http://host.docker.internal:11434/v1`.
+  With `PSEUDONYM_PROVIDER_API_KEY` also set, the gateway refuses to start
+  with that address: it is plain `http://` and not this machine
+  ([Start-up messages](#start-up-messages), the first row).
 - `HOST` from `.env` is ignored: the compose file sets `HOST=0.0.0.0`.
   Without compose, a development `.env` passed to `docker run --env-file`
   says `HOST=127.0.0.1`; add `-e HOST=0.0.0.0` after it. The start-up guard

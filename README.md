@@ -126,7 +126,10 @@ npm run dev             # gateway on http://127.0.0.1:3000/v1
 
 Or in Docker: copy `.env.example` to `.env`, set
 `PSEUDONYM_PROVIDER_BASE_URL=http://host.docker.internal:11434/v1` in it,
-and run `docker compose up --build`.
+and run `docker compose up --build`. With `PSEUDONYM_PROVIDER_API_KEY` also
+set, the gateway refuses to start with that address: it is plain `http://`
+and not this machine
+([start-up messages](docs/user-manual.md#start-up-messages)).
 
 Point your OpenAI client at `http://127.0.0.1:3000/v1` and use the model
 name in `PSEUDONYM_MODEL`. On Linux, `npm run dev` refuses to start until
@@ -849,8 +852,11 @@ needs:
 
 In `.env`, point `PSEUDONYM_PROVIDER_BASE_URL` at an address the container
 can reach. For an Ollama on the same machine that is
-`http://host.docker.internal:11434/v1`, not `localhost`. Do not paste the
-output of `docker compose config`: it prints the API key from `.env`.
+`http://host.docker.internal:11434/v1`, not `localhost`. If `.env` also
+sets `PSEUDONYM_PROVIDER_API_KEY`, the gateway refuses to start with that
+address: it is plain `http://` and not this machine
+([start-up messages](docs/user-manual.md#start-up-messages)). Do not paste
+the output of `docker compose config`: it prints the API key from `.env`.
 
 Without compose:
 
@@ -862,6 +868,11 @@ docker run --init --ulimit core=0 --read-only --cap-drop ALL \
   -e PSEUDONYM_PROVIDER_BASE_URL=http://host.docker.internal:11434/v1 \
   pseudonym-gateway
 ```
+
+With a key added (`-e PSEUDONYM_PROVIDER_API_KEY`, or an `--env-file`
+that sets one), the gateway refuses to start with that base URL: it is
+plain `http://` and not this machine
+([start-up messages](docs/user-manual.md#start-up-messages)).
 
 **A development `.env` and `docker run --env-file`.** The `.env` made
 from `.env.example` says `HOST=127.0.0.1`, which nothing outside the

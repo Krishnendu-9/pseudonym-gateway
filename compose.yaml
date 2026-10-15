@@ -36,7 +36,8 @@ services:
       HOST: 0.0.0.0
       PORT: '3000'
     # Lets PSEUDONYM_PROVIDER_BASE_URL=http://host.docker.internal:11434/v1
-    # reach an Ollama on the host, on Linux as well as Docker Desktop.
+    # reach an Ollama on the host, on Linux as well as Docker Desktop
+    # (refused at start-up if .env also sets PSEUDONYM_PROVIDER_API_KEY).
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     # Person names (ADR-036): run `npm run fetch:model`, set
