@@ -14,6 +14,17 @@ export function expectedChecks(withModels: boolean): number {
   return SMOKE_CHECKS + (withModels ? SMOKE_CHECKS_WITH_MODELS : 0);
 }
 
+/**
+ * The script's last line, with the number of checks it made: the counter no
+ * unit test can reach (it lives in the script, which runs Docker), shown in
+ * the log so that a wrong or missing count can be read there.
+ */
+export function summaryLine(made: number, failed: number): string {
+  return failed === 0
+    ? `docker smoke: all ${made} checks passed`
+    : `docker smoke: ${failed} failed (${made} checks made)`;
+}
+
 /** Why a run's count is wrong, or undefined when it is the expected one. */
 export function countProblem(ran: number, withModels: boolean): string | undefined {
   const expected = expectedChecks(withModels);

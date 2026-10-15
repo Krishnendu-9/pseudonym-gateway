@@ -13960,6 +13960,27 @@ the CI `docker` job, from the next push on. Dated counts elsewhere
 (amendments C and D, the N6 row in the testing guide) are history and are
 not pinned.
 
+**Option C taken alongside A, not instead of it (the user's ruling, the
+same day).** The script's last line now gives the number it counted:
+"docker smoke: all 40 checks passed", and on failure "docker smoke: N
+failed (M checks made)".
+
+- **Why C was not chosen before:** as a substitute for enforcement. A
+  printed number that nothing checks lets the count drift.
+- **Why it is taken now:** as evidence for the one part enforcement
+  cannot reach. That part is the counter inside the script and the
+  comparison that uses it, which no test can import. The printed number
+  puts that counter's value in the CI log, where it can be read. Without
+  it, a comparison that was never reached would pass silently. With it, a
+  wrong or missing number shows on the last line.
+- **What is pinned:** the line's wording is `summaryLine(made, failed)` in
+  `docker-smoke-counts.ts`. A test requires it to print the number made,
+  not the number expected: 39 prints as 39. Mutations P1–P3 are caught
+  (P1 prints the expected count, P2 drops the number, P3 drops it from a
+  failing run), so the list now stands at **10 of 10**. The script passing
+  `checksMade` to it is not covered by a unit test, like the counter
+  itself.
+
 ---
 
 <a id="adr-047"></a>

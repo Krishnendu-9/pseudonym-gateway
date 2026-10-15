@@ -4,9 +4,11 @@
 //   npx tsx scripts/mutate.ts --out <dir outside the repo> scripts/mutations/smoke-count.ts
 //
 // Written with the change they check. K1 to K5 change the counts module;
-// G1 and G2 change the count the testing guide states. Not here: the
+// G1 and G2 change the count the testing guide states. P1 to P3 (added
+// the same day) change the last line the script prints. Not here: the
 // counting inside docker-smoke.ts itself, which no unit test imports
-// (importing it runs Docker); only a run against an image checks it.
+// (importing it runs Docker); only a run against an image checks it, and
+// the printed number is what makes that run's count readable.
 
 import type { Mutation } from '../mutate.js';
 
@@ -65,5 +67,26 @@ export const MUTATIONS: readonly Mutation[] = [
     GUIDE,
     '(40 in all), in four',
     '(41 in all), in four',
+  ),
+  mutation(
+    'P1',
+    'the last line prints the expected count, not the one made',
+    COUNTS,
+    '`docker smoke: all ${made} checks passed`',
+    '`docker smoke: all ${expectedChecks(true)} checks passed`',
+  ),
+  mutation(
+    'P2',
+    'the last line drops the number',
+    COUNTS,
+    '`docker smoke: all ${made} checks passed`',
+    '`docker smoke: all checks passed`',
+  ),
+  mutation(
+    'P3',
+    'a failing run drops the number',
+    COUNTS,
+    '`docker smoke: ${failed} failed (${made} checks made)`',
+    '`docker smoke: ${failed} failed`',
   ),
 ];

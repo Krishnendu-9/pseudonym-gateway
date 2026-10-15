@@ -11,6 +11,7 @@ import {
   expectedChecks,
   SMOKE_CHECKS,
   SMOKE_CHECKS_WITH_MODELS,
+  summaryLine,
 } from '../../../scripts/docker-smoke-counts.js';
 
 const ROOT = join(import.meta.dirname, '..', '..', '..');
@@ -38,6 +39,15 @@ describe('the smoke test check count', () => {
         `made ${ran} checks, expected ${expectedChecks(withModels)} (scripts/docker-smoke-counts.ts)`,
       );
     }
+  });
+
+  // The number printed is the one counted, not the expected one: 39 is
+  // printed as 39 even though a run with --models should make 40.
+  it('the last line prints the number of checks made', () => {
+    expect(summaryLine(40, 0)).toBe('docker smoke: all 40 checks passed');
+    expect(summaryLine(39, 0)).toBe('docker smoke: all 39 checks passed');
+    expect(summaryLine(31, 0)).toBe('docker smoke: all 31 checks passed');
+    expect(summaryLine(39, 2)).toBe('docker smoke: 2 failed (39 checks made)');
   });
 
   it('the testing guide states the same counts', () => {

@@ -4253,7 +4253,9 @@ It runs 31 checks, plus 9 more with `--models` (40 in all), in four
 groups (counts since ADR-046 amendment F, 2026-10-14). The counts are
 `scripts/docker-smoke-counts.ts`'s: the script fails a run that makes any
 other number, and `docker-smoke-counts.test.ts` fails while this sentence
-states another (ADR-046 amendment H). Run it from
+states another (ADR-046 amendment H). Its last line gives the number it
+made ("docker smoke: all 40 checks passed"): the counter itself is
+checked only by such a run, so that is where to read it. Run it from
 the repository's root: one check reads `.env.example`.
 
 - **What the image contains.** A `docker export` of a container made from

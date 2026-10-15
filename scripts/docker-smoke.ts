@@ -30,7 +30,7 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
-import { countProblem } from './docker-smoke-counts.js';
+import { countProblem, summaryLine } from './docker-smoke-counts.js';
 
 const args = process.argv.slice(2);
 const modelsAt = args.indexOf('--models');
@@ -489,9 +489,7 @@ if (wrongCount !== undefined) {
   failures.push('the number of checks');
 }
 
-process.stdout.write(
-  failures.length === 0
-    ? 'docker smoke: all checks passed\n'
-    : `docker smoke: ${failures.length} failed\n`,
-);
+// With the number counted, so the log shows the counter's value (ADR-046
+// amendment H): a comparison never reached cannot pass silently.
+process.stdout.write(`${summaryLine(checksMade, failures.length)}\n`);
 process.exit(failures.length === 0 ? 0 : 1);
