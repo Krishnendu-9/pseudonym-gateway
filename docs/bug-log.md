@@ -3142,3 +3142,68 @@ fix and after, which pins that output as unchanged event for event.
 Mutations: `scripts/mutations/streaming-usage.ts`, 21 of 21 caught, SU1
 and SU2 (the bug itself) by 17 and 16 tests; SU18 to SU21 check the
 names in the warn line, SU21 that no value takes a name's place.
+
+## 76. The end-to-end run script wrote unrounded timings, and the hygiene scan found a valid card number in one (2026-10-15, found by the hygiene test on Attempt 8's recordings; fixed the same day, after the run)
+
+**Symptom:** after ADR-041 section 17's live run (Attempt 8, made by
+`scripts/run-end-to-end.ts` at `bc669cf`), section 17 item 7 had the
+hygiene test run with the recordings on disk before they were committed.
+"contains no valid card number other than published test cards" failed on
+`test/fixtures/gemini-7b/attempt-8/e2.meta.json` line 33, the `headersMs`
+field: the time from E2's provider request to Google's response headers,
+written as an unrounded number with 4 digits before the decimal point and
+13 after.
+
+**Root cause:** the script wrote durations measured with
+`performance.now()` as they came, doubles with up to 17 significant digits,
+although a timing means nothing beyond the millisecond. The hygiene scan
+reads digit runs with at most one space, dot or hyphen between digits,
+not touching other digits, and checks every run of 13 to 19 digits with
+the card detector's `isValidCard`: Luhn-valid and a known issuer prefix.
+The 13 digits after the decimal point are such a run on their own (a dot
+is not a digit, so nothing joins them to the 4 before it), and they are a
+valid card number by those rules. The 17-digit run across the point is
+not. (The finding was first described, in the ruling that ordered this
+entry, as a run across the decimal point; checked, by lengths and
+positions only, it is the run after it.)
+
+**A true positive, not a false positive.** The detector was asked whether
+those 13 digits are a valid card number, and by its own rules they are.
+Nothing in the detector or the scan is wrong. The defect is that the script
+wrote data that way: a digit run that long had no business being in the
+file. The project's own detector caught the project's own file, on data
+no person wrote and no model produced.
+
+**What was done with the recordings (the user's rulings):** no recorded
+file was edited, since section 17 says a finding is reported, not edited
+away; `e2.meta.json` is not committed, and the ADR-041 entry for the run
+records what it carried, with its timings rounded. The other 14
+recordings, which passed, are committed without it. The file itself was
+moved, unedited, out of the working tree to the Phase 6a runs folder
+outside the repository (the ADR entry says where), so that the hygiene
+test passes again; it is not published.
+
+**Fix:** every timing the script writes to `meta.json` goes through
+`wholeMs` (`scripts/end-to-end.ts`): whole milliseconds. A duration of at
+most 10^12 - 1 ms (about 31 years) rounds to at most 12 digits, fewer than
+the shortest card number. The script changed after the run, so Attempt 8's
+recordings come from the version at `bc669cf`.
+
+**Not covered by the fix:** the log files. The script copies the gateway's
+log lines, and Fastify writes each request's `responseTime` the same
+way, as an unrounded double. The script changes only the machine's name in
+them (section 17 amendment 2026-10-15, ruling 1), so a log line can still
+carry such a run. Left so on purpose, by a principle the user ruled (the
+ADR-041 entry for the run): a recording is altered only when leaving it
+unaltered causes harm that cannot be handled any other way. A published
+machine name has no remedy; an unrounded `responseTime` read as a card
+number costs one file not committed and the finding recorded, as here.
+
+**Guarded by:** `test/unit/scripts/end-to-end.test.ts`, "timings in
+meta.json (bug-log 76)": a property that `wholeMs` gives a whole number
+with no digit run of card length for any duration up to 10^12 - 1 ms (its
+first run found the bound: a value just under 10^12 rounded to 13 digits),
+and a run through the real gateway asserting that every recorded timing is
+whole and that no `meta.json` holds a digit run of 13 or more. Mutations
+E37 (no rounding) and E38 (one field unrounded) in
+`scripts/mutations/end-to-end.ts`, caught by 2 tests and 1 test.
