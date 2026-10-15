@@ -165,6 +165,7 @@ ADR-041's sections (numbered in the entry; ▸ marks a subsection):
 | 16 ▸ | Result reading 2026-10-15: the pair's bar, and the registration closed                                               | result                   |
 | 17   | Decision H: the end-to-end calls (registered 2026-10-14, before any call and before the run script)                  | registration             |
 | 17 ▸ | Amendment 2026-10-15: four rulings on the run script (log files, when log lines are checked, forms, telemetry)       | amendment                |
+| 17 ▸ | Result 2026-10-15: the end-to-end calls (Attempt 8)                                                                  | result                   |
 
 | ADR                 | Title                                                                                                | Date       | Status                       | Amended by                                                                                                               |
 | ------------------- | ---------------------------------------------------------------------------------------------------- | ---------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
@@ -12356,6 +12357,120 @@ run.
    load must not cost a call. E1's gateway runs with names off, so E1's text
    never reaches the model; as item 7 says, the telemetry carries no request
    text.
+
+#### Result 2026-10-15 10:07 IST (04:37 UTC): the end-to-end calls (Attempt 8)
+
+**The pre-run gate: the dry run.** Run before the go-ahead against the
+local stub provider, E2 with the real name model, writing outside the
+repository; run twice, the second time after ruling 1 above was built.
+Both times **both outgoing bodies matched the registered text character
+for character**: the model, the system message and the user message, as
+predicted in item 2 (E1 with `[CARD_1]`, `[EMAIL_1]`, `[IP_1]`, `[IFSC_1]`;
+E2 the same with `[PERSON_1]` first). No planted value was found in any
+form (7 for E1, 8 for E2) in either body or in any log line. The stub
+echoed each user message, and both answers came back to the client fully
+restored.
+
+**The live run.** Go-ahead from the user after this section and the script
+were committed and pushed. The guard passed: a clean tree at `bc669cf`,
+equal to the last known origin/main. Recordings in
+`test/fixtures/gemini-7b/attempt-8`. Two calls were made and nothing else.
+
+| (15 October)                   | E1 (names off)                                  | E2 (names on)                                   |
+| ------------------------------ | ----------------------------------------------- | ----------------------------------------------- |
+| Client request, start → end    | 10:07:25.942 → 10:07:27.495 IST (1,553 ms)      | 10:07:42.515 → 10:07:44.054 IST (1,540 ms)      |
+| Request to Google, start → end | 10:07:26.021 → 10:07:27.478 IST                 | 10:07:42.650 → 10:07:44.050 IST                 |
+| Outgoing body                  | **byte-identical to the dry run's**             | **byte-identical to the dry run's**             |
+| Planted-value check            | none of 7 forms, body and log lines; no refusal | none of 8 forms, body and log lines; no refusal |
+
+E2 started 15.02 s after E1's answer arrived. Times are the script's own
+clock, in whole milliseconds here.
+
+**Against the predictions of item 4:**
+
+|                                     | Predicted (confidence)                             | E1                                                        | E2                          |
+| ----------------------------------- | -------------------------------------------------- | --------------------------------------------------------- | --------------------------- |
+| Gateway status to the client        | 200 (high)                                         | 200: **held**                                             | 200: **held**               |
+| Google's status, finish             | 200, `stop` (high)                                 | 200, `stop`: **held**                                     | 200, `stop`: **held**       |
+| Outgoing body                       | the predicted text (certain if the dry run passes) | **held**                                                  | **held**                    |
+| Card, email, IP, IFSC in the answer | all four restored (medium)                         | all four restored: **held**                               | all four restored: **held** |
+| The name in the answer              | restored (low), E2 only                            | (not sent)                                                | **missed: dropped**         |
+| `extra_content`                     | none to the client; one `info` line (high)         | none; one "provider extra content dropped" line: **held** | the same: **held**          |
+
+In both answers Google wrote `[CARD_1]`, `[EMAIL_1]`, `[IP_1]` and
+`[IFSC_1]` verbatim and no other placeholder-shaped text; no placeholder
+was left in what the client received. In E2's answer there is no
+`[PERSON_1]` and no rewritten form of it (ADR-017's pattern finds none),
+and the name is not in the restored answer: by ADR-017's classification,
+**dropped**. No failure of the gateway's promise and no failure of the
+round trip, as item 4 defines them.
+
+**What the dropped name does not show.** E2's registered message ends "In
+one sentence, repeat these four details back to me exactly as I gave
+them", and the name is not one of the four details. Leaving it out may be
+the model doing what it was asked. **So this result does not show whether
+Gemini preserves `[PERSON_1]`; that question stays open.** It is not run
+again: a third call in this bar would break item 6's prediction that the
+bar rises by exactly the number of 200s (two), and no call beyond the two
+registered ones was authorised.
+
+**The counter (item 6).** The Oct 14 bar's baseline: **0 / 500, read by the
+user at 10:04 IST**. Both calls ended at 10:07:44 IST, inside the bar under
+both readings of its axis. Predicted: a rise of exactly 2. The first
+reading is due no earlier than **10:37:44 IST** on 15 October; the second,
+the result, on **16 October (IST) or later**.
+
+**`e2.meta.json` is not committed.** Section 17 item 7 had the hygiene test
+run with the recordings on disk before committing them. It failed on this
+file: its `headersMs` field, written unrounded, holds a 13-digit run after
+the decimal point that is a valid card number by the card detector's own
+rules (bug-log 76; a true positive by those rules, on data the script
+should not have written that way). By item 7 the finding is reported, not
+edited away, so no recorded file was changed, and this one is left out
+(the user's ruling). The other 14 recordings passed and are committed.
+
+**Where it is.** Moved, unedited, out of the working tree (left there, it
+kept the hygiene test failing): it is kept outside the repository in the
+Phase 6a runs folder on the author's machine (`D:` drive, beside the other
+run logs), in a folder for Attempt 8. Moving it did not change it: its
+SHA-256 was
+`5ce9fa8ec6b212381d85e78b03c2ec5056ce6e469c8edd20afd0d4ffd8e503eb` before
+the move and after it, so "unedited" can be checked against the file
+rather than taken on trust. It is not published. What it carried, with its timings rounded to whole
+milliseconds here:
+
+- `id` e2, `names` true, `recordedOn` 2026-10-15 04:37:44.058 UTC;
+- `client`: started 04:37:42.515 UTC, status 200, content type
+  `application/json; charset=utf-8`, 1,540 ms;
+- `provider`, one request: to
+  `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions`,
+  started 04:37:42.650 UTC, refused for no reason, status 200, headers
+  after 1,394 ms, first byte after 1,399 ms, done after 1,400 ms, 602
+  bytes; Google's response headers `alt-svc`, `cache-control: private`,
+  `content-encoding: gzip`, `content-type: application/json`, `date`
+  (Thu, 15 Oct 2026 04:37:46 GMT), `expires` (the same), `p3p`,
+  `server: scaffolding on HTTPServer2`, `server-timing: gfet4t7; dur=1021`,
+  `transfer-encoding: chunked`, `vary: Origin, X-Origin, Referer`,
+  `x-content-type-options: nosniff`, `x-frame-options: SAMEORIGIN`,
+  `x-xss-protection: 0`;
+- `outgoingIsRegistered` true, `plantedInLogs` none, `completedLogged`
+  true, `logFile`: checked as written, the machine's name replaced 3 times.
+
+What is said above about E2's answer comes from
+`e2.provider-response.json` and `e2.response.json`, not from this file. The
+script now rounds every timing it writes (bug-log 76); Attempt 8 was made by
+the version at `bc669cf`, before that change.
+
+**The log files are left as they are, by a principle (the user's ruling).**
+The gateway's own log lines carry Fastify's `responseTime` unrounded, the
+same kind of digit run, and the script copies them as written apart from
+the machine's name. That is not changed. **A recording is altered only when
+leaving it unaltered causes harm that cannot be handled any other way.** The
+machine's name met that test: once published, a machine name has no remedy.
+An unrounded `responseTime` does not: if one is ever read as a card number,
+the cost is one file not committed and the finding recorded, which is what
+happened here with `e2.meta.json`. A second change to published log lines
+is not worth making to avoid that inconvenience.
 
 <a id="adr-042"></a>
 
