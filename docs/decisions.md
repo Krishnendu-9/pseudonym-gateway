@@ -13587,14 +13587,25 @@ user asked for in question 3 of ADR-046.
   option 1 covers.
 - **Not yet run on GitHub.** Only ran locally, where the smoke test passed
   38 of 38 checks.
-  **Run on GitHub (2026-10-15):** 40 of 40. In the run for c201488, job
-  `docker`, step "Smoke test the image, names off and on", log lines 4 to
-  43 were all "ok" and line 44 "docker smoke: all checks passed"; the job
-  took 52 s. This is the first result that was read, not the first run:
-  the step has run on every push since 38478cf. The 38 above was the local
-  count when this was written. Amendment D's telemetry check made it 39
-  and amendment F's notice check 40. **Current: 40 with `--models`, 31
-  without.**
+  **Corrected 2026-10-15: false from 2026-10-10.** This sentence was
+  written in 38478cf, the commit that put the step into `ci.yml`.
+  - That commit was pushed at 15:19:59 IST on 2026-10-10 (this machine's
+    record of `origin/main`), and its push started the first `docker`
+    job to run the check on GitHub.
+  - Every push after it, 39 from this machine up to c201488's (38478cf's
+    own included), started the same step. The sentence stopped being true
+    with the first of those runs to reach the step, most likely 38478cf's
+    own.
+  - None of those results was read, so which runs reached the step is not
+    known.
+
+  **What is new on 2026-10-15 is that a result was read:** 40 of 40, in
+  the run for c201488. In job `docker`, step "Smoke test the image, names
+  off and on", log lines 4 to 43 were all "ok" and line 44 "docker smoke:
+  all checks passed"; the job took 52 s.
+
+  **The count.** The 38 above was the local count when this was written.
+  Amendment D's telemetry check made it 39 and amendment F's notice check 40. **As of 2026-10-15: 40 with `--models`, 31 without** (amendment H).
 
 ### Amendment D (2026-10-10, after 38478cf): the disclosure's shape, and the gap shown at start-up
 

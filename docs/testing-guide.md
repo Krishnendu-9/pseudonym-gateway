@@ -4273,15 +4273,22 @@ Names workflow and this job save (each only on a miss, after
 `npm run fetch:model` has checked the files; ADR-046 amendments C and
 G). It ran green on Docker Desktop 29.8.1 (Windows 11, WSL2 VM
 with 4 CPUs): 39 of 39 with `--models` (a local count from 2026-10-10,
-before amendment F's notice check made it 40).
+before amendment F's notice check made it 40). ~~It has not run on GitHub
+yet.~~
 
-**On GitHub (2026-10-15): 40 of 40, the current count.** The run for
-c201488 (job `docker`, step "Smoke test the image, names off and on",
+**Corrected 2026-10-15: that sentence was false from 2026-10-10.** It was
+written in 38478cf, the commit that put this step into `ci.yml`, and that
+commit's push (15:19:59 IST on 2026-10-10) started the first `docker` job
+to run it. Every push since (39 up to c201488's) started the same step.
+None of those results was read, so which runs reached the step is not
+known.
+
+**What is new on 2026-10-15 is that a result was read: 40 of 40, the
+current count.** The run for c201488 (job `docker`, step "Smoke test the
+image, names off and on",
 `npx tsx scripts/docker-smoke.ts --models models pseudonym-gateway:ci`):
 log lines 4 to 43 all "ok", line 44 "docker smoke: all checks passed",
-the job done in 52 s. This is the first result that was read, not the
-first run: every push since 38478cf ran the same step, and those results
-were not read.
+the job done in 52 s.
 
 **The build context, listed.** To see what the `.dockerignore` allowlist
 lets in, build a throwaway Dockerfile, written anywhere outside the repo,
@@ -4419,6 +4426,7 @@ G1 puts the old `NODE_ENV` rule back and is caught by 5 tests, the
 - linux/arm64;
 - `eval:names` inside the image (the spans were reproduced in Phase 6c on
   the full `bookworm` image, from the repository, not on this one);
-- ~~the names-on smoke check in CI has not yet run on GitHub~~: covered
-  since 2026-10-15, when a GitHub run's result was read (40 of 40, the run
-  for c201488; above).
+- ~~the names-on smoke check in CI has not yet run on GitHub~~: false from
+  2026-10-10, corrected 2026-10-15. Every push since 38478cf's started the
+  step. What is new on 2026-10-15 is that a result was read: 40 of 40, in
+  the run for c201488 (above).
