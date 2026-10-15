@@ -9,6 +9,7 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
+import fc from 'fast-check';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   CALLS,
@@ -29,12 +30,14 @@ import {
   runCalls,
   startStubProvider,
   textDifference,
+  wholeMs,
   withoutHostname,
   type Call,
   type StartGateway,
   type StubProvider,
 } from '../../../scripts/end-to-end.js';
 import type { NameFinder } from '../../../src/gateway/server.js';
+import { assertPropertyQuietly } from '../../support/quiet-property.js';
 
 const ROOT = join(import.meta.dirname, '..', '..', '..');
 const [E1, E2] = CALLS as [Call, Call];
@@ -598,6 +601,55 @@ describe('the attempt folder', () => {
       expect(JSON.parse(readFileSync(join(next, 'attempt.json'), 'utf8'))).toEqual({ mode: 'y' });
     } finally {
       rmSync(out, { recursive: true, force: true });
+    }
+  });
+});
+
+// --- timings in meta.json (bug-log 76) -----------------------------------------
+
+/**
+ * Digit runs as the hygiene scan joins them: digits with at most one space,
+ * dot or hyphen between neighbours (repo-hygiene.test.ts, `numbersIn`).
+ */
+const longestDigitRun = (text: string): number =>
+  Math.max(
+    0,
+    ...[...text.matchAll(/[0-9](?:[ .-]?[0-9])*/g)].map((m) => m[0].replace(/[ .-]/g, '').length),
+  );
+/** The shortest card number the hygiene scan looks for. */
+const SHORTEST_CARD = 13;
+
+describe('timings in meta.json (bug-log 76)', () => {
+  it('are whole milliseconds, too short to be read as a card number', () => {
+    // Up to 10^12 - 1 ms (about 31 years): any duration this script can
+    // measure. The bound is inclusive so that rounding cannot reach 10^12,
+    // which has 13 digits (the property's first run found exactly that).
+    assertPropertyQuietly(
+      fc.property(fc.double({ min: 0, max: 1e12 - 1, noNaN: true }), (ms) => {
+        const recorded = wholeMs(ms)!;
+        return (
+          Number.isInteger(recorded) && longestDigitRun(JSON.stringify(recorded)) < SHORTEST_CARD
+        );
+      }),
+    );
+    expect(wholeMs(undefined)).toBeUndefined();
+  });
+
+  it('every timing a run records is whole, and no meta.json holds a card-length digit run', async () => {
+    const { files } = await run();
+    for (const id of ['e1', 'e2']) {
+      const raw = text(files.get(`${id}.meta.json`));
+      const meta = JSON.parse(raw) as {
+        client: { ms: unknown };
+        provider: Record<string, unknown>[];
+      };
+      const timings = [
+        meta.client.ms,
+        ...meta.provider.flatMap((p) => [p.headersMs, p.firstByteMs, p.totalMs]),
+      ];
+      expect(timings).toHaveLength(4);
+      expect(timings.every((t) => Number.isInteger(t))).toBe(true);
+      expect(longestDigitRun(raw)).toBeLessThan(SHORTEST_CARD);
     }
   });
 });
