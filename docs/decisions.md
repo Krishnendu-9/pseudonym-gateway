@@ -164,6 +164,7 @@ ADR-041's sections (numbered in the entry; ▸ marks a subsection):
 | 16 ▸ | First reading 2026-10-14: the pair's bar                                                                             | result                   |
 | 16 ▸ | Result reading 2026-10-15: the pair's bar, and the registration closed                                               | result                   |
 | 17   | Decision H: the end-to-end calls (registered 2026-10-14, before any call and before the run script)                  | registration             |
+| 17 ▸ | Amendment 2026-10-15: four rulings on the run script (log files, when log lines are checked, forms, telemetry)       | amendment                |
 
 | ADR                 | Title                                                                                                | Date       | Status                       | Amended by                                                                                                               |
 | ------------------- | ---------------------------------------------------------------------------------------------------- | ---------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
@@ -12307,6 +12308,54 @@ right, **the bar should rise by exactly the number of calls Google answers
   request text.
 - **Not covered by this registration:** streaming end to end, an option 3
   refusal end to end, and any model but `gemini-3.5-flash-lite`.
+
+#### Amendment 2026-10-15 09:58 IST (04:28 UTC): four rulings on the run script, before any call
+
+The user's rulings, made after the run script
+(`scripts/end-to-end.ts`, `scripts/run-end-to-end.ts`) and its dry run
+existed and before any end-to-end call. The text above stays as it was
+registered; where it and this amendment differ, this amendment governs the
+run.
+
+1. **The log files have this machine's name replaced (ruling 1).** Pino
+   writes the machine's name (`hostname`) and the process id on every log
+   line, and the live run's recordings are committed to a public
+   repository. The lines are checked as the gateway wrote them. They are
+   then written to `eN.log.txt` (and `setup.log.txt` for the start-up
+   lines) with every occurrence of the machine's name, in any case,
+   replaced by `<this machine>`. Each call's `eN.meta.json`, and
+   `setup.meta.json`, says so and gives the number of replacements. **The
+   log files are therefore not byte for byte what the gateway wrote**; that
+   is the only change, and the process id is kept.
+2. **When the log lines are checked: a correction to item 4 (ruling 2).**
+   Item 4 says that a planted value in a log line "shows as a run stopped
+   before sending". That holds only for a line written before the provider
+   request leaves. **A line written after Google answers does not exist yet
+   when the request is checked, so it cannot stop that request.** What the
+   script does:
+   - before each provider request, it checks the lines written so far in
+     that call, and refuses to send if any holds a planted value;
+   - after each call, it checks all of that call's lines again, and a
+     planted value then **stops the run before E2**. It is recorded and
+     reported as a failure of the gateway's promise (a value in a log
+     line), not as a refusal before sending;
+   - the start-up lines are checked once the run ends.
+3. **The planted-value forms are wider than registered: a stricter
+   deviation (ruling 3).** Item 3 registers the card's digits without
+   separators. The script looks for the digits without separators of every
+   planted value that has digits and other characters: the card
+   (16 digits), the IP address (`203011342`) and the IFSC (`0001234`).
+   Every form is matched in any case, and a match in any form refuses.
+   This can only refuse a request the registration would have let through,
+   never the other way round.
+4. **The telemetry disclosure, corrected (ruling 4).** Item 7 discloses
+   ONNX Runtime's telemetry on Windows (ADR-046 amendment D) for E2 only.
+   **The script starts both gateways before E1**, and E2's gateway loads
+   the name model, so the runtime is loaded in the process while E1 runs as
+   well. The start order is kept on purpose: a name model that fails to
+   load must not cost a call. E1's gateway runs with names off, so E1's text
+   never reaches the model; as item 7 says, the telemetry carries no request
+   text.
 
 <a id="adr-042"></a>
 
