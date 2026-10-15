@@ -21,13 +21,16 @@
 // With `--models <dir>` (the directory `npm run fetch:model` fills), it also
 // serves with names on and that directory mounted read-only, and checks that
 // a synthetic name reaches the stub only as its placeholder. CI runs it with
-// the model from the Names workflow's cache.
+// the model from the cache the Names workflow and the docker job save.
+// It fails a run that makes a different number of checks from
+// docker-smoke-counts.ts (ADR-046 amendment H).
 // Run from the repository's root: the --env-file check reads .env.example.
 // It prints check names, paths and exit codes, never a request, an answer
 // or the stub's log (rule 5).
 
 import { spawn, spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
+import { countProblem } from './docker-smoke-counts.js';
 
 const args = process.argv.slice(2);
 const modelsAt = args.indexOf('--models');
@@ -41,7 +44,9 @@ if (image === undefined || (modelsAt !== -1 && models === undefined)) {
 }
 
 const failures: string[] = [];
+let checksMade = 0;
 function check(name: string, ok: boolean, detail = ''): void {
+  checksMade++;
   process.stdout.write(`${ok ? 'ok  ' : 'FAIL'} ${name}${detail === '' ? '' : ` (${detail})`}\n`);
   if (!ok) failures.push(name);
 }
@@ -475,6 +480,13 @@ if (models !== undefined) {
     // here: on Linux the runtime's telemetry is off.
     mustNotPrint: 'telemetry cannot be turned off',
   });
+}
+
+// Not counted itself: it checks the count.
+const wrongCount = countProblem(checksMade, models !== undefined);
+if (wrongCount !== undefined) {
+  process.stdout.write(`FAIL the script ${wrongCount}\n`);
+  failures.push('the number of checks');
 }
 
 process.stdout.write(

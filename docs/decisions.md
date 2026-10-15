@@ -168,15 +168,15 @@ ADR-041's sections (numbered in the entry; ▸ marks a subsection):
 | 17 ▸ | Result 2026-10-15: the end-to-end calls (Attempt 8)                                                                  | result                   |
 | 17 ▸ | First reading 2026-10-15: the end-to-end calls' bar                                                                  | result                   |
 
-| ADR                 | Title                                                                                                | Date       | Status                       | Amended by                                                                                                                               |
-| ------------------- | ---------------------------------------------------------------------------------------------------- | ---------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| [ADR-042](#adr-042) | Rule 1 is kept by compliance; the permission deny list is a partial backstop                         | 2026-10-08 | accepted                     | —                                                                                                                                        |
-| [ADR-043](#adr-043) | Mutation lists were never tracked; every earlier mutation count is attested, not reproducible        | 2026-10-10 | accepted                     | —                                                                                                                                        |
-| [ADR-044](#adr-044) | Rule 1 governs this repository's history and remote; a test may commit inside a throwaway repository | 2026-10-10 | accepted                     | —                                                                                                                                        |
-| [ADR-045](#adr-045) | Where the dashboard's counts come from                                                               | 2026-10-10 | accepted: option 5           | —                                                                                                                                        |
-| [ADR-046](#adr-046) | The container image (Phase 8)                                                                        | 2026-10-10 | accepted                     | in place 2026-10-10 (amendments A to C, D, E), 2026-10-14 (F) and 2026-10-15 (G); a note in section 1 superseded by ADR-047 (2026-10-10) |
-| [ADR-047](#adr-047) | The start-up guard is on unless turned off by name                                                   | 2026-10-10 | accepted (the user's ruling) | —                                                                                                                                        |
-| [ADR-048](#adr-048) | The results page: where it lives, what it shows, how it stays true                                   | 2026-10-10 | accepted 2026-10-15 (D)      | ruling in place 2026-10-15 (option D: no page built)                                                                                     |
+| ADR                 | Title                                                                                                | Date       | Status                       | Amended by                                                                                                                                  |
+| ------------------- | ---------------------------------------------------------------------------------------------------- | ---------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| [ADR-042](#adr-042) | Rule 1 is kept by compliance; the permission deny list is a partial backstop                         | 2026-10-08 | accepted                     | —                                                                                                                                           |
+| [ADR-043](#adr-043) | Mutation lists were never tracked; every earlier mutation count is attested, not reproducible        | 2026-10-10 | accepted                     | —                                                                                                                                           |
+| [ADR-044](#adr-044) | Rule 1 governs this repository's history and remote; a test may commit inside a throwaway repository | 2026-10-10 | accepted                     | —                                                                                                                                           |
+| [ADR-045](#adr-045) | Where the dashboard's counts come from                                                               | 2026-10-10 | accepted: option 5           | —                                                                                                                                           |
+| [ADR-046](#adr-046) | The container image (Phase 8)                                                                        | 2026-10-10 | accepted                     | in place 2026-10-10 (amendments A to C, D, E), 2026-10-14 (F) and 2026-10-15 (G, H); a note in section 1 superseded by ADR-047 (2026-10-10) |
+| [ADR-047](#adr-047) | The start-up guard is on unless turned off by name                                                   | 2026-10-10 | accepted (the user's ruling) | —                                                                                                                                           |
+| [ADR-048](#adr-048) | The results page: where it lives, what it shows, how it stays true                                   | 2026-10-10 | accepted 2026-10-15 (D)      | ruling in place 2026-10-15 (option D: no page built)                                                                                        |
 
 ¹ No status of its own. The preamble above says each entry records an
 accepted decision, and nothing in the entry says otherwise; where part of
@@ -13914,6 +13914,51 @@ miss.
   miss: after an eviction, or when a new pin changes the key. So nothing
   yet shows that it stores the files or that a later run restores what it
   stored.
+
+### Amendment H (2026-10-15, the user's ruling): the smoke test's check count, one constant enforced at both ends
+
+**The problem.** The number of checks `scripts/docker-smoke.ts` makes was
+written into the docs by hand, and the docs fell behind the script more
+than once. Amendment C's 38 was overtaken by D's telemetry check (39) and
+F's notice check (40). The testing guide still said 39 with `--models`,
+and "30 checks, plus 9 more", after F. Nothing compared them.
+
+**Options put to the user** (2026-10-15):
+
+- **A:** one constant, enforced by the script at run time and by a test
+  against the docs.
+- **B:** a test that counts `check(` calls in the source. Rejected as
+  fragile: loops and the two scenarios make the call sites differ from
+  what runs.
+- **C:** the script prints its count, and nothing checks it.
+- **D:** no check.
+
+**Ruled: A.** The reason (the user's): it is the same discipline as
+`eval/baseline.json`, which fails until the record is updated, and as
+`readme-facts.test.ts`, which pins the figures the README states.
+
+**Built.**
+
+- `scripts/docker-smoke-counts.ts` holds `SMOKE_CHECKS` (31, a plain run)
+  and `SMOKE_CHECKS_WITH_MODELS` (9, what `--models` adds), counted from
+  the script on 2026-10-15. It also holds `countProblem(ran, withModels)`.
+  It is kept apart from the script because the script runs Docker as soon
+  as it is imported.
+- `docker-smoke.ts` counts every `check` it makes. At the end, a run with
+  any other count prints "FAIL the script made N checks, expected M" and
+  exits 1. That last check is not counted itself.
+- `test/unit/scripts/docker-smoke-counts.test.ts` tests `countProblem`
+  (exact counts accepted; one more, one fewer and the other mode rejected)
+  and requires the testing guide's sentence to state the constants.
+- Mutations `scripts/mutations/smoke-count.ts` (ADR-043), K1–K5 on the
+  module and G1–G2 on the guide: **7 of 7 caught.**
+
+**Not covered by a unit test: the counting inside `docker-smoke.ts`.** No
+test imports the script, because importing it runs Docker. A run against
+an image is the only check of the counter and of the final comparison:
+the CI `docker` job, from the next push on. Dated counts elsewhere
+(amendments C and D, the N6 row in the testing guide) are history and are
+not pinned.
 
 ---
 
