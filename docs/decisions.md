@@ -168,15 +168,15 @@ ADR-041's sections (numbered in the entry; ▸ marks a subsection):
 | 17 ▸ | Result 2026-10-15: the end-to-end calls (Attempt 8)                                                                  | result                   |
 | 17 ▸ | First reading 2026-10-15: the end-to-end calls' bar                                                                  | result                   |
 
-| ADR                 | Title                                                                                                | Date       | Status                       | Amended by                                                                                                               |
-| ------------------- | ---------------------------------------------------------------------------------------------------- | ---------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| [ADR-042](#adr-042) | Rule 1 is kept by compliance; the permission deny list is a partial backstop                         | 2026-10-08 | accepted                     | —                                                                                                                        |
-| [ADR-043](#adr-043) | Mutation lists were never tracked; every earlier mutation count is attested, not reproducible        | 2026-10-10 | accepted                     | —                                                                                                                        |
-| [ADR-044](#adr-044) | Rule 1 governs this repository's history and remote; a test may commit inside a throwaway repository | 2026-10-10 | accepted                     | —                                                                                                                        |
-| [ADR-045](#adr-045) | Where the dashboard's counts come from                                                               | 2026-10-10 | accepted: option 5           | —                                                                                                                        |
-| [ADR-046](#adr-046) | The container image (Phase 8)                                                                        | 2026-10-10 | accepted                     | in place 2026-10-10 (amendments A to C, D, E) and 2026-10-14 (F); a note in section 1 superseded by ADR-047 (2026-10-10) |
-| [ADR-047](#adr-047) | The start-up guard is on unless turned off by name                                                   | 2026-10-10 | accepted (the user's ruling) | —                                                                                                                        |
-| [ADR-048](#adr-048) | The results page: where it lives, what it shows, how it stays true                                   | 2026-10-10 | accepted 2026-10-15 (D)      | ruling in place 2026-10-15 (option D: no page built)                                                                     |
+| ADR                 | Title                                                                                                | Date       | Status                       | Amended by                                                                                                                               |
+| ------------------- | ---------------------------------------------------------------------------------------------------- | ---------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| [ADR-042](#adr-042) | Rule 1 is kept by compliance; the permission deny list is a partial backstop                         | 2026-10-08 | accepted                     | —                                                                                                                                        |
+| [ADR-043](#adr-043) | Mutation lists were never tracked; every earlier mutation count is attested, not reproducible        | 2026-10-10 | accepted                     | —                                                                                                                                        |
+| [ADR-044](#adr-044) | Rule 1 governs this repository's history and remote; a test may commit inside a throwaway repository | 2026-10-10 | accepted                     | —                                                                                                                                        |
+| [ADR-045](#adr-045) | Where the dashboard's counts come from                                                               | 2026-10-10 | accepted: option 5           | —                                                                                                                                        |
+| [ADR-046](#adr-046) | The container image (Phase 8)                                                                        | 2026-10-10 | accepted                     | in place 2026-10-10 (amendments A to C, D, E), 2026-10-14 (F) and 2026-10-15 (G); a note in section 1 superseded by ADR-047 (2026-10-10) |
+| [ADR-047](#adr-047) | The start-up guard is on unless turned off by name                                                   | 2026-10-10 | accepted (the user's ruling) | —                                                                                                                                        |
+| [ADR-048](#adr-048) | The results page: where it lives, what it shows, how it stays true                                   | 2026-10-10 | accepted 2026-10-15 (D)      | ruling in place 2026-10-15 (option D: no page built)                                                                                     |
 
 ¹ No status of its own. The preamble above says each entry records an
 accepted decision, and nothing in the entry says otherwise; where part of
@@ -6066,6 +6066,14 @@ not make the next run download again. Not measured yet: restore and
 download times on the runner (each run's log shows them). GitHub keeps a
 repository's caches up to 10 GB and evicts one unused for 7 days; a cache
 from a pull request is scoped to it and cannot replace `main`'s.
+
+**Amended 2026-10-15 (ADR-046 amendment G, the user's ruling).** Names is
+no longer the only job that saves the cache. The `docker` job in `ci.yml`
+saves the same key in the same way: after `fetch:model` has verified the
+files, and only on a miss. The guarantee above is unchanged, because
+every save follows that check. Built: not yet (the `ci.yml` diff goes to
+the user first). "Unused for 7 days": GitHub does not document whether a
+restore counts as a use (amendment G).
 
 ### Pre-registered: when the names workflow may run on every push (Phase 6c, 2026-10-07; written and committed before the first manual run)
 
@@ -13554,9 +13562,21 @@ user asked for in question 3 of ADR-046.
 - **ADR-036's per-CPU stopping rule does not govern it:** it checks that a
   name is redacted, not that spans equal a baseline.
 - **Cost:** about a minute, and a download from Hugging Face whenever the
-  cache is cold. The daily Names run keeps it warm on `main`. If Hugging
-  Face is down on a cold cache, the job fails; it never passes without the
-  check.
+  cache is cold. If Hugging Face is down on a cold cache, the job fails; it
+  never passes without the check.
+  **Corrected 2026-10-15:** this said "The daily Names run keeps it warm
+  on `main`." Nothing is scheduled to keep it warm: the Names workflow has
+  been manual only since its daily schedule was removed on 2026-10-10
+  (ADR-036), and it is the only job that saves the cache. GitHub's
+  "Dependency caching" reference says it removes "any cache entries that
+  have not been accessed in over 7 days"; its "Managing caches" page
+  evicts "in order of last access date" and lists "when the cache was last
+  used", without defining either term or giving the 7 days (both read
+  2026-10-15). **GitHub does not document whether a restore counts as an
+  access.** Once the entry is gone, every push downloads the model until
+  someone starts Names by hand, so a cold cache, and the Hugging Face
+  failure with it, may be the usual case rather than the rare one
+  (amendment G).
 - **Not yet run on GitHub.** Only ran locally, where the smoke test passed
   38 of 38 checks.
 
@@ -13695,6 +13715,120 @@ image changes.
 **Not a live obligation.** The image is not published, so this is
 consistency with ADR-036's ruling, not a fix to something anyone has
 received.
+
+### Amendment G (2026-10-15, the user's ruling): amendment C's two reasons rested on the daily Names run, which no longer exists
+
+**Why an amendment, not only an edit (the user's ruling).** A decision
+whose recorded reason rests on something that no longer exists gets a
+dated amendment. Amendment C's "Cost" bullet keeps a marked correction;
+this records what follows for the decision.
+
+**The input.** Amendment C (committed in 38478cf, 15:19 IST on
+2026-10-10) decided that the `docker` job restores the model cache and
+never saves it; Names is the one job that writes it. Two of its stated
+reasons assumed the daily Names run:
+
+- **"The daily Names run keeps it warm on `main`"** (Cost).
+- **"not up to a day later and only on `main`"** (why the check is in the
+  `docker` job and not in Names).
+
+The schedule existed when C was written, but `names.yml` had labelled it
+"Daily, temporary (ADR-036)" since it was added on 2026-10-07. It was
+removed at 17:29 IST the same day (65e6ce2), and C was not updated. Since
+then Names runs only when someone starts it.
+
+**What follows for the decision.**
+
+- **The second reason holds more strongly.** Names now runs only by
+  hand, so a check left to it would run whenever someone remembered, not
+  "up to a day later".
+- **The first reason is gone, and what replaces it is unknown.** Nothing
+  is scheduled to keep the cache. GitHub's "Dependency caching" reference
+  removes "any cache entries that have not been accessed in over 7 days".
+  Its "Managing caches" page evicts "in order of last access date" and
+  shows "when the cache was last used", without defining either term (both
+  read 2026-10-15). **GitHub does not document whether a restore counts as
+  an access.**
+  - If a restore counts: the `docker` job keeps the entry alive while
+    someone pushes at least once every 7 days.
+  - If it does not: the entry expires 7 days after Names last saved it. From
+    then on, every push downloads the model (181,416,359 bytes, four files)
+    from Hugging Face, and fails if Hugging Face is unreachable, until
+    someone starts Names.
+- **Unchanged:** the job never passes without the check, and a corrupt
+  cache can fail a job but never let a wrong file through (`fetch:model`
+  and the gateway both hash every file; ADR-036, M2).
+
+**What would settle the unknown.** GitHub's cache list gives each entry a
+last-accessed time. Read it before and after a `docker` job that restored
+the entry: if it moves, a restore counts. Not done yet.
+
+**The remedy: options, not decided (waits for the user).** CI minutes cost
+nothing here either way: "GitHub Actions usage is free … for public
+repositories that use standard GitHub-hosted runners" (GitHub's Actions
+billing page, read 2026-10-15). The repository's cache allowance is 10 GB.
+None of the CI-side download or upload times has been measured; locally
+the four files took 14 s (step 4a).
+
+1. **The `docker` job saves the cache as well**, after `fetch:model` has
+   verified the files, only on a miss (as Names does).
+   - Hugging Face: one download per miss, then warm again. On `main`, at
+     most one per eviction.
+   - Storage: a cache saved by a run on another branch is that branch's
+     only (runs restore from "the current branch or the default branch"),
+     and a pull request's from its own merge ref. Each such miss stores
+     another copy of the four files within the 10 GB, evicted by last
+     access when over: 181.4 MB before the cache compresses it (its stored
+     size is not measured).
+   - CI time: one upload of that copy, on a miss only.
+   - Record: reverses C's "Names is the one job that writes it", and
+     ADR-036's M2 description changes to match. M2's guarantee is
+     unchanged, because the save comes after verification.
+2. **A weekly Names schedule.**
+   - CI time: one Names run a week (#10 took 3 min 36 s, #11 6 min 18 s).
+   - Hugging Face: at most about one download a week. If a restore does not
+     count as an access, a 7-day schedule races the 7-day eviction and may
+     download every time.
+   - Gaps: "In a public repository, scheduled workflows are automatically
+     disabled when no repository activity has occurred in 60 days" (GitHub,
+     read 2026-10-15).
+   - Record: ADR-036 says any later periodic determinism check is a new
+     decision with its own reason. A scheduled Names run also runs
+     `test:names` and `eval:names` on whatever CPU it draws. A CPU without
+     a baseline would produce results no rule asked for, and the standing
+     step for a new CPU (its predicted group committed before its result is
+     opened) would apply to them.
+   - A variant: a separate weekly workflow that only restores, fetches and
+     saves the model, with no tests and no comparison. It has the same
+     download and gap costs, but no ADR-036 consequence.
+3. **Leave it and accept the download.**
+   - No change to any file.
+   - On a cold cache, every push and pull request downloads 181 MB from
+     Hugging Face and fails when Hugging Face is unreachable: a red CI run
+     unrelated to the change.
+   - How often the cache is cold is unknown until the question above is
+     settled.
+
+**Ruling (the user, 2026-10-15): option 1.** The `docker` job saves the
+cache as well, after `fetch:model` has verified the files, and only on a
+miss.
+
+- **The reason (the user's):** it is the only option that does not depend
+  on whether a restore counts as an access, which GitHub does not
+  document. Whatever the answer, a miss is followed by a save, so after an
+  eviction the cache is cold only until the next run on that branch has
+  saved it again.
+- **The guarantee holds** because the save follows the hash check: the
+  job saves only files `fetch:model` has kept, and the gateway hashes them
+  again before loading the model (ADR-036, M2).
+- **This reverses amendment C's "Names is the one job that writes it."**
+  Both the Names workflow and the `docker` job now save the same key, each
+  only on a miss. If both miss at once, one save is skipped: the pinned
+  `actions/cache` logs a failed save as a warning and never fails the step
+  (its `saveImpl.ts` at `55cc8345`, read 2026-10-15).
+- **ADR-036's M2 description** is amended to match (its dated note).
+- **Built:** not yet. The `ci.yml` change is put to the user as a diff
+  first.
 
 ---
 
