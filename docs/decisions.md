@@ -13587,6 +13587,14 @@ user asked for in question 3 of ADR-046.
   option 1 covers.
 - **Not yet run on GitHub.** Only ran locally, where the smoke test passed
   38 of 38 checks.
+  **Run on GitHub (2026-10-15):** 40 of 40. In the run for c201488, job
+  `docker`, step "Smoke test the image, names off and on", log lines 4 to
+  43 were all "ok" and line 44 "docker smoke: all checks passed"; the job
+  took 52 s. This is the first result that was read, not the first run:
+  the step has run on every push since 38478cf. The 38 above was the local
+  count when this was written. Amendment D's telemetry check made it 39
+  and amendment F's notice check 40. **Current: 40 with `--models`, 31
+  without.**
 
 ### Amendment D (2026-10-10, after 38478cf): the disclosure's shape, and the gap shown at start-up
 
@@ -13888,6 +13896,13 @@ miss.
   model", with `if: steps.restore.outputs.cache-hit != 'true'`. It was
   committed after the readings above (the diff was put to the user
   first).
+- **Seen on GitHub: the condition, not the save (2026-10-15).** In the run
+  for c201488, the commit that added the step, the restore hit and "Save
+  the model" was **skipped**. That shows the condition holds the save back
+  on a hit. **The save itself has not run.** It will run only on a real
+  miss: after an eviction, or when a new pin changes the key. So nothing
+  yet shows that it stores the files or that a later run restores what it
+  stored.
 
 ---
 

@@ -4249,7 +4249,8 @@ npx tsx scripts/docker-smoke.ts pseudonym-gateway:local
 npx tsx scripts/docker-smoke.ts --models models pseudonym-gateway:local   # also names on (needs npm run fetch:model)
 ```
 
-It runs 30 checks, plus 9 more with `--models`, in four groups. Run it from
+It runs 31 checks, plus 9 more with `--models` (40 in all), in four
+groups (counts since ADR-046 amendment F, 2026-10-14). Run it from
 the repository's root: one check reads `.env.example`.
 
 - **What the image contains.** A `docker export` of a container made from
@@ -4271,7 +4272,16 @@ It prints check names, paths and exit codes only. It needs Docker and
 Names workflow and this job save (each only on a miss, after
 `npm run fetch:model` has checked the files; ADR-046 amendments C and
 G). It ran green on Docker Desktop 29.8.1 (Windows 11, WSL2 VM
-with 4 CPUs): 39 of 39 with `--models`. It has not run on GitHub yet.
+with 4 CPUs): 39 of 39 with `--models` (a local count from 2026-10-10,
+before amendment F's notice check made it 40).
+
+**On GitHub (2026-10-15): 40 of 40, the current count.** The run for
+c201488 (job `docker`, step "Smoke test the image, names off and on",
+`npx tsx scripts/docker-smoke.ts --models models pseudonym-gateway:ci`):
+log lines 4 to 43 all "ok", line 44 "docker smoke: all checks passed",
+the job done in 52 s. This is the first result that was read, not the
+first run: every push since 38478cf ran the same step, and those results
+were not read.
 
 **The build context, listed.** To see what the `.dockerignore` allowlist
 lets in, build a throwaway Dockerfile, written anywhere outside the repo,
@@ -4409,4 +4419,6 @@ G1 puts the old `NODE_ENV` rule back and is caught by 5 tests, the
 - linux/arm64;
 - `eval:names` inside the image (the spans were reproduced in Phase 6c on
   the full `bookworm` image, from the repository, not on this one);
-- the names-on smoke check in CI has not yet run on GitHub.
+- ~~the names-on smoke check in CI has not yet run on GitHub~~: covered
+  since 2026-10-15, when a GitHub run's result was read (40 of 40, the run
+  for c201488; above).
