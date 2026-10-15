@@ -192,4 +192,12 @@ export const MUTATIONS: readonly Mutation[] = [
     "plantedInLogs: plantedIn(state.logs.join(''), state.forms),",
     "plantedInLogs: plantedIn(withoutHostname(state.logs.join(''), host).text, state.forms),",
   ),
+  // Timings in meta.json (bug-log 76).
+  m('E37', 'timings are not rounded', 'ms === undefined ? undefined : Math.round(ms);', 'ms;'),
+  m(
+    'E38',
+    'one timing is written unrounded',
+    'headersMs: wholeMs(exchange.headersMs),',
+    'headersMs: exchange.headersMs,',
+  ),
 ];

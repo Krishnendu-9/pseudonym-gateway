@@ -503,6 +503,17 @@ const logFileNote = (replaced: number) => ({
   replaced,
 });
 
+/**
+ * A timing as meta.json records it: whole milliseconds. Unrounded, a
+ * duration from performance.now() has up to 17 digits across its decimal
+ * point, and the repository's hygiene scan reads such a run as a number:
+ * Attempt 8's `e2.meta.json` held one that was a valid card number by the
+ * card detector's own rules (bug-log 76). A duration of at most 10^12 - 1
+ * ms rounds to at most 12 digits, fewer than the shortest card.
+ */
+export const wholeMs = (ms: number | undefined): number | undefined =>
+  ms === undefined ? undefined : Math.round(ms);
+
 // --- the run ----------------------------------------------------------------
 
 export interface CallOutcome {
@@ -658,7 +669,12 @@ export async function runCalls(options: RunOptions): Promise<RunResult> {
         id: call.id,
         names: call.names,
         recordedOn: new Date().toISOString(),
-        client: { startedAt, status: clientStatus, contentType: clientType, ms: clientMs },
+        client: {
+          startedAt,
+          status: clientStatus,
+          contentType: clientType,
+          ms: wholeMs(clientMs),
+        },
         ...(clientFailure === undefined ? {} : { clientFailure }),
         provider: state.exchanges.map((exchange) => ({
           url: exchange.url,
@@ -666,9 +682,9 @@ export async function runCalls(options: RunOptions): Promise<RunResult> {
           refused: exchange.refused,
           status: exchange.status,
           headers: Object.fromEntries(exchange.headers),
-          headersMs: exchange.headersMs,
-          firstByteMs: exchange.firstByteMs,
-          totalMs: exchange.totalMs,
+          headersMs: wholeMs(exchange.headersMs),
+          firstByteMs: wholeMs(exchange.firstByteMs),
+          totalMs: wholeMs(exchange.totalMs),
           bytes: exchange.bytes.reduce((n, chunk) => n + chunk.length, 0),
           failure: exchange.failure,
         })),
