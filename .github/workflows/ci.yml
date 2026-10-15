@@ -106,12 +106,13 @@ jobs:
       - name: Image size
         run: docker image inspect pseudonym-gateway:ci --format '{{.Size}} bytes'
 
-      # The model for the names-on run (ADR-047's CI decision), from the cache
-      # the Names workflow saves, under the same key. Restore only: Names is
-      # the one job that writes it. On a miss, fetch:model downloads the
-      # pinned files; either way it checks every file's size and SHA-256,
-      # and the gateway checks them again before it loads the model.
+      # The model for the names-on run (ADR-046 amendment C), from the cache
+      # the Names workflow and this job save, under the same key. On a miss,
+      # fetch:model downloads the pinned files; either way it checks every
+      # file's size and SHA-256, and the gateway checks them again before it
+      # loads the model.
       - name: Restore the model
+        id: restore
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: models
@@ -119,6 +120,16 @@ jobs:
 
       - name: Fetch or check the model
         run: npm run fetch:model
+
+      # Saved only on a miss, and only once fetch:model has verified the
+      # files (ADR-046 amendment G): nothing is scheduled to keep the cache,
+      # and GitHub does not document whether a restore counts as an access.
+      - name: Save the model
+        if: steps.restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: models
+          key: name-model-${{ hashFiles('src/gateway/name-model.ts') }}
 
       # Names on checks that a name is redacted, not span equality, so
       # ADR-036's per-CPU stopping rule does not govern it.

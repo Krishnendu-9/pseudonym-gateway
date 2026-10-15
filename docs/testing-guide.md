@@ -4267,9 +4267,10 @@ the repository's root: one check reads `.env.example`.
 
 It prints check names, paths and exit codes only. It needs Docker and
 `tar` on the PATH. CI runs it in its own job (`docker` in `ci.yml`), with
-`--models` since the same day: the model comes from the Names workflow's
-cache (restore only) and `npm run fetch:model` checks it (ADR-046
-amendment C). It ran green on Docker Desktop 29.8.1 (Windows 11, WSL2 VM
+`--models` since the same day: the model comes from the cache that the
+Names workflow and this job save (each only on a miss, after
+`npm run fetch:model` has checked the files; ADR-046 amendments C and
+G). It ran green on Docker Desktop 29.8.1 (Windows 11, WSL2 VM
 with 4 CPUs): 39 of 39 with `--models`. It has not run on GitHub yet.
 
 **The build context, listed.** To see what the `.dockerignore` allowlist

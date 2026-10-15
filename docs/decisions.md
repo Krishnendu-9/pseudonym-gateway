@@ -6071,9 +6071,11 @@ from a pull request is scoped to it and cannot replace `main`'s.
 no longer the only job that saves the cache. The `docker` job in `ci.yml`
 saves the same key in the same way: after `fetch:model` has verified the
 files, and only on a miss. The guarantee above is unchanged, because
-every save follows that check. Built: not yet (the `ci.yml` diff goes to
-the user first). "Unused for 7 days": GitHub does not document whether a
-restore counts as a use (amendment G).
+every save follows that check. Built: yes, after the readings in
+amendment G's result. "Unused for 7 days": GitHub does not document
+whether a restore counts as a use. Measured on 2026-10-15, it does: a
+restore moved the entry's "last used" with no save in between (amendment
+G's result; strong evidence, not proof).
 
 ### Pre-registered: when the names workflow may run on every push (Phase 6c, 2026-10-07; written and committed before the first manual run)
 
@@ -13577,6 +13579,12 @@ user asked for in question 3 of ADR-046.
   someone starts Names by hand, so a cold cache, and the Hugging Face
   failure with it, may be the usual case rather than the rare one
   (amendment G).
+  **Overtaken the same day (amendment G's result):** a restore counts as an
+  access (strong evidence, not proof). While the repository is pushed to
+  at least once every 7 days, every push's restore keeps the cache warm,
+  and a cold cache is the rare case. It becomes the expected case only
+  after a gap of more than 7 days, which is the case amendment G's
+  option 1 covers.
 - **Not yet run on GitHub.** Only ran locally, where the smoke test passed
   38 of 38 checks.
 
@@ -13761,7 +13769,55 @@ then Names runs only when someone starts it.
 
 **What would settle the unknown.** GitHub's cache list gives each entry a
 last-accessed time. Read it before and after a `docker` job that restored
-the entry: if it moves, a restore counts. Not done yet.
+the entry: if it moves, a restore counts. Not done yet when written; done
+the same day (below).
+
+**Result (2026-10-15, the user's readings): a restore counts as an
+access.** Read before the `ci.yml` save step was committed, so nothing in
+this repository could write the entry.
+
+- **The restore,** in run #94 ("docs: separate the model download's size
+  from the file's"), job `docker`, step "Restore the model", verbatim:
+  - "Cache hit for: name-model-c747fe00cf8865460ad804b9967b2a4e887a911b4e1a831c95ef511f1d214814"
+  - "Cache Size: ~117 MB (122760504 B)"
+  - "Cache restored successfully" / "Cache restored from key: <same>"
+- **The entry, on Settings → Actions → Caches:**
+  - Reading 1, 14:13 IST, before the push: present, "120 MB cached last
+    week", Last used 54 minutes ago.
+  - Reading 2, 14:31 IST, after run #94: present, "120 MB cached last
+    week", Last used 2 minutes ago.
+- **Nothing wrote it.** The committed `ci.yml` had no save step, and the
+  page still said "cached last week", so the creation date did not move.
+
+**Two legs (the user's).**
+
+1. **A restore moved "last used",** from 54 minutes ago to 2 minutes ago,
+   with no save in between. This leg is enough on its own.
+2. **The entry survived 8 days past its only save** (2026-10-07, Names
+   #1). _The assistant's condition:_ the page gives the creation only as
+   "last week", which also covers 2026-10-10 (#11). If any Names run from
+   #2 to #11 missed and saved, the entry could be as young as 5 days, and
+   this leg would show nothing. The "Restore the model" step in those runs'
+   logs would settle it; they were not read.
+
+**The caveat stands.** GitHub does not say that "last used" on the page
+and "last access date" in its eviction rule are the same field. So this is
+strong evidence, not proof.
+
+**The stored size, measured.** The entry is 122,760,504 bytes,
+zstd-compressed (the log shows `--use-compress-program unzstd`): 67.66% of
+the 181,416,359 bytes of the four files (cut, as this record's percentages
+are). The same number appears three ways: 122,760,504 B exact; "~117 MB"
+in the log, which is MiB (117.07); "120 MB" on the page, which is
+122.76 MB to two significant figures.
+
+**Why option 1 still earns its place (the user's).** A restore keeps the
+cache warm only while the repository is pushed to. This repository is
+about to go quiet, so a gap of more than 7 days is the expected case, not
+an edge case. The first run after one would download 181.4 MB from
+Hugging Face, or fail if Hugging Face is unreachable. Option 1 covers
+exactly that run: its miss is followed by a save. **The ruling does not
+change.**
 
 **The remedy: options, not decided (waits for the user).** CI minutes cost
 nothing here either way: "GitHub Actions usage is free … for public
@@ -13778,8 +13834,9 @@ the four files took 14 s (step 4a).
      only (runs restore from "the current branch or the default branch"),
      and a pull request's from its own merge ref. Each such miss stores
      another copy of the four files within the 10 GB, evicted by last
-     access when over: 181.4 MB before the cache compresses it (its stored
-     size is not measured).
+     access when over: 181.4 MB before the cache compresses it (stored
+     size not measured when written; measured the same day at 122,760,504
+     bytes, below).
    - CI time: one upload of that copy, on a miss only.
    - Record: reverses C's "Names is the one job that writes it", and
      ADR-036's M2 description changes to match. M2's guarantee is
@@ -13827,8 +13884,10 @@ miss.
   `actions/cache` logs a failed save as a warning and never fails the step
   (its `saveImpl.ts` at `55cc8345`, read 2026-10-15).
 - **ADR-036's M2 description** is amended to match (its dated note).
-- **Built:** not yet. The `ci.yml` change is put to the user as a diff
-  first.
+- **Built:** yes. `ci.yml` gains "Save the model" after "Fetch or check the
+  model", with `if: steps.restore.outputs.cache-hit != 'true'`. It was
+  committed after the readings above (the diff was put to the user
+  first).
 
 ---
 
