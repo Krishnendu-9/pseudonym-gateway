@@ -1,0 +1,8 @@
+{
+  "mode": "end-to-end",
+  "model": "gemini-3.5-flash-lite",
+  "calls": "e1,e2",
+  "head": "bc669cf0f485390e8d2006104e8d5a4e19cd6ca1",
+  "originMain": "bc669cf0f485390e8d2006104e8d5a4e19cd6ca1",
+  "startedAt": "2026-10-15T04:37:24.553Z"
+}

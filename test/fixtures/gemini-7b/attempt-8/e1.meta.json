@@ -1,0 +1,47 @@
+{
+  "id": "e1",
+  "names": false,
+  "recordedOn": "2026-10-15T04:37:27.501Z",
+  "client": {
+    "startedAt": "2026-10-15T04:37:25.942Z",
+    "status": 200,
+    "contentType": "application/json; charset=utf-8",
+    "ms": 1553.2370999999998
+  },
+  "provider": [
+    {
+      "url": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+      "startedAt": "2026-10-15T04:37:26.021Z",
+      "refused": [],
+      "status": 200,
+      "headers": {
+        "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+        "cache-control": "private",
+        "content-encoding": "gzip",
+        "content-type": "application/json",
+        "date": "Thu, 15 Oct 2026 04:37:29 GMT",
+        "expires": "Thu, 15 Oct 2026 04:37:29 GMT",
+        "p3p": "CP=\"This is not a P3P policy! See g.co/p3phelp for more info.\"",
+        "server": "scaffolding on HTTPServer2",
+        "server-timing": "gfet4t7; dur=1040",
+        "transfer-encoding": "chunked",
+        "vary": "Origin, X-Origin, Referer",
+        "x-content-type-options": "nosniff",
+        "x-frame-options": "SAMEORIGIN",
+        "x-xss-protection": "0"
+      },
+      "headersMs": 1446.2155000000002,
+      "firstByteMs": 1454.2707,
+      "totalMs": 1457.4405000000002,
+      "bytes": 601
+    }
+  ],
+  "outgoingIsRegistered": true,
+  "plantedInLogs": [],
+  "completedLogged": true,
+  "logFile": {
+    "checked": "the lines as the gateway wrote them",
+    "written": "this machine's name replaced by <this machine>",
+    "replaced": 3
+  }
+}

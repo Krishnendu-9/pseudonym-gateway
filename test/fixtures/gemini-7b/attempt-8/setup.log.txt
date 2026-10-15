@@ -1,0 +1,2 @@
+{"level":30,"time":1792039044838,"pid":6224,"hostname":"<this machine>","msg":"Server listening at http://127.0.0.1:65509"}
+{"level":30,"time":1792039045942,"pid":6224,"hostname":"<this machine>","msg":"Server listening at http://127.0.0.1:65510"}

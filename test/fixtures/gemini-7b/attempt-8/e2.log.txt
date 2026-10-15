@@ -1,0 +1,3 @@
+{"level":30,"time":1792039062522,"pid":6224,"hostname":"<this machine>","reqId":"req-1","req":{"method":"POST","route":"/v1/chat/completions"},"msg":"incoming request"}
+{"level":30,"time":1792039064051,"pid":6224,"hostname":"<this machine>","reqId":"req-1","extraContent":1,"thoughtSignatureLengths":[132],"msg":"provider extra content dropped"}
+{"level":30,"time":1792039064054,"pid":6224,"hostname":"<this machine>","reqId":"req-1","res":{"statusCode":200},"responseTime":1531.7174999999988,"msg":"request completed"}
