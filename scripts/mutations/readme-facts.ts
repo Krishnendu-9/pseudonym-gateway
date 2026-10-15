@@ -7,7 +7,9 @@
 // README, the drift these checks exist for; B1 changes the stored baseline
 // instead, so the README no longer matches what eval:names compares with.
 // R10 to R13 and E1 to E3 (added 2026-10-13) do the same for the
-// threat model's free-tier figures and eval/baseline.json.
+// threat model's free-tier figures and eval/baseline.json. R14, R15 and M1
+// (added 2026-10-15) for the name model's download and file sizes: R14 is
+// the error the manual had, the model file's size given as the download's.
 
 import type { Mutation } from '../mutate.js';
 
@@ -128,5 +130,25 @@ export const MUTATIONS: readonly Mutation[] = [
     tests: TESTS,
     find: '"CARD": {\n        "values": 153,\n        "redacted": 150,',
     replace: '"CARD": {\n        "values": 153,\n        "redacted": 151,',
+  },
+  readme(
+    'R14',
+    "the README gives the model file's size as the download's",
+    '181.4 MB, of which the model file is 178.5 MB)',
+    '178.5 MB, of which the model file is 178.5 MB)',
+  ),
+  readme(
+    'R15',
+    "the README gives the download's size as the model file's",
+    '181.4 MB, of which the model file is 178.5 MB)',
+    '181.4 MB, of which the model file is 181.4 MB)',
+  ),
+  {
+    id: 'M1',
+    what: 'the pinned tokenizer.json is 2 MB smaller',
+    file: 'src/gateway/name-model.ts',
+    tests: TESTS,
+    find: '      bytes: 2_919_362,',
+    replace: '      bytes: 919_362,',
   },
 ];

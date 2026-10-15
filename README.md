@@ -316,8 +316,9 @@ eval:names` sends the 1,998 measured messages through it and compares
   and the decision not to stop long calls**, and would call for the model
   in a separate process (ADR-037, step 4b).
 - **Install:** the runtime is an optional dependency, never loaded with
-  names off; the model comes from `npm run fetch:model` (178.5 MB), kept
-  only if its SHA-256 matches, and with names on the gateway refuses to
+  names off; the model comes from `npm run fetch:model` (four files,
+  181.4 MB, of which the model file is 178.5 MB), each kept only if its
+  SHA-256 matches, and with names on the gateway refuses to
   start if the list, a file or the runtime is wrong or missing. Sizes, and
   the Linux install setting that skips 273 MB of GPU libraries:
   [Person names: install, licence and CPUs](docs/person-names.md#install).

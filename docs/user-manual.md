@@ -1347,7 +1347,8 @@ npx tsx scripts/fetch-model.ts --dir D:/somewhere     # another root
 npx tsx scripts/fetch-model.ts --from <base URL>      # a mirror of the same files
 ```
 
-It downloads four files (178.5 MB in all) from a pinned commit of
+It downloads four files (181.4 MB in all, of which the model file is
+178.5 MB) from a pinned commit of
 `Xenova/bert-base-multilingual-cased-ner-hrl` into
 `models/Xenova__bert-base-multilingual-cased-ner-hrl@263e82c06569/`, and
 keeps each one only if its size and SHA-256 match the pinned values. On a
@@ -1391,7 +1392,8 @@ cost: they are slow, and they wrongly redact some ordinary words.
    without it the runtime's install script also downloads about 273 MB of
    GPU provider libraries from NuGet, which names never load (measured,
    ADR-036).
-2. `npm run fetch:model`: four files, 178.5 MB, from a pinned commit of
+2. `npm run fetch:model`: four files, 181.4 MB in all (the model file is
+   178.5 MB), from a pinned commit of
    `Xenova/bert-base-multilingual-cased-ner-hrl`, each kept only if its
    SHA-256 matches (licence: below).
 3. Set `PSEUDONYM_NAMES=true` and start the gateway.

@@ -15,6 +15,7 @@ import { IFSC_BANK_CODES } from '../../src/detection/ifsc.js';
 import { MIN_NUMBER_DIGITS } from '../../src/detection/number.js';
 import { UPI_HANDLES } from '../../src/detection/upi.js';
 import { PROVIDER_RETRY_AFTER_SECONDS } from '../../src/gateway/errors.js';
+import { NAME_MODEL } from '../../src/gateway/name-model.js';
 import { MAX_HELD_BACK } from '../../src/redaction/variants.js';
 
 const ROOT = join(import.meta.dirname, '..', '..');
@@ -60,6 +61,18 @@ describe('the README says what the code does', () => {
 
   it("the name detector's default timeout", () => {
     expect(numberIn(/The timeout's default, (\d+) s/) * 1000).toBe(NAMES_TIMEOUT_MS_DEFAULT);
+  });
+
+  // The download is every pinned file, the model file only one of them: the
+  // manual once gave the model file's size as the download's.
+  it('what fetch:model downloads, and the model file within it', () => {
+    const mb = (bytes: number): string => (bytes / 1e6).toFixed(1);
+    const total = NAME_MODEL.files.reduce((sum, file) => sum + file.bytes, 0);
+    const model = NAME_MODEL.files.find((file) => file.path.endsWith('.onnx'))!;
+    expect(NAME_MODEL.files).toHaveLength(4);
+    expect(README).toContain(
+      `(four files, ${mb(total)} MB, of which the model file is ${mb(model.bytes)} MB)`,
+    );
   });
 });
 

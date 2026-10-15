@@ -16,8 +16,9 @@ feature fails closed are in the README; every setting is in the
   (on Linux x64 set `ONNXRUNTIME_NODE_INSTALL=skip` when installing, or its
   install script also downloads 273 MB of GPU libraries that names never
   load: measured, ADR-036);
-  the model comes from `npm run fetch:model` (178.5 MB), kept only if its
-  SHA-256 matches, and checked again at start-up: with names on, the
+  the model comes from `npm run fetch:model` (four files, 181.4 MB, of
+  which the model file is 178.5 MB), each kept only if its SHA-256
+  matches, and checked again at start-up: with names on, the
   gateway refuses to start if the list, a file or the runtime is wrong or
   missing ([ADR-036](decisions.md#adr-036)).
 
