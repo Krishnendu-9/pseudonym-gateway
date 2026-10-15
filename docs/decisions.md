@@ -123,7 +123,7 @@ ADR-036's sections, in order (they are not numbered):
 | [ADR-038](#adr-038) | Detection never reads placeholder-shaped text, and the evaluation counts what is sent                             | 2026-10-03 | reversed 2026-10-07                    | in place 2026-10-06/07; the final amendment (2026-10-07) reverses it              |
 | [ADR-039](#adr-039) | Standing requirement: a change to the detection path is checked by fuzz for "nothing redacted before is sent now" | 2026-10-03 | standing requirement, set by the user³ | in place 2026-10-07 (one exception, enforced by a classifier)                     |
 | [ADR-040](#adr-040) | The evaluation counts the personal values sent as written                                                         | 2026-10-07 | accepted                               | —                                                                                 |
-| [ADR-041](#adr-041) | Phase 7, the second provider: Gemini's OpenAI-compatible endpoint, and a strict fake provider                     | 2026-10-07 | in progress                            | in place: see its sections below                                                  |
+| [ADR-041](#adr-041) | Phase 7, the second provider: Gemini's OpenAI-compatible endpoint, and a strict fake provider                     | 2026-10-07 | done 2026-10-15 (the user's ruling)    | in place: see its sections below                                                  |
 
 ADR-041's sections (numbered in the entry; ▸ marks a subsection):
 
@@ -8356,16 +8356,37 @@ included (`known-failing glued-literal: the entry says 4 sent, measured
 
 <a id="adr-041"></a>
 
-## ADR-041: Phase 7, the second provider: Gemini's OpenAI-compatible endpoint, and a strict fake provider (2026-10-07; in progress)
+## ADR-041: Phase 7, the second provider: Gemini's OpenAI-compatible endpoint, and a strict fake provider (2026-10-07; done 2026-10-15)
 
-**Status (corrected 2026-10-14).** In progress. Records 1 to 3 were
+**Status (2026-10-15, the user's ruling): done.** Phase 7's scope is the
+second provider (section 3: the demo page was deferred there to after
+Phase 8, reaffirmed by ADR-045 and ruled out by ADR-048). Records 1 to 3
+and the adapter design (section 6, option A) were decided on 2026-10-07.
+The offline run (section 9), the live runs (Attempts 1 to 8: sections 10,
+11, 13, 14, 16 and 17) and the Phase 7c decisions (sections 15 and 16) are
+built and recorded. The s1/p09 pair's result reading was taken at 00:01
+IST on 2026-10-15 (section 16), and the end-to-end calls registered in
+section 17 ran the same morning, the second ending at 10:07:44 IST
+(Attempt 8).
+
+- **The one outstanding measurement:** the result reading of the Oct 14
+  counter bar (section 17 item 6), due 2026-10-16 (IST) or later. It
+  measures how Google's usage display counts, not Pseudonym, and stays
+  open as a standing measurement; it does not hold the phase open.
+- **Not requirements of the phase:** whether Gemini keeps `[PERSON_1]`
+  (section 17's result records that E2 cannot show it, and no run is
+  registered to), and streaming and an option 3 refusal end to end
+  (section 17 item 7 lists both as not covered). The README's Proof
+  names them as not run end to end.
+
+_Status as corrected 2026-10-14:_ "In progress. Records 1 to 3 were
 decided by the user on 2026-10-07, and so was the adapter design, in
 section 6 the same day: option A, one OpenAI-compatible adapter with a
 profile per provider. The offline run (section 9), the live runs
 (Attempts 1 to 7: sections 10, 11, 13, 14 and 16) and the Phase 7c
 decisions (sections 15 and 16) are built and recorded. Still open: the
 s1/p09 pair's result reading (section 16, due 2026-10-15 or later) and
-the end-to-end calls registered in section 17, none of which has run.
+the end-to-end calls registered in section 17, none of which has run."
 
 _As first written (2026-10-07):_ "Records 1 to 3 are decided (the user,
 2026-10-07). The reading (7a) and the strict fake provider's design
@@ -13423,6 +13444,9 @@ script:
   **Changed the same day:** it does now (amendment below).
 - The README status line is unchanged in substance. Phase 7 is not done,
   so "Phase 6 of 8 done" stays, with the image added beside it.
+  **Note (2026-10-15):** that reason has expired. Phase 7 was ruled done
+  on 2026-10-15 (ADR-041's status), and the README's count moved to
+  "Phase 7 of 8 done", with Phase 8 under way.
 
 ### Amendment (2026-10-10, later the same day): telemetry on Windows, the size decision, names on in CI
 
