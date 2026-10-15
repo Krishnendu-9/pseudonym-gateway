@@ -176,7 +176,7 @@ ADR-041's sections (numbered in the entry; ▸ marks a subsection):
 | [ADR-045](#adr-045) | Where the dashboard's counts come from                                                               | 2026-10-10 | accepted: option 5           | —                                                                                                                        |
 | [ADR-046](#adr-046) | The container image (Phase 8)                                                                        | 2026-10-10 | accepted                     | in place 2026-10-10 (amendments A to C, D, E) and 2026-10-14 (F); a note in section 1 superseded by ADR-047 (2026-10-10) |
 | [ADR-047](#adr-047) | The start-up guard is on unless turned off by name                                                   | 2026-10-10 | accepted (the user's ruling) | —                                                                                                                        |
-| [ADR-048](#adr-048) | The results page: where it lives, what it shows, how it stays true                                   | 2026-10-10 | proposed                     | —                                                                                                                        |
+| [ADR-048](#adr-048) | The results page: where it lives, what it shows, how it stays true                                   | 2026-10-10 | accepted 2026-10-15 (D)      | ruling in place 2026-10-15 (option D: no page built)                                                                     |
 
 ¹ No status of its own. The preamble above says each entry records an
 accepted decision, and nothing in the entry says otherwise; where part of
@@ -13769,11 +13769,13 @@ variable turns it off. It is never inferred from `NODE_ENV`.
 
 <a id="adr-048"></a>
 
-## ADR-048: The results page: where it lives, what it shows, how it stays true (2026-10-10; proposed)
+## ADR-048: The results page: where it lives, what it shows, how it stays true (2026-10-10; accepted 2026-10-15: option D)
 
-**Status.** Proposed. Nothing is decided, built or stubbed (rule 12). This
-is design work brought forward; it does not change ADR-041 section 3's
-timing. If the page is built, building starts **after Phase 8's last item**
+**Status.** Accepted 2026-10-15, the user's ruling: **option D, no results
+page is built** ("Ruling", at the end of this entry). Proposed on
+2026-10-10, and the text below, up to the ruling, is as it was then.
+Nothing was built or stubbed (rule 12). This is design work brought
+forward; it does not change ADR-041 section 3's timing. If the page is built, building starts **after Phase 8's last item**
 (the final README), and the page shows **counts only, never message
 content**. [ADR-045](#adr-045) ruled option 5: the page renders the
 committed evaluation results, not live traffic. This ADR settles how.
@@ -14110,3 +14112,30 @@ wanted for its own sake.** The measurement is the real decision: it is
 what would make a page worth having, and it is worth deciding on its own
 merits (it measures the promise with names on), not as a step towards a
 page. A is not recommended under any path.
+
+### Ruling (the user, 2026-10-15): option D, the results page is not built
+
+**Recorded late.** From 2026-10-10 the user treated this ADR as ruled,
+while it still read "proposed" with D only as a recommendation. This
+records the ruling with today's date; it does not backdate it.
+
+**Adopted: D.** No results page is built: no gateway route, no
+`docs/results.md`, no GitHub Pages site. The README's generated block
+remains the results page, as it is today.
+
+**The reason (the user's).** The only content a page could add today is
+the names-on breakdown in `eval/names-baseline.json` (recall by language,
+script, form and place, and lookalikes by kind). It is not re-checked on a
+push, only when the Names workflow is run by hand, and it has nothing
+names-off to compare against. So a page would either duplicate the README
+or publish figures that silently go stale.
+
+**Path 2 stays available.** If the names-on measurement of section 3
+(values sent as written, per-type scores and the echo, with names on, over
+the same messages) is ever wanted for its own sake, it gets its own
+measurement ADR, committed before its first run (rule 6), and a generated
+`docs/results.md` checked by `npm run eval` can follow it then. That would
+be a new decision, not this one reopened.
+
+**Unchanged by this ruling:** the tension over the held-out names figure
+(section 2) stays open, and option A is not taken up under any path.
