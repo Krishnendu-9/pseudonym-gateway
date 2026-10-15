@@ -4178,15 +4178,66 @@ section A, would either explain the deleted directory too, or rule out a
 shared cause and leave B to its own candidates. The symptom split is kept
 as it is: this is an association across it, not a merge.
 
+#### Amendment 2026-10-15: a counterexample
+
+**Until 2026-10-15, every unexplained full-run failure on record was in a
+far slower run** (the table above). **This one was not.**
+
+- **The failure:** the deleted directory again (symptom B), one `ENOENT` in
+  the same `live-run-guard.test.ts` test, "refuses a staged plan before
+  anything else", on its `live-run-guard-out-…` directory under the system
+  temp folder.
+- **The run:** `test:coverage` (3,338 tests), started 10:25:31 IST, **93.9
+  s**. The sampler: 20 samples, longest gap 5.0 s, lowest free memory
+  4,642 MB, CPU busy up to 94%.
+- **Coverage runs on the same machine that morning, for comparison:**
+
+  | Started (IST) | Took       | Result                                      |
+  | ------------- | ---------- | ------------------------------------------- |
+  | 09:47:40      | 84.8 s     | passed                                      |
+  | 10:01:17      | 81.8 s     | passed                                      |
+  | 10:25:31      | **93.9 s** | **the `ENOENT`** (and one expected failure) |
+  | 10:27:28      | 63.3 s     | the expected failure only; no `ENOENT`      |
+
+  The expected failure in the last two was the hygiene test's finding on an
+  untracked recording (bug-log 76), not part of either symptom. Every
+  sampler gap in the four runs was 5.0 s, the interval itself. 93.9 s is
+  the slowest of the four, but by about 10%, not the roughly 50 s of the
+  slow mode (section A).
+
+**What this does to the shared-cause hypothesis.** That hypothesis was a
+single event that both costs time and touches temp files. It predicted
+slowness and the loss of a temp directory together. Here it got the loss
+without the slowness. **The hypothesis is weakened.** It is not replaced:
+one counterexample is not a new theory, and nothing here says what removed
+the directory.
+
+**The candidate causes, read for this occurrence:**
+
+- **Storage Sense:** its scheduled task
+  (`\Microsoft\Windows\DiskFootprint\StorageSense`) last ran on
+  **2026-10-14 at 12:03 IST**, ending in the same error as before
+  (`0x80040154`; reported as 2147746132). It did not run on 2026-10-15.
+  Windows can also start Storage Sense by another path (section B), which
+  this reading does not cover.
+- **Defender:** **0 detections on 2026-10-15** (`Get-MpThreatDetection`,
+  read without elevation). Defender removes files only on a detection.
+
+So neither fired, as far as these readings show. **The Storage Sense
+reading was taken about 15 minutes after the failure, not at once as
+section B asks**, so it is weaker than the protocol intends. Whether other
+items in `%TEMP%` vanished at the same moment was not read.
+
 ### Run records against both symptoms
 
-| Date and work                                                                                                                                                                                                        | A. Slowness                                                                                                                                  | B. Deleted directory  |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
-| 2026-10-10, Phase 8: one mutation list (3 mutations, about 7 s each), the name-worker file alone, one full gate (`npm test` 3,217 tests, coverage, `eval`, `test:names`, `eval:names`), Docker Desktop stopped first | none                                                                                                                                         | none                  |
-| 2026-10-10, Phase 8 follow-up (ADR-047): one mutation list (4 mutations, 4–5 s each), one full gate (`npm test` 3,227 tests, coverage, `eval`, `test:names`, `eval:names`)                                           | none; the `npm test` sampler's longest gap was 10.0 s, one interval over the usual                                                           | none                  |
-| 2026-10-10, 15:31 IST, the Windows telemetry line (ADR-046 amendment D): the gate's first `npm test` (3,230 tests)                                                                                                   | **yes: 142 s against about 80 s**                                                                                                            | **yes: one `ENOENT`** |
-| 2026-10-10, straight after: the file alone (32 tests), then `npm test` again (3,230 tests)                                                                                                                           | none (about 80 s)                                                                                                                            | none                  |
-| 2026-10-10, 17:13 IST, the gate for removing the daily Names schedule: `npm test` (3,230 tests), coverage, `eval`, `test:names`, `eval:names`; Docker Desktop not running                                            | **yes: `npm test` 143 s**, 26 samples, longest gap 10.3 s, lowest free memory 4,045 MB (above bug-log 57's failing range); every test passed | none                  |
+| Date and work                                                                                                                                                                                                        | A. Slowness                                                                                                                                      | B. Deleted directory                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-10-10, Phase 8: one mutation list (3 mutations, about 7 s each), the name-worker file alone, one full gate (`npm test` 3,217 tests, coverage, `eval`, `test:names`, `eval:names`), Docker Desktop stopped first | none                                                                                                                                             | none                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| 2026-10-10, Phase 8 follow-up (ADR-047): one mutation list (4 mutations, 4–5 s each), one full gate (`npm test` 3,227 tests, coverage, `eval`, `test:names`, `eval:names`)                                           | none; the `npm test` sampler's longest gap was 10.0 s, one interval over the usual                                                               | none                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| 2026-10-10, 15:31 IST, the Windows telemetry line (ADR-046 amendment D): the gate's first `npm test` (3,230 tests)                                                                                                   | **yes: 142 s against about 80 s**                                                                                                                | **yes: one `ENOENT`**                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| 2026-10-10, straight after: the file alone (32 tests), then `npm test` again (3,230 tests)                                                                                                                           | none (about 80 s)                                                                                                                                | none                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| 2026-10-10, 17:13 IST, the gate for removing the daily Names schedule: `npm test` (3,230 tests), coverage, `eval`, `test:names`, `eval:names`; Docker Desktop not running                                            | **yes: `npm test` 143 s**, 26 samples, longest gap 10.3 s, lowest free memory 4,045 MB (above bug-log 57's failing range); every test passed     | none                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| 2026-10-15, 10:25:31 IST, the bug-76 gate after ADR-041 section 17's run (Attempt 8): `test:coverage` (3,338 tests); one other failure, the hygiene finding on the untracked `attempt-8/e2.meta.json`, expected      | **not clearly: 93.9 s**, against 84.8, 81.8 and 63.3 s for coverage the same morning; 20 samples, longest gap 5.0 s, lowest free memory 4,642 MB | **yes: one `ENOENT`** in the same `live-run-guard.test.ts` test, "refuses a staged plan before anything else", on its `live-run-guard-out-…` directory under the system temp folder. Read about 15 minutes later, not at once: the Storage Sense task last ran on 2026-10-14 at 12:03 IST, ending in the same error (2147746132, `0x80040154`), so not today; Defender, 0 detections on 2026-10-15. Re-run straight after (63.3 s): no `ENOENT` |
 
 ## The Docker image (Phase 8, 2026-10-10, ADR-046, bug-logs 72 and 73)
 
