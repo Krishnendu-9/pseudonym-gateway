@@ -166,6 +166,7 @@ ADR-041's sections (numbered in the entry; ▸ marks a subsection):
 | 17   | Decision H: the end-to-end calls (registered 2026-10-14, before any call and before the run script)                  | registration             |
 | 17 ▸ | Amendment 2026-10-15: four rulings on the run script (log files, when log lines are checked, forms, telemetry)       | amendment                |
 | 17 ▸ | Result 2026-10-15: the end-to-end calls (Attempt 8)                                                                  | result                   |
+| 17 ▸ | First reading 2026-10-15: the end-to-end calls' bar                                                                  | result                   |
 
 | ADR                 | Title                                                                                                | Date       | Status                       | Amended by                                                                                                               |
 | ------------------- | ---------------------------------------------------------------------------------------------------- | ---------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
@@ -12471,6 +12472,46 @@ An unrounded `responseTime` does not: if one is ever read as a card number,
 the cost is one file not committed and the finding recorded, which is what
 happened here with `e2.meta.json`. A second change to published log lines
 is not worth making to avoid that inconvenience.
+
+#### First reading 2026-10-15 10:41 IST (05:11 UTC): the end-to-end calls' bar
+
+Written after the registered first reading and before the result reading.
+Nothing above is edited.
+
+**The reading (the user's).** The bar for the display day 13:30 IST 14
+October to 13:30 IST 15 October (labelled Oct 14), for
+`gemini-3.5-flash-lite`, 28-day range, hovered:
+
+- **10:41 IST: 2 of 500.** **This is the registered first reading**, taken
+  after the earliest registered time, 10:37:44 IST (30 minutes after the
+  last call ended at 10:07:44.054).
+- **The baseline was 0 of 500** (10:04 IST, before the run), and both calls,
+  E1 and E2, were answered 200.
+
+**Against item 6's prediction.** Item 6 predicted that the bar rises by
+exactly the number of calls Google answers 200: here 2. **It rose by 2. The
+prediction held.**
+
+**What this establishes.** For this bar, the premise that M and P share
+(section 14 item 3: a call answered 200 counts once, always) holds: the bar
+rose by exactly the number of 200s, as the premise predicts. Neither of the
+outcomes item 6 named as trouble happened: a rise of more than the 200s
+(something else counted, or a 200 counted twice) or of less (a 200
+uncounted). **Nothing in the counter question reopens.**
+
+**What it does not establish.**
+
+- **It does not separate M from P, and was never meant to** (item 6 says
+  so). Both calls were answered 200, and M and P differ only on calls that
+  fail.
+- A rise of exactly 2 is also what one uncounted 200 plus one other counted
+  request would give. Nothing points to that, but this reading cannot
+  exclude it.
+- It does not show whether the quota Google enforces counts as this display
+  does.
+
+**This is the first reading.** The result reading is due on **2026-10-16
+(IST) or later**; if it differs from 2, it stands instead.
 
 <a id="adr-042"></a>
 
