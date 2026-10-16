@@ -831,9 +831,9 @@ space (`<5 digits> <5 digits>@ybl`) is covered whole. In a payment link
   digits are replaced (as a number), the `@handle` is sent.
 - `<mobile>.<name>@<unknown handle>`: with no keyword only the mobile is
   replaced; with a UPI keyword the whole ID is (checked 2026-10-16 over 200
-  generated cases, with and without the keyword; the keyword case is also
-  held by `test/unit/detection/upi.test.ts` and by the evaluation's
-  `contained` shape).
+  generated cases, with and without the keyword; both cases are also held
+  by `test/unit/detection/upi.test.ts`, and the keyword case by the
+  evaluation's `contained` shape).
 - The payee name in a payment link (`pn=…`): not detected with names off,
   the default; with names on, not measured.
 

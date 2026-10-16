@@ -15342,7 +15342,9 @@ span)". So the test's own author attributes the keyword case to ADR-029.
   nearest test covers `<mobile>@<unknown>` with no name. Adding one is
   cheap: one test beside that one, with an expected detection read from
   the probe, and one mutation. **That test was put to the user and not
-  ruled before Phase 8 was ruled done.**
+  ruled before Phase 8 was ruled done.** **Taken, 2026-10-16 (the user,
+  after a502627):** see "The no-keyword test, taken", at the end of this
+  entry.
 
 **Why the first check missed these three: the promise clause is enforced
 by a manual pattern search, which is not exhaustive.** Searches were
@@ -15450,4 +15452,29 @@ cover:
   real miss (amendment G). CI plumbing, not a property of the product.
 
 **Open, not blocking:** the test for line 832's case without a keyword
-(above), put to the user.
+(above), put to the user. **Taken the same day** (below), so nothing
+recorded here remains open.
+
+### The no-keyword test, taken (the user, 2026-10-16, after a502627)
+
+The user manual's line 832 says that with no keyword only the mobile of
+`<mobile>.<name>@<unknown handle>` is replaced. It is now held by a test
+in `test/unit/detection/upi.test.ts`, beside the `<mobile>@<unknown>`
+test: "a mobile then a name at an unknown handle with no keyword: only the
+mobile is found, the rest is sent (known limit)".
+
+- **What it expects:** one validated `PHONE` over the mobile alone. The
+  expectation was read first from a probe of 200 generated cases, which
+  gave exactly that every time.
+- **Mutations** (`scripts/mutations/upi-no-keyword.ts`), 2 of 2 caught:
+  - **U1** trusts the shape: an unknown handle counts as validated when its
+    name is a digit run and a dot. It is caught by the new test and by the
+    ADR-029 keyword test, which asserts `validated: false`.
+  - **U2** makes the same shape count as if a keyword were near, with
+    validation unchanged, at unknown handles only. It is caught by the new
+    test alone.
+- **A first version of U2** also fired at known handles, and the
+  known-handle test caught it as well. It was narrowed so that one
+  mutation shows the new test is needed on its own.
+
+The manual now says both of its cases are held by that test file.

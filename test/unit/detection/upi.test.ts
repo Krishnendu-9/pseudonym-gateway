@@ -271,6 +271,19 @@ describe('a mobile number inside a UPI ID', () => {
       { type: 'NUMBER', ...spans[0]!, validated: false, context: false },
     ]);
   });
+
+  // The user manual's "What is not found" says this (ADR-049): with no
+  // keyword only the mobile is replaced, the ".<name>@<handle>" is sent. The
+  // keyword case is the ADR-029 test above. Measured first on 200 generated
+  // cases (2026-10-16): always one validated PHONE over the mobile alone.
+  it('a mobile then a name at an unknown handle with no keyword: only the mobile is found, the rest is sent (known limit)', () => {
+    const mobile = indianMobile(rng);
+    const { text, spans } = compose`to ${`${mobile}.${nameOf()}@${UNKNOWN}`} now`;
+    const start = spans[0]!.start;
+    expect(detect(text)).toEqual([
+      { type: 'PHONE', start, end: start + mobile.length, validated: true, context: false },
+    ]);
+  });
 });
 
 // ADR-029: found at every "@", so two IDs glued by a hyphen are both found.
