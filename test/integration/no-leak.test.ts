@@ -1,5 +1,5 @@
-// The no-leak test (CLAUDE.md, "How we prove it works"): hundreds of
-// synthetic messages full of personal data go through the real gateway
+// The no-leak test (the README's "Proof"; docs/testing-guide.md): hundreds
+// of synthetic messages full of personal data go through the real gateway
 // (Fastify, allowlist, redaction, the Ollama adapter) to a mock provider
 // that records the raw bytes it receives. No planted value may appear in
 // any outgoing request in any form: raw, lowercased, normalised, or with

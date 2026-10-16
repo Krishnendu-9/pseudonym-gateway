@@ -1,5 +1,5 @@
-// The canary test (CLAUDE.md, "Errors and logs"): synthetic values go into
-// every place a request can carry them, every error path is forced, and no
+// The canary test (the README's "Proof"; docs/testing-guide.md): synthetic
+// values go into every place a request can carry them, every error path is forced, and no
 // canary may appear, in any form (test/support/leak-check.ts), in any
 // response body or header, any log line (captured at `trace`, the most
 // verbose level), or any error the gateway handled (seen through Fastify's

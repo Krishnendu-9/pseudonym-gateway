@@ -1,6 +1,7 @@
 // Card numbers published by payment providers for testing. These are the only
-// card numbers allowed in files in this repo (CLAUDE.md rule 4). Checked
-// against the sources on 2026-09-28.
+// card numbers allowed in files in this repo (docs/testing-guide.md;
+// test/unit/repo-hygiene.test.ts enforces it). Checked against the sources
+// on 2026-09-28.
 
 export interface PublishedCard {
   readonly number: string;

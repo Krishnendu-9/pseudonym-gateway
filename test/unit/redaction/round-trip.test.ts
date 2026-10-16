@@ -7,7 +7,8 @@
 // Aadhaar and PAN values are generated at run time (ADR-009); every
 // comparison that embeds one goes through assertTextEqualQuietly, not
 // `expect().toBe()`, so a failure never prints it. The image-URL
-// exfiltration example reproduces CLAUDE.md's documented attack exactly.
+// exfiltration example reproduces the attack docs/user-manual.md documents
+// ("Restoration safety"), with its own image text.
 
 import { describe, expect, it } from 'vitest';
 import { PlaceholderMapping } from '../../../src/redaction/mapping.js';
@@ -103,7 +104,8 @@ describe('round trip: a later loose variant makes an earlier placeholder exact-o
 });
 
 describe('round trip: restoration safety survives the full pipeline', () => {
-  // CLAUDE.md's documented attack, run end to end: a message contains a real
+  // The documented attack (docs/user-manual.md, "Restoration safety"), run
+  // end to end: a message contains a real
   // Aadhaar; the (simulated) model reply tries to exfiltrate it through a
   // markdown image URL. The value must never appear in the restored reply.
   it('never restores a value into a markdown image URL, even through a real request', () => {

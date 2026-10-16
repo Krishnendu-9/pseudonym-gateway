@@ -1,6 +1,6 @@
 // restore(): tolerant restoration (design doc) and restoration safety
-// (CLAUDE.md). Real values used here are hardcoded synthetic fixtures (a
-// PAN has no checksum, so it carries no more re-identification risk than any
+// (docs/user-manual.md, "Restoration safety"; ADR-018). Real values used
+// here are hardcoded synthetic fixtures (a PAN has no checksum, so it carries no more re-identification risk than any
 // other string - ADR-009 only requires generated Aadhaar/card/phone/email to
 // stay in memory) or the published Visa test card, so plain `toBe` is safe.
 

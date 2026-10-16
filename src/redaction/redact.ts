@@ -1,5 +1,5 @@
 // Redacting one message's text against a per-request PlaceholderMapping
-// ("Stateless, deterministic redaction" in CLAUDE.md). Call this once per
+// (ADR-013 in docs/decisions.md; the README's "Stateless by design"). Call this once per
 // message, in the order the conversation has them, reusing the same
 // mapping instance: that is what gives every real value one placeholder for
 // the whole history, numbered by first appearance, with no server-side state

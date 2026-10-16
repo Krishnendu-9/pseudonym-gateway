@@ -126,8 +126,8 @@ function candidates(text: string): Candidate[] {
 
 export interface RestoreOptions {
   /** Restore even inside a URL, markdown link/image target, or HTML
-   * attribute value, or before a hostname. Default false (CLAUDE.md,
-   * "Restoration safety"). */
+   * attribute value, or before a hostname. Default false
+   * (docs/user-manual.md, "Restoration safety"; ADR-018). */
   readonly restoreInUnsafeRegions?: boolean;
 }
 

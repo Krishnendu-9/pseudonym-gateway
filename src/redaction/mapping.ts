@@ -1,5 +1,5 @@
-// Per-request placeholder <-> value map ("Stateless, deterministic
-// redaction" in CLAUDE.md). One instance lives for the lifetime of one
+// Per-request placeholder <-> value map (ADR-012 and ADR-013 in
+// docs/decisions.md; the README's Design section, "Stateless by design"). One instance lives for the lifetime of one
 // request, including its stream, and is then discarded: never logged,
 // serialised or written to disk.
 //

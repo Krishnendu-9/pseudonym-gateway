@@ -1,5 +1,6 @@
 // Finds a planted value in captured text (outgoing requests, responses, log
-// lines, errors) in any form it could take (CLAUDE.md, "No-leak test"):
+// lines, errors) in any form it could take (the README's "Proof": none may
+// arrive "in any form"):
 //  - raw: exactly as planted, invisible characters and all;
 //  - lowercased;
 //  - normalised: through the same normalise() detection uses, so a value

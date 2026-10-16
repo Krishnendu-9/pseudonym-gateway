@@ -1,7 +1,8 @@
 // unsafeRegions: where restoration must not write a value back (restoration
-// safety, CLAUDE.md). Conservative on purpose; the known gaps
-// (test/support/restoration-safety-gaps.ts) are tested as negatives. Since Phase 4 (ADR-018)
-// a left-to-right scanner finds the regions; the differential properties at
+// safety: docs/user-manual.md and ADR-018). Conservative on purpose; the
+// known gaps (test/support/restoration-safety-gaps.ts) are tested as
+// negatives. Since Phase 4 (ADR-018) a left-to-right scanner finds the
+// regions; the differential properties at
 // the end check it against the rules written as regular expressions
 // (test/support/restore-reference.ts).
 
