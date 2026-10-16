@@ -281,7 +281,8 @@ general.
 
 - At most 9,999 different values of one type per request; the next one
   throws `PlaceholderLimitError` (the gateway turns it into a 422).
-- Person names are not detected until Phase 6.
+- Person names are not detected by default. Phase 6 added a detector, off
+  unless `PSEUDONYM_NAMES=true`.
 
 ## Phase 3 — the gateway (2026-09-29)
 
@@ -828,9 +829,13 @@ space (`<5 digits> <5 digits>@ybl`) is covered whole. In a payment link
 - A name at an unknown handle with no keyword nearby.
 - The handle of `<mobile>@<unknown handle>` with no keyword: the mobile
   digits are replaced (as a number), the `@handle` is sent.
-- `<mobile>.<name>@<unknown handle>`, even with a keyword: only the mobile
-  is replaced (a known limit, open for Phase 5c).
-- The payee name in a payment link (`pn=…`): names are Phase 6.
+- `<mobile>.<name>@<unknown handle>`: with no keyword only the mobile is
+  replaced; with a UPI keyword the whole ID is (checked 2026-10-16 over 200
+  generated cases, with and without the keyword; the keyword case is also
+  held by `test/unit/detection/upi.test.ts` and by the evaluation's
+  `contained` shape).
+- The payee name in a payment link (`pn=…`): not detected with names off,
+  the default; with names on, not measured.
 
 ### The same ID twice
 

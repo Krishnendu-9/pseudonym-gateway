@@ -3,8 +3,9 @@
 //
 //   npx tsx scripts/mutate.ts --out <dir outside the repo> scripts/mutations/phase8-readme.ts
 //
-// Written with the change they check. S1 to S3: the status box's two
-// safety sentences, deleted or moved out of the box. C1: the README's
+// Written with the change they check. S1 to S4: the status box's two
+// safety sentences, deleted or moved out of the box (rewritten, and S4
+// added, when Phase 8 was ruled done and the box changed, 2026-10-16). C1: the README's
 // count of main cases. G1 to G3: the shared list of restoration-safety gaps
 // and the threat model that names them. H1 and H2: the code changes so a
 // documented claim stops being true (the brief's old example is no longer
@@ -15,6 +16,12 @@
 import type { Mutation } from '../mutate.js';
 
 const README_TESTS = ['test/unit/readme-facts.test.ts'];
+
+// The status box as ruled on 2026-10-16 (Phase 8 done), whole, so that S3
+// and S4 can move one sentence out of it.
+const BOX_START = '> **Status: Phase 8 of 8 done (2026-10-16). Not ready for production use:\n';
+const BOX_REST =
+  "> every figure here is measured on synthetic data.** Detection, the\n> gateway, streaming, the evaluation, person names (off by default), a\n> second provider (Gemini's OpenAI-compatible endpoint) and a Docker image\n> are built. CI runs the checks, tests and evaluation, and checks what the\n> image contains and that it serves.";
 const GAP_TESTS = ['test/unit/redaction/unsafe-regions.test.ts'];
 
 export const MUTATIONS: readonly Mutation[] = [
@@ -23,24 +30,32 @@ export const MUTATIONS: readonly Mutation[] = [
     what: 'the status box no longer says "Not ready for production use"',
     file: 'README.md',
     tests: README_TESTS,
-    find: 'Not ready for production\n> use.**',
-    replace: 'Ready to try\n> out.**',
+    find: 'Not ready for production use:\n> every figure',
+    replace: 'Ready to try:\n> every figure',
   },
   {
     id: 'S2',
     what: 'the status box no longer says every figure is measured on synthetic data',
     file: 'README.md',
     tests: README_TESTS,
-    find: '> it serves. Every figure here is measured on synthetic data.',
-    replace: '> it serves.',
+    find: 'Not ready for production use:\n> every figure here is measured on synthetic data.**',
+    replace: 'Not ready for production use.**',
   },
   {
     id: 'S3',
     what: 'the synthetic-data sentence moves out of the status box, still in the README',
     file: 'README.md',
     tests: README_TESTS,
-    find: '> it serves. Every figure here is measured on synthetic data.',
-    replace: '> it serves.\n\nEvery figure here is measured on synthetic data.',
+    find: `${BOX_START}${BOX_REST}`,
+    replace: `> **Status: Phase 8 of 8 done (2026-10-16). Not ready for production use.**${BOX_REST.slice(BOX_REST.indexOf(' Detection'))}\n\nEvery figure here is measured on synthetic data.`,
+  },
+  {
+    id: 'S4',
+    what: '"Not ready for production use" moves out of the status box, still in the README',
+    file: 'README.md',
+    tests: README_TESTS,
+    find: `${BOX_START}${BOX_REST}`,
+    replace: `> **Status: Phase 8 of 8 done (2026-10-16). Every figure here is measured\n> on synthetic data.**${BOX_REST.slice(BOX_REST.indexOf(' Detection'))}\n\nNot ready for production use.`,
   },
   {
     id: 'C1',

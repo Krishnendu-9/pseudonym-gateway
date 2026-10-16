@@ -169,16 +169,16 @@ ADR-041's sections (numbered in the entry; ▸ marks a subsection):
 | 17 ▸ | First reading 2026-10-15: the end-to-end calls' bar                                                                  | result                   |
 | 17 ▸ | Result reading 2026-10-16: the end-to-end calls' bar, and item 6 closed                                              | result                   |
 
-| ADR                 | Title                                                                                                | Date       | Status                       | Amended by                                                                                                                                  |
-| ------------------- | ---------------------------------------------------------------------------------------------------- | ---------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| [ADR-042](#adr-042) | Rule 1 is kept by compliance; the permission deny list is a partial backstop                         | 2026-10-08 | accepted                     | —                                                                                                                                           |
-| [ADR-043](#adr-043) | Mutation lists were never tracked; every earlier mutation count is attested, not reproducible        | 2026-10-10 | accepted                     | —                                                                                                                                           |
-| [ADR-044](#adr-044) | Rule 1 governs this repository's history and remote; a test may commit inside a throwaway repository | 2026-10-10 | accepted                     | —                                                                                                                                           |
-| [ADR-045](#adr-045) | Where the dashboard's counts come from                                                               | 2026-10-10 | accepted: option 5           | —                                                                                                                                           |
-| [ADR-046](#adr-046) | The container image (Phase 8)                                                                        | 2026-10-10 | accepted                     | in place 2026-10-10 (amendments A to C, D, E), 2026-10-14 (F) and 2026-10-15 (G, H); a note in section 1 superseded by ADR-047 (2026-10-10) |
-| [ADR-047](#adr-047) | The start-up guard is on unless turned off by name                                                   | 2026-10-10 | accepted (the user's ruling) | —                                                                                                                                           |
-| [ADR-048](#adr-048) | The results page: where it lives, what it shows, how it stays true                                   | 2026-10-10 | accepted 2026-10-15 (D)      | ruling in place 2026-10-15 (option D: no page built)                                                                                        |
-| [ADR-049](#adr-049) | What "done" means for Phase 8, set before Phase 8 is checked                                         | 2026-10-16 | accepted 2026-10-16 (D2)     | the check, its rulings and a correction, 2026-10-16                                                                                         |
+| ADR                 | Title                                                                                                | Date       | Status                                                                | Amended by                                                                                                                                                                                              |
+| ------------------- | ---------------------------------------------------------------------------------------------------- | ---------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [ADR-042](#adr-042) | Rule 1 is kept by compliance; the permission deny list is a partial backstop                         | 2026-10-08 | accepted                                                              | —                                                                                                                                                                                                       |
+| [ADR-043](#adr-043) | Mutation lists were never tracked; every earlier mutation count is attested, not reproducible        | 2026-10-10 | accepted                                                              | —                                                                                                                                                                                                       |
+| [ADR-044](#adr-044) | Rule 1 governs this repository's history and remote; a test may commit inside a throwaway repository | 2026-10-10 | accepted                                                              | —                                                                                                                                                                                                       |
+| [ADR-045](#adr-045) | Where the dashboard's counts come from                                                               | 2026-10-10 | accepted: option 5                                                    | —                                                                                                                                                                                                       |
+| [ADR-046](#adr-046) | The container image (Phase 8)                                                                        | 2026-10-10 | accepted                                                              | in place 2026-10-10 (amendments A to C, D, E), 2026-10-14 (F) and 2026-10-15 (G, H); a note in section 1 superseded by ADR-047 (2026-10-10); Phase 8's Docker item done 2026-10-16, recorded in ADR-049 |
+| [ADR-047](#adr-047) | The start-up guard is on unless turned off by name                                                   | 2026-10-10 | accepted (the user's ruling)                                          | —                                                                                                                                                                                                       |
+| [ADR-048](#adr-048) | The results page: where it lives, what it shows, how it stays true                                   | 2026-10-10 | accepted 2026-10-15 (D)                                               | ruling in place 2026-10-15 (option D: no page built)                                                                                                                                                    |
+| [ADR-049](#adr-049) | What "done" means for Phase 8, set before Phase 8 is checked                                         | 2026-10-16 | accepted 2026-10-16 (D2); Phase 8 done 2026-10-16 (the user's ruling) | the check, its rulings, two corrections and the final re-check, 2026-10-16                                                                                                                              |
 
 ¹ No status of its own. The preamble above says each entry records an
 accepted decision, and nothing in the entry says otherwise; where part of
@@ -13194,6 +13194,11 @@ calls the provider; the model mounted, never baked; a CI smoke test. The
 user chose the telemetry decision (item 8). Item 1's placement of `HOST`
 was left to me by the user, and is decided here.
 
+**Phase 8's Docker item: done, 2026-10-16** (the user's ruling). The done
+line, with each requirement above and where it is met, is in
+[ADR-049](#adr-049), "Phase 8 done", the one place that answers whether
+Phase 8 is done (ADR-049's ruling 3).
+
 **Phase order: a deliberate choice.** Phase 8 started on 2026-10-10 with
 Phase 7c still open. That is the user's choice, not a slip of rule 10.
 What is left of 7c (ADR-041 section 13's option 3 and 4b) waits on section
@@ -13527,7 +13532,9 @@ script:
   so "Phase 6 of 8 done" stays, with the image added beside it.
   **Note (2026-10-15):** that reason has expired. Phase 7 was ruled done
   on 2026-10-15 (ADR-041's status), and the README's count moved to
-  "Phase 7 of 8 done", with Phase 8 under way.
+  "Phase 7 of 8 done", with Phase 8 under way. **Note (2026-10-16):**
+  Phase 8 was ruled done (ADR-049), and the box now reads "Phase 8 of 8
+  done (2026-10-16)".
 
 ### Amendment (2026-10-10, later the same day): telemetry on Windows, the size decision, names on in CI
 
@@ -14537,18 +14544,32 @@ be a new decision, not this one reopened.
 
 <a id="adr-049"></a>
 
-## ADR-049: What "done" means for Phase 8, set before Phase 8 is checked (2026-10-16; accepted 2026-10-16: D2)
+## ADR-049: What "done" means for Phase 8, set before Phase 8 is checked (2026-10-16; accepted 2026-10-16: D2; Phase 8 done 2026-10-16)
 
-**Status.** Accepted 2026-10-16, the user's rulings ("Rulings", at the end
-of this entry). Proposed earlier the same day. The text below, up to the
-rulings, is as proposed; only this paragraph and the heading changed.
-**Phase 8 is not ruled done by this entry.** It sets the standard. This
-entry is committed first. Only after that commit is the README checked
-against it, and the findings go to the user before anything is fixed. No
-README, user manual or code text is changed by this entry. The order is
-the point: the standard comes before the check, as with every measurement
-in this record (rule 6). The final ruling of the project's last phase is
-the worst place to break that order.
+**Status (2026-10-16): accepted, and Phase 8 is done (the user's ruling).**
+Both items are closed:
+
+- **The README** meets D2, after the check, the fixes and a final
+  re-check, all recorded below.
+- **The Docker item** is done against the standard written before the
+  work.
+
+The done lines and the limits disclosed with them are at the end of this
+entry ("Phase 8 done"). With Phase 8, every phase of the brief's plan is
+done.
+
+_Status as written earlier on 2026-10-16, when the entry was accepted:_
+
+> **Status.** Accepted 2026-10-16, the user's rulings ("Rulings", at the end
+> of this entry). Proposed earlier the same day. The text below, up to the
+> rulings, is as proposed; only this paragraph and the heading changed.
+> **Phase 8 is not ruled done by this entry.** It sets the standard. This
+> entry is committed first. Only after that commit is the README checked
+> against it, and the findings go to the user before anything is fixed. No
+> README, user manual or code text is changed by this entry. The order is
+> the point: the standard comes before the check, as with every measurement
+> in this record (rule 6). The final ruling of the project's last phase is
+> the worst place to break that order.
 
 **Why an ADR.** Defining "polished" and putting promises in or out of
 scope are decisions (rule 6). [ADR-046](#adr-046) covers the image only.
@@ -15268,3 +15289,165 @@ any case.
 `src/config/env.ts` already gave redaction's stall as 0.25 s and 1.1 s,
 the user manual's new figures. A search of the code, tests, scripts and
 configuration for every figure the sweep changed found nothing else.
+
+### The final re-check against D2, before the done ruling (2026-10-16)
+
+Run after parts (a), (b) and (c) were committed (445562a, 0203258,
+abbe1f1).
+
+**README: met.**
+
+- Its promise sweep found nothing but the status box, which the done
+  ruling replaces.
+- All 128 relative links resolve.
+- Every figure added since 3bbf609 carries a date and a source.
+
+**User manual: three promise-clause failures,** reported to the user
+before any ruling and fixed by the user's decision:
+
+- **Line 284 (Phase 2's "Limits"):** "Person names are not detected until
+  Phase 6". It implied names are detected from Phase 6 on, but by default
+  they still are not, the same class as line 440. It now says names are
+  not detected by default, and that Phase 6 added a detector that is off
+  unless switched on.
+- **Line 833:** "The payee name in a payment link (`pn=…`): names are
+  Phase 6". The same class. It now says: not detected with names off, the
+  default; with names on, not measured.
+- **Line 832, false today:** "`<mobile>.<name>@<unknown handle>`, even
+  with a keyword: only the mobile is replaced (a known limit, open for
+  Phase 5c)". A probe through `detect()` on 200 cases with mobiles
+  generated in memory:
+  - with a UPI keyword nearby, the whole ID was redacted in 200 of 200;
+  - without the keyword (the control), only the mobile was redacted in 200
+    of 200.
+
+  The line now states both cases, with the probe's date and size.
+
+**Which change closed the limit in line 832 was not traced, by the user's
+ruling.** The claim is about today's behaviour, and today's behaviour was
+measured. "Phase 5c" was the assistant's guess. One fact was found while
+answering a later question, not by tracing:
+`test/unit/detection/upi.test.ts` has a test named "a mobile then a name
+at an unknown handle is one UPI ID, near a keyword (ADR-029 containing
+span)". So the test's own author attributes the keyword case to ADR-029.
+
+**What holds line 832 true (the user's question).**
+
+- **The keyword case: yes.** It is held by that test, and by the
+  evaluation's `contained` shape: 10 of its 70 cases are this shape with a
+  UPI keyword, in English, Hinglish and Hindi, at 70 of 70 redacted, 0
+  partly, in `eval/baseline.json`, which `npm run eval` checks on every
+  push. The manual cites both.
+- **The case without a keyword ("only the mobile is replaced"): no.** The
+  nearest test covers `<mobile>@<unknown>` with no name. Adding one is
+  cheap: one test beside that one, with an expected detection read from
+  the probe, and one mutation. **That test was put to the user and not
+  ruled before Phase 8 was ruled done.**
+
+**Why the first check missed these three: the promise clause is enforced
+by a manual pattern search, which is not exhaustive.** Searches were
+case-insensitive. Each pattern is given here as the words it matched,
+plus word boundaries:
+
+- **The first check** searched the README, the six public docs (outside
+  the dated record and the bug log), `eval/HELD-OUT-FORMAT.md` and
+  `THIRD-PARTY-NOTICES.md` for:
+  - "in phase N" and "until phase";
+  - "phase N" followed by "will", "adds" or "gains";
+  - "gains … in phase";
+  - "will be" or "to be", then "added", "built", "fixed" or "done", then
+    "in" or "later";
+  - "not yet", "TODO", "FIXME", "later phase", "future work", "to come".
+
+  It searched code and configuration for: "phase 8", "later phase", "not
+  yet", "TODO", "FIXME", "until phase", and "in phase N" followed by
+  "will", "add", "gain" or "come".
+
+- **The final re-check, first pass,** used the same document pattern minus
+  the "will"/"gains" forms, plus "phase 8", "under way" and "work in
+  progress".
+- **What the patterns missed:** "open for Phase 5c" and "names are Phase
+  6". Neither has "in" or "until" before the phase, and neither has a
+  future verb after it.
+- **The broadened pass** that found them matched:
+  - "open", "left", "kept", "wait(s)", "deferred", "planned", "due",
+    "scheduled" or "saved", then "for", "to", "until" or "in", then
+    "phase";
+  - "for", "are", "is" or "in", then "phase N", then ".", ")", ":", ";" or
+    ",";
+  - "phase N" followed by "will", "should", "must", "adds", "fixes" or
+    "handles".
+
+  In the docs it found only lines 832 and 833. Line 284 was found by
+  reading the context of the first pass's "until phase" hit, which the
+  first check had wrongly classed as historical.
+
+**D2's promise clause is only as good as the search that enforces it.** A
+later re-run of this check must not take a clean search as proof. The
+patterns above are what was searched, not everything that could be a
+promise.
+
+**The same limit, found again in the cost sweep.** The sweep's search of
+code and configuration looked only for the figures the sweep had changed.
+So it missed two costs written in other words:
+
+- `Dockerfile`: "about 300 MB" for the runtime, now "about 302 MB on
+  Linux, rounded up";
+- `.env.example`: "about 0.3 s per KiB", now "up to 0.34 s per KiB … the
+  worst of three runs, rounded up".
+
+A broader search ("about", "around", "roughly" or "~", then a number and a
+size or time unit) found them. Its other hits were test-run timings in
+test comments, which the testing-guide ruling puts outside the rule, and
+`src/config/env.ts`, which already matched. **So the sentence above, "A
+search … found nothing else", was true of the search it describes, and
+the search was too narrow.**
+
+### Phase 8 done (the user's ruling, 2026-10-16)
+
+**Phase 8 is done, 2026-10-16, by the user's ruling.** The brief names two
+items, "Docker" and "polished README".
+
+**The README: done against D2.** D2 was defined here and committed in
+3bbf609 before the check. The README was checked, fixed in 445562a,
+0203258 and abbe1f1, and re-checked as recorded above. The status box now
+reads "Phase 8 of 8 done (2026-10-16)". "Not ready for production use"
+and the synthetic-data sentence stay, pinned by `readme-facts.test.ts`.
+
+**The Docker item: done** (ruling 3, option (b): the line lives here, with
+a pointer from ADR-046). Its standard was written before the work, which
+is why it closes differently from the README. Each requirement, and where
+it is met:
+
+| Requirement (source)                                                     | Met by                                                                                                           |
+| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| Debian slim, not Alpine (ADR-046 status)                                 | `FROM node:22.23.3-bookworm-slim`                                                                                |
+| Base pinned by digest (ADR-046 status)                                   | `@sha256:c3de60bf…8392` on the one `FROM`                                                                        |
+| Multi-stage (ADR-046 status; the brief's tech stack)                     | stages `base`, `build`, `deps`, `runtime`                                                                        |
+| Non-root (ADR-046 status; the brief's tech stack)                        | `USER node`; the smoke test checks it is configured and running                                                  |
+| A health check that never calls the provider (ADR-046 status; the brief) | `HEALTHCHECK` fetches `/health`, which never calls the provider (`server.ts`)                                    |
+| The model mounted, never baked in (ADR-046 status)                       | the smoke test's listing of the image has no model; names on, it refuses without a mounted model                 |
+| A CI smoke test (ADR-046 status)                                         | the `docker` job of `ci.yml`; on GitHub, "docker smoke: all 40 checks passed" for 0937b5e (amendment H's result) |
+| `ulimit core=0` (the brief's ADR-016 deployment notes)                   | `compose.yaml` `ulimits: core: 0`; the smoke test shows the guard refuses a core dump limit                      |
+| `node --disable-sigusr1` (ADR-016 notes)                                 | the image's `CMD`; the smoke test shows the guard refuses without it                                             |
+| `HOST=0.0.0.0` inside the container (ADR-016 notes)                      | `ENV HOST=0.0.0.0` (ADR-046 section 1)                                                                           |
+| No dump or inspect flags in `NODE_OPTIONS` (ADR-016 notes)               | the start-up guard refuses them; the smoke test shows it refuses a debugger flag                                 |
+
+**Disclosed limits: not requirements of the phase, and not blocking it.**
+In the form of ADR-041 section 17's list of what its registration did not
+cover:
+
+- **The image is built and tested for linux/amd64 only.** arm64 was never
+  built or tested; the base image's digest covers arm64, but this image
+  was not built there. The README's "Continuous integration" section says
+  so.
+- **The Windows telemetry check has not been run.** That ONNX Runtime's
+  telemetry fires on Windows rests on inference; it has never been
+  observed. The README and `docs/threat-model.md` say it is unobserved.
+  The elevated check is the user's to run, and it stays open outside any
+  phase.
+- **The CI cache save step has never been exercised.** It runs only on a
+  real miss (amendment G). CI plumbing, not a property of the product.
+
+**Open, not blocking:** the test for line 832's case without a keyword
+(above), put to the user.

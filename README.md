@@ -3,13 +3,12 @@
 **An OpenAI-compatible privacy gateway that pseudonymises personal data before it
 reaches an LLM, and restores it in the reply.**
 
-> **Status: work in progress, Phase 7 of 8 done. Not ready for production
-> use.** Detection, the gateway, streaming, the evaluation and person names
-> (off by default) are built, and a CI workflow runs the checks, tests and
-> evaluation. Phase 7, a second provider (Gemini's OpenAI-compatible
-> endpoint), is built and was called end to end on 2026-10-15. Phase 8 is
-> under way: a Docker image builds, and CI checks what it contains and that
-> it serves. Every figure here is measured on synthetic data.
+> **Status: Phase 8 of 8 done (2026-10-16). Not ready for production use:
+> every figure here is measured on synthetic data.** Detection, the
+> gateway, streaming, the evaluation, person names (off by default), a
+> second provider (Gemini's OpenAI-compatible endpoint) and a Docker image
+> are built. CI runs the checks, tests and evaluation, and checks what the
+> image contains and that it serves.
 
 ---
 

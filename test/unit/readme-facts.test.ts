@@ -39,7 +39,11 @@ const statusBox = (): string => {
 // A tripwire, not proof (ADR-049): no test can tell whether the project is
 // ready for production, but neither sentence can now vanish in an edit
 // without this test changing too. "Phase N of 8" is not pinned: nothing in
-// the repository holds the phase count to compare with.
+// the repository holds the phase count to compare with. Since Phase 8 was
+// ruled done (2026-10-16) the box joins the two in one sentence, "Not ready
+// for production use: every figure here is measured on synthetic data", so
+// the second check ignores case; both must still be inside the box, not
+// merely somewhere in the README (mutations S3 and S4).
 describe("the README's status box", () => {
   it('says the project is not ready for production use', () => {
     expect(statusBox()).toContain('Not ready for production use');

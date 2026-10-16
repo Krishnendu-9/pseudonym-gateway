@@ -30,7 +30,7 @@ COPY src ./src
 RUN npm run build
 
 # Production dependencies only. The optional ones (the person-name runtime,
-# about 300 MB) are kept, so that names can be switched on by mounting the
+# about 302 MB on Linux, rounded up) are kept, so that names can be switched on by mounting the
 # model, without another image (ADR-046).
 FROM base AS deps
 COPY package.json package-lock.json ./
