@@ -8494,6 +8494,10 @@ as message content, and the dashboard, if built, renders the committed
 evaluation results (option 5). The wording above is left as written. The
 timing and "off by default" are unchanged.
 
+**Note (2026-10-16, ADR-048).** No page is built. ADR-048 ruled option D on
+2026-10-15, and building one later would be a new decision, not this
+deferral resumed. "After Phase 8" no longer schedules anything.
+
 ### 4. 7a: Gemini's documentation against what the Ollama adapter assumes (read 2026-10-07)
 
 Sources, read on 2026-10-07: "OpenAI compatibility"

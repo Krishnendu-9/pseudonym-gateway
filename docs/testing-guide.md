@@ -900,7 +900,10 @@ Seen while measuring, not changed: with three full suites plus lint and
 typecheck at once, 9 of 18 runs failed 1 to 4 growth-ratio tests (ratios
 8.1 to 16.6 against the limit of 8; nothing else failed), and the two
 long no-leak tests took up to 20 s and 24 s of their 30 s. A deliberate
-overload, several times an ordinary run; noted for Phase 8 (CI).
+overload, several times an ordinary run; noted for Phase 8 (CI). (Note
+2026-10-16: CI arrived in Phase 5d part 7, on 2026-10-02, not in Phase 8.
+The growth-ratio tests under load were taken up by ADR-032, in 5d part 2.
+ADR-032 does not mention the no-leak tests' durations.)
 
 ### Wiring under test
 

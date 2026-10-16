@@ -893,7 +893,10 @@ such runs failed 1 to 4 of them, ratios of 8.1 to 16.6 against the limit of
 8; no other test failed), and the two long no-leak tests took up to 20 s and 24 s of their 30 s.
 That is a load I created on purpose, several times an ordinary run. It
 matters if the suite is ever run in parallel with itself or on a heavily
-shared CI runner; to be looked at when CI is set up (Phase 8).
+shared CI runner; to be looked at when CI is set up (Phase 8). (Note
+2026-10-16: CI arrived in Phase 5d part 7, on 2026-10-02, not in Phase 8.
+The growth-ratio tests under load were taken up by ADR-032, in 5d part 2.
+ADR-032 does not mention the no-leak tests' durations.)
 
 **Lesson:** a limit raised for one kind of thing (tests) has a sibling
 (hooks). And never pipe a test run into `tail`: the one line that matters
