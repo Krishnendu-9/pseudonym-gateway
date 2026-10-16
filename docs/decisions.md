@@ -117,13 +117,13 @@ ADR-036's sections, in order (they are not numbered):
 | The daily schedule removed (2026-10-10)                                    | The deferral discharged                                                                                          | decision                     |
 | Amendment 2026-10-11: the licence chain, ruled                             | The model's licence chain and two loose ends, ruled                                                              | amendment                    |
 
-| ADR                 | Title                                                                                                             | Date       | Status                                 | Amended by                                                                        |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------- | ---------- | -------------------------------------- | --------------------------------------------------------------------------------- |
-| [ADR-037](#adr-037) | Person names in the request path, against a fake model                                                            | 2026-10-03 | built and tested (step 3)³             | in place 2026-10-03 (after step 3; after the bug 58 fix) and 2026-10-07 (step 4b) |
-| [ADR-038](#adr-038) | Detection never reads placeholder-shaped text, and the evaluation counts what is sent                             | 2026-10-03 | reversed 2026-10-07                    | in place 2026-10-06/07; the final amendment (2026-10-07) reverses it              |
-| [ADR-039](#adr-039) | Standing requirement: a change to the detection path is checked by fuzz for "nothing redacted before is sent now" | 2026-10-03 | standing requirement, set by the user³ | in place 2026-10-07 (one exception, enforced by a classifier)                     |
-| [ADR-040](#adr-040) | The evaluation counts the personal values sent as written                                                         | 2026-10-07 | accepted                               | —                                                                                 |
-| [ADR-041](#adr-041) | Phase 7, the second provider: Gemini's OpenAI-compatible endpoint, and a strict fake provider                     | 2026-10-07 | done 2026-10-15 (the user's ruling)    | in place: see its sections below                                                  |
+| ADR                 | Title                                                                                                             | Date       | Status                                                             | Amended by                                                                        |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| [ADR-037](#adr-037) | Person names in the request path, against a fake model                                                            | 2026-10-03 | built and tested (step 3)³                                         | in place 2026-10-03 (after step 3; after the bug 58 fix) and 2026-10-07 (step 4b) |
+| [ADR-038](#adr-038) | Detection never reads placeholder-shaped text, and the evaluation counts what is sent                             | 2026-10-03 | reversed 2026-10-07                                                | in place 2026-10-06/07; the final amendment (2026-10-07) reverses it              |
+| [ADR-039](#adr-039) | Standing requirement: a change to the detection path is checked by fuzz for "nothing redacted before is sent now" | 2026-10-03 | standing requirement, set by the user³                             | in place 2026-10-07 (one exception, enforced by a classifier)                     |
+| [ADR-040](#adr-040) | The evaluation counts the personal values sent as written                                                         | 2026-10-07 | accepted                                                           | —                                                                                 |
+| [ADR-041](#adr-041) | Phase 7, the second provider: Gemini's OpenAI-compatible endpoint, and a strict fake provider                     | 2026-10-07 | done 2026-10-15 (the user's ruling); nothing open since 2026-10-16 | in place: see its sections below                                                  |
 
 ADR-041's sections (numbered in the entry; ▸ marks a subsection):
 
@@ -167,6 +167,7 @@ ADR-041's sections (numbered in the entry; ▸ marks a subsection):
 | 17 ▸ | Amendment 2026-10-15: four rulings on the run script (log files, when log lines are checked, forms, telemetry)       | amendment                |
 | 17 ▸ | Result 2026-10-15: the end-to-end calls (Attempt 8)                                                                  | result                   |
 | 17 ▸ | First reading 2026-10-15: the end-to-end calls' bar                                                                  | result                   |
+| 17 ▸ | Result reading 2026-10-16: the end-to-end calls' bar, and item 6 closed                                              | result                   |
 
 | ADR                 | Title                                                                                                | Date       | Status                       | Amended by                                                                                                                                  |
 | ------------------- | ---------------------------------------------------------------------------------------------------- | ---------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -8368,26 +8369,49 @@ included (`known-failing glued-literal: the entry says 4 sent, measured
 
 ## ADR-041: Phase 7, the second provider: Gemini's OpenAI-compatible endpoint, and a strict fake provider (2026-10-07; done 2026-10-15)
 
-**Status (2026-10-15, the user's ruling): done.** Phase 7's scope is the
-second provider (section 3: the demo page was deferred there to after
-Phase 8, reaffirmed by ADR-045 and ruled out by ADR-048). Records 1 to 3
-and the adapter design (section 6, option A) were decided on 2026-10-07.
-The offline run (section 9), the live runs (Attempts 1 to 8: sections 10,
-11, 13, 14, 16 and 17) and the Phase 7c decisions (sections 15 and 16) are
-built and recorded. The s1/p09 pair's result reading was taken at 00:01
-IST on 2026-10-15 (section 16), and the end-to-end calls registered in
-section 17 ran the same morning, the second ending at 10:07:44 IST
-(Attempt 8).
+**Status (2026-10-16): done (the user's ruling, 2026-10-15), and nothing
+in it remains open.** Phase 7's scope is the second provider (section 3:
+the demo page was deferred there to after Phase 8, reaffirmed by ADR-045
+and ruled out by ADR-048). Records 1 to 3 and the adapter design (section
+6, option A) were decided on 2026-10-07. The offline run (section 9), the
+live runs (Attempts 1 to 8: sections 10, 11, 13, 14, 16 and 17) and the
+Phase 7c decisions (sections 15 and 16) are built and recorded. The s1/p09
+pair's result reading was taken at 00:01 IST on 2026-10-15 (section 16),
+and the end-to-end calls registered in section 17 ran the same morning,
+the second ending at 10:07:44 IST (Attempt 8).
 
-- **The one outstanding measurement:** the result reading of the Oct 14
-  counter bar (section 17 item 6), due 2026-10-16 (IST) or later. It
-  measures how Google's usage display counts, not Pseudonym, and stays
-  open as a standing measurement; it does not hold the phase open.
+- **No outstanding measurement.** The last one, the result reading of the
+  Oct 14 counter bar (section 17 item 6), was taken at 10:57 IST on
+  2026-10-16: 2 of 500, as predicted. No further reading of any bar is
+  registered.
 - **Not requirements of the phase:** whether Gemini keeps `[PERSON_1]`
   (section 17's result records that E2 cannot show it, and no run is
   registered to), and streaming and an option 3 refusal end to end
   (section 17 item 7 lists both as not covered). The README's Proof
   names them as not run end to end.
+
+_Status as written 2026-10-15, before the Oct 14 bar's result reading:_
+
+> **Status (2026-10-15, the user's ruling): done.** Phase 7's scope is the
+> second provider (section 3: the demo page was deferred there to after
+> Phase 8, reaffirmed by ADR-045 and ruled out by ADR-048). Records 1 to 3
+> and the adapter design (section 6, option A) were decided on 2026-10-07.
+> The offline run (section 9), the live runs (Attempts 1 to 8: sections 10,
+> 11, 13, 14, 16 and 17) and the Phase 7c decisions (sections 15 and 16) are
+> built and recorded. The s1/p09 pair's result reading was taken at 00:01
+> IST on 2026-10-15 (section 16), and the end-to-end calls registered in
+> section 17 ran the same morning, the second ending at 10:07:44 IST
+> (Attempt 8).
+>
+> - **The one outstanding measurement:** the result reading of the Oct 14
+>   counter bar (section 17 item 6), due 2026-10-16 (IST) or later. It
+>   measures how Google's usage display counts, not Pseudonym, and stays
+>   open as a standing measurement; it does not hold the phase open.
+> - **Not requirements of the phase:** whether Gemini keeps `[PERSON_1]`
+>   (section 17's result records that E2 cannot show it, and no run is
+>   registered to), and streaming and an option 3 refusal end to end
+>   (section 17 item 7 lists both as not covered). The README's Proof
+>   names them as not run end to end.
 
 _Status as corrected 2026-10-14:_ "In progress. Records 1 to 3 were
 decided by the user on 2026-10-07, and so was the adapter design, in
@@ -12543,6 +12567,48 @@ uncounted). **Nothing in the counter question reopens.**
 
 **This is the first reading.** The result reading is due on **2026-10-16
 (IST) or later**; if it differs from 2, it stands instead.
+
+#### Result reading 2026-10-16 10:57 IST (05:27 UTC): the end-to-end calls' bar
+
+Written after the registered result reading. Nothing above is edited.
+
+**The reading (the user's).** AI Studio's rate-limit page, project
+`pseudonym-gateway`, `gemini-3.5-flash-lite`, 28-day range, UTC-8 axis,
+the bar labelled "Oct 14, 2026" hovered:
+
+- **10:57 IST on 16 October: 2 of 500** ("Oct 14, 2026 - Gemini 3.5 Flash
+  Lite - 2 / 500"). **This is the registered result reading**, taken on
+  2026-10-16 (IST), as item 7 requires.
+- **The bar is closed.** It ran to 13:30 IST on 15 October, so this reads
+  a closed bar, 21 h 27 min after it closed.
+- **The other figures:** baseline 0 (10:04 IST, 15 October, before the
+  run); first reading 2 (10:41 IST, 15 October). The result reading does
+  not differ from the first, so nothing stands instead of it.
+- **Not this bar:** the "11 / 500" in the page's RPD table column is the
+  28-day peak. The figure for this bar is 2.
+
+**Against item 6's prediction.** Item 6 predicted that the bar rises by
+exactly the number of calls Google answers 200: here 2. **It rose by 2,
+and still reads 2 on a closed bar. The prediction held.**
+
+**What this establishes.** For this bar, the premise that M and P share
+(section 14 item 3: a call answered 200 counts once, always) holds.
+Neither of the outcomes item 6 named as trouble happened: a rise of more
+than the 200s (something else counted, or a 200 counted twice) or of less
+(a 200 uncounted). **Nothing in the counter question reopens.**
+
+**What it does not establish** (as at the first reading).
+
+- **It does not separate M from P, and was never meant to** (item 6 says
+  so). Both calls were answered 200, and M and P differ only on calls that
+  fail.
+- A rise of exactly 2 is also what one uncounted 200 plus one other counted
+  request would give. Nothing points to that, but this reading cannot
+  exclude it.
+- It does not show whether the quota Google enforces counts as this display
+  does.
+
+**Item 6 is closed.** No further reading of the Oct 14 bar is registered.
 
 <a id="adr-042"></a>
 
