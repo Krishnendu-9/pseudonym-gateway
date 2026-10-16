@@ -178,6 +178,7 @@ ADR-041's sections (numbered in the entry; ▸ marks a subsection):
 | [ADR-046](#adr-046) | The container image (Phase 8)                                                                        | 2026-10-10 | accepted                     | in place 2026-10-10 (amendments A to C, D, E), 2026-10-14 (F) and 2026-10-15 (G, H); a note in section 1 superseded by ADR-047 (2026-10-10) |
 | [ADR-047](#adr-047) | The start-up guard is on unless turned off by name                                                   | 2026-10-10 | accepted (the user's ruling) | —                                                                                                                                           |
 | [ADR-048](#adr-048) | The results page: where it lives, what it shows, how it stays true                                   | 2026-10-10 | accepted 2026-10-15 (D)      | ruling in place 2026-10-15 (option D: no page built)                                                                                        |
+| [ADR-049](#adr-049) | What "done" means for Phase 8, set before Phase 8 is checked                                         | 2026-10-16 | accepted 2026-10-16 (D2)     | —                                                                                                                                           |
 
 ¹ No status of its own. The preamble above says each entry records an
 accepted decision, and nothing in the entry says otherwise; where part of
@@ -14527,3 +14528,374 @@ be a new decision, not this one reopened.
 
 **Unchanged by this ruling:** the tension over the held-out names figure
 (section 2) stays open, and option A is not taken up under any path.
+
+---
+
+<a id="adr-049"></a>
+
+## ADR-049: What "done" means for Phase 8, set before Phase 8 is checked (2026-10-16; accepted 2026-10-16: D2)
+
+**Status.** Accepted 2026-10-16, the user's rulings ("Rulings", at the end
+of this entry). Proposed earlier the same day. The text below, up to the
+rulings, is as proposed; only this paragraph and the heading changed.
+**Phase 8 is not ruled done by this entry.** It sets the standard. This
+entry is committed first. Only after that commit is the README checked
+against it, and the findings go to the user before anything is fixed. No
+README, user manual or code text is changed by this entry. The order is
+the point: the standard comes before the check, as with every measurement
+in this record (rule 6). The final ruling of the project's last phase is
+the worst place to break that order.
+
+**Why an ADR.** Defining "polished" and putting promises in or out of
+scope are decisions (rule 6). [ADR-046](#adr-046) covers the image only.
+ADR-041's precedent puts a phase's done status in the ADR that governs the
+phase. Phase 8 has no such ADR, so this entry becomes it.
+
+### Context: what the brief and the record say Phase 8 is
+
+- **The brief's Phase 8 line** names two items: "Docker, polished README".
+  Its parenthesis moves the GitHub Actions workflow out, to Phase 5d
+  (2026-09-30).
+- **Docker** is covered by ADR-046 (amendments A to H) and ADR-047.
+  ADR-046's status is "Accepted". **No line in the record says the Docker
+  item is done.**
+- **The README** has no ADR. The relevant commits are a23c4ba and 2afcfb0
+  (corrections and additions, 2026-10-11), 2700220 (free-tier figures
+  tied to the baseline), ff8434d (the trim, 2026-10-14), and later
+  corrections. **No commit, ADR or status entry says the README is done
+  or polished.**
+- **"Polished" is defined nowhere.** The word appears only on the brief's
+  Phase 8 line. The record's only other description is ADR-048's status:
+  "Phase 8's last item (the final README)". That is not defined either.
+- **The brief's Documentation section** lists what the README must
+  contain:
+  - a 30-second summary at the top;
+  - Highlights;
+  - how to run;
+  - an architecture diagram;
+  - measured results (both datasets);
+  - supported and unsupported input;
+  - a threat model.
+    - Protects against: the provider seeing detected personal values;
+      provider-side logging or training on them.
+    - Does NOT protect against: values the detectors miss; anything the
+      application logs before calling Pseudonym; a compromised Pseudonym
+      host; injection that manipulates answers (only the URL-exfiltration
+      path is mitigated); unsupported content types if the rejection is
+      bypassed.
+
+  The list does not call this "polished" and does not tie it to Phase 8.
+
+- **Three promises name Phase 8 and are not recorded as kept:**
+  - **P-a, public.** `docs/user-manual.md`, in "Restoration safety": the
+    known gaps "are listed in `src/redaction/unsafe-regions.ts`, each
+    pinned by a negative test in `unsafe-regions.test.ts`; the README's
+    threat model gains the list in Phase 8."
+  - **P-a, the code side (public).** `unsafe-regions.ts` points its
+    "Known gaps" comment at "the Phase 8 threat-model notes in CLAUDE.md".
+    The brief is gitignored, so no reader of the public repository can
+    follow that pointer.
+  - **P-b, private (the brief, gitignored).** "Phase 8 notes (README
+    threat model)": ten known limits of restoration safety, written in
+    Phases 2 to 4a.
+  - **P-c, private (the brief).** "Phase 8 notes (deployment, ADR-016)".
+    The Docker requirements in it are in ADR-046. The README parts are
+    not recorded as done:
+    - "The README must tell operators to disable host core-dump storage
+      when `core_pattern` pipes to a handler (the guard only warns)";
+    - "and that Windows Error Reporting `LocalDumps` cannot be checked".
+
+### 1. What "polished README" means (options)
+
+**D1. The brief's Documentation list, as written.** Each item has a place
+in the README.
+
+- **What it adds:** a list fixed before the work, checkable item by item.
+- **What it leaves out:**
+  - whether what the README says is still true;
+  - the three promises above;
+  - links that no longer resolve.
+  - It also names two items it does not define: "Highlights" and
+    "architecture diagram".
+- **Sufficient on its own: no.** It is a list of sections. A README can
+  meet it and still carry a stale status line, a dead link or a broken
+  promise. Rule 15 forbids all three.
+
+**D2. D1, plus everything the README states being kept true.**
+
+- No forward promise is left dangling. Every "in Phase N", "later" or
+  "not yet" in the README, in `docs/` outside the dated record
+  (`decisions.md`, `bug-log.md`), and in public code comments is either
+  kept or withdrawn, as ruled under item 2.
+- Every relative link in the README resolves.
+- Every figure outside the generated eval block is either pinned by
+  `readme-facts.test.ts` or carries its date and source. The brief says
+  README numbers come only from measurements, "with the date and dataset
+  size".
+- The status box is accurate (rule 15).
+- **What it adds:** what rule 15 and the brief already require, written as
+  a checklist that can fail.
+- **What it leaves out:** whether the README reads well.
+
+**D3. D2, plus one read-through by the user, with a stopping rule.** The
+user reads the README once, as someone who knows nothing about the
+project, and lists findings. Each finding is fixed once. There is no
+second read-through unless the user asks for one.
+
+- **What it adds:** the ordinary meaning of "polished", which D2 does not
+  test.
+- **What it leaves out:** the read-through cannot be decided pass or fail
+  in advance. The stopping rule is what keeps it from running on forever.
+
+**Two terms to rule with whichever D is chosen,** so that the check does
+not have to interpret them:
+
+- **"Highlights":** a section with that heading, or the content of one
+  under another name. The current README has a "Proof" section and no
+  "Highlights" heading.
+- **"Architecture diagram":** whether the request-flow sketch under "The
+  idea in 30 seconds" counts, or whether a diagram of the components is
+  required.
+
+**Recommendation: D2.** D1 alone does not cover what rule 15 already
+demands. D3's read-through is the user's to give in any case. If wanted,
+it can be added with its stopping rule.
+
+### 2. The three promises: in or out of scope, each ruled explicitly
+
+Out of scope is a legitimate answer. **If a promise goes out, the text
+that makes it is changed in the same commit as the Phase 8 ruling.** A
+public promise left dangling breaks rule 15 however the phase is ruled. A
+private one misleads the next session.
+
+**2a. P-a, the user manual's promise of the restoration-safety list
+(public).**
+
+- **In:**
+  - The list goes into the threat model. Which page: rule whether
+    `docs/threat-model.md`, the README's linked detail page since the
+    2026-10-14 trim, counts as "the README's threat model", or whether the
+    README's own summary must carry it.
+  - It is derived from today's code and its negative tests, not copied
+    from the brief.
+  - `unsafe-regions.ts`'s comment then points at the threat model instead
+    of at the brief.
+- **Out:**
+  - The user manual drops the clause "the README's threat model gains the
+    list in Phase 8". `unsafe-regions.ts` stays the list, and its comment
+    stops pointing at the brief.
+  - This entry records the promise as withdrawn.
+
+**2b. P-b, the brief's ten limits (private).** These overlap with 2a, but
+not exactly:
+
+- the code's "Known gaps" are items 2 to 4 and 10;
+- items 5 and 9 are costs, and the README already links a "full list of
+  restoration safety's costs" (`docs/results-notes.md`);
+- items 1, 6, 7 and 8 are general properties.
+
+The ten were written in Phases 2 to 4a. Later changes (ADR-018,
+ADR-033, ADR-034) may have moved some of them, so if they are in scope
+they are re-derived, not copied.
+
+- **In, with 2a:** one list in the threat model covering all ten, as true
+  today.
+- **In part:** the gaps (2a) are in. The costs and general properties
+  count as covered by what is already published, if the check confirms
+  that.
+- **Out:** the brief's note is marked as superseded by this entry. That
+  is a change to the brief's "Current status", which this assistant
+  maintains (rule 14).
+
+**2c. P-c, the deployment notes (private).**
+
+- **(i) Disabling host core-dump storage when `core_pattern` pipes to a
+  handler.**
+  - Today `docs/threat-model.md` says that the guard cannot stop such a
+    host ("the kernel then ignores the limit; Pseudonym warns"). It does
+    not tell an operator what to do. The README summary does not mention
+    it.
+  - This applies to the shipped container. `core_pattern` belongs to the
+    host's kernel, so the compose file's `ulimits: core: 0` does not help
+    on a host that pipes (by ADR-016's own account).
+  - **In:** one operator instruction, in "Running in Docker" or the threat
+    model.
+  - **Out:** the brief's note is marked superseded, and the threat model's
+    statement of the limit stands as the only disclosure.
+- **(ii) Windows Error Reporting `LocalDumps` cannot be checked.**
+  - `LocalDumps` appears today only in ADR-016. The README says the guard
+    "can verify none of this on Windows or macOS", and that production
+    means Linux.
+  - **In:** one sentence naming it.
+  - **Out:** the general sentence counts as the disclosure, because
+    Windows is not a production platform (ADR-016). The brief's note is
+    marked superseded.
+
+### 3. Does the Docker item need its own "done" line?
+
+Unlike the README, **the Docker item has a standard that was written
+before the work:**
+
+- ADR-046's status lists the user's requirements: Debian slim, base
+  pinned by digest, multi-stage, non-root, a health check that never
+  calls the provider, the model mounted and never baked in, and a CI
+  smoke test.
+- The brief's tech stack says: multi-stage, non-root user, health check.
+- The brief's ADR-016 deployment notes add: `ulimit core=0`,
+  `node --disable-sigusr1`, `HOST=0.0.0.0`, and no dump or inspect flags
+  in `NODE_OPTIONS`.
+
+Options:
+
+- **(a)** A dated status line in ADR-046: "Phase 8's Docker item: done,
+  checked against the requirements above."
+- **(b)** The done line in this entry, as the phase's single record, with
+  each requirement and where it is met. ADR-046 gets a one-line pointer.
+- **(c)** No separate line: "Phase 8 done" covers both items.
+
+**Reading:** (b). (c) repeats the gap this entry exists to close: nothing
+would say which standard the image was checked against. (a) splits the
+phase's status across two ADRs. In every option, the done line is written
+in the check step, after this entry is committed. It is not written here.
+
+### 4. ADR-046's three open points: blockers or disclosed limits? (the assistant's reading, not a ruling)
+
+These are treated like the "Not requirements of the phase" bullet in
+ADR-041's status: listed and disclosed, not blocking the phase.
+
+- **arm64 was never built.** Disclosed in the README ("Continuous
+  integration": "Only linux/amd64 is built"). Neither the brief nor
+  ADR-046's requirements name an architecture. **A disclosed limit.**
+- **The Windows telemetry check has not been run.** Disclosed in the
+  README's threat model ("rests on inference and is still unobserved")
+  and in `docs/threat-model.md`. It concerns Windows development, not the
+  shipped container, where telemetry is forced off and shown off by a
+  negative control (ADR-046 amendments A and D). The check needs the
+  user's elevated session and belongs to no phase. **A disclosed limit,
+  and an action that stays open.**
+- **The cache save step has never run.** CI plumbing, not a property of
+  the product. A miss is still handled: `fetch:model` downloads and
+  verifies the files, and a failed save only logs a warning (amendment G).
+  It is recorded in amendment G, and the README does not need it. **Not a
+  blocker.**
+
+**What would change this reading:** a requirement written before the work
+that names an architecture, or that requires the telemetry finding to be
+observed. None was found.
+
+### Not decided here
+
+- **The status box's wording** is decided when the phase is ruled done.
+- **Whether the box is pinned by a test** is a separate decision.
+
+### Rulings (the user, 2026-10-16)
+
+**1. Definition: D2.**
+
+- **Why not D3 (the user's reason):** a read-through cannot be recorded as
+  met or unmet. "The user read it and was satisfied" is a feeling, not a
+  standard, and it can reopen forever. Each of D2's clauses can be
+  answered yes or no by inspection, and that is what makes it a
+  definition.
+- **D2 does not mean nobody read the README.** The user will read it
+  before showing it to anyone. That reading is the user's own business and
+  not the phase's gate, so it is recorded here and not made a clause.
+- **"Highlights": the content counts; the heading is not required.** The
+  brief's list says what the README must contain, not what its sections
+  are called.
+- **"Architecture diagram": the request-flow sketch under "The idea in 30
+  seconds" counts.** It shows detection, placeholders, the provider and
+  restoration, which is this system's architecture. A boxes-and-arrows
+  image would add nothing.
+
+**2a. The user manual's promise: in.**
+
+- **The user's reason:** the promise is public, and it is about gaps that
+  matter for privacy, which is exactly what a reader of a threat model is
+  looking for. Withdrawing it would cost more credibility than keeping it.
+- **"The README's threat model" means the README's own summary,** because
+  that is what the manual's words name.
+- **A pointer is enough if the content already exists.** The README
+  already sends "the full list of restoration safety's costs" to
+  `docs/results-notes.md`, for example. **The list is not duplicated:** two
+  copies drift.
+- **`unsafe-regions.ts`'s comment is fixed whatever 2a says.** Source code
+  that points a public reader at a gitignored file is a dead end. It will
+  point at the public document.
+
+**2b. The ten limits: in part.**
+
+- **In:** the code's known gaps, items 2 to 4 and 10. That is what belongs
+  in a threat model.
+- **Out:** the costs (items 5 and 9), which are already linked through
+  `docs/results-notes.md`, and the general properties (items 1 and 6 to
+  8). A property is not a gap.
+- **Whatever goes in is re-derived from today's code and its negative
+  tests, never copied.** A list written in Phases 2 to 4a would be stale
+  the moment it landed.
+- The brief's note is marked as superseded by this ruling.
+
+**2c(i). Disabling host core-dump storage: in.** One or two sentences in
+the README telling the operator what to do.
+
+- **The user's reason:** a core dump of this process can hold request
+  text, which is personal data. Stating the limit without telling the
+  operator what to do is half the job.
+- The instruction is needed because `core_pattern` belongs to the host.
+  The compose file's `core: 0` cannot reach it.
+
+**2c(ii). `LocalDumps`: out, and this is a ruling, not an omission.**
+
+- Windows is not a production target (ADR-016).
+- The README already says the guard can verify none of this on Windows.
+- ADR-016 keeps the note for anyone who needs it.
+
+The brief's note is marked as superseded for this part.
+
+**3. The Docker item's "done" line: (b).**
+
+- **One place answers "is Phase 8 done":** this entry, which rules the
+  phase, with a one-line pointer from ADR-046. That is how ADR-041 holds
+  Phase 7's status.
+- **Why the two items close differently:** the Docker item had its
+  standard written before the work (item 3's three sources). The README's
+  standard is set here, before the README is checked.
+- The done lines are written when the phase is ruled done, not in this
+  entry.
+
+**4. ADR-046's three open points: none blocks the phase.** The
+assistant's reading stands. None of the three is a requirement anyone
+wrote down for Phase 8. Like the points ADR-041 section 17 says its
+registration does not cover, they are disclosed limits:
+
+- **The image is not built for arm64.** Only linux/amd64 is built and
+  tested. The README's "Continuous integration" section says so.
+- **The Windows telemetry check has not been run.** That ONNX Runtime's
+  telemetry fires on Windows rests on inference. The README and
+  `docs/threat-model.md` say it is unobserved. Running the check is the
+  user's action, and it stays open outside any phase.
+- **The CI cache save step has never run.** It runs only on a real miss
+  (amendment G). This is not a property of the product at all.
+
+**The status box: pinned, as scoped.** A test in `readme-facts.test.ts`
+requires the README's status box to contain "Not ready for production
+use" and the synthetic-data sentence. A mutation list shows that it
+catches either one being deleted.
+
+- **What it is:** a tripwire. If either sentence is removed, the test has
+  to change too, and that change is visible in the diff.
+- **What it is not:** proof. No test can tell whether the project is ready
+  for production.
+- **What is not pinned:** "Phase N of 8". There is nothing in the
+  repository to compare it with, since the brief is gitignored, so such a
+  pin would be theatre.
+
+**The order from here.**
+
+1. This entry is committed.
+2. The README is checked against D2, including the in-scope parts of 2a,
+   2b and 2c(i).
+3. **The findings go to the user before anything is fixed,** so the size
+   of the work is seen first.
+4. Fixes follow the user's rulings on those findings.
+5. Only then is Phase 8 ruled done, here.
