@@ -16,9 +16,13 @@ import { MIN_NUMBER_DIGITS } from '../../src/detection/number.js';
 import { UPI_HANDLES } from '../../src/detection/upi.js';
 import { PROVIDER_RETRY_AFTER_SECONDS } from '../../src/gateway/errors.js';
 import { NAME_MODEL } from '../../src/gateway/name-model.js';
+import { redactRequest } from '../../src/gateway/redact-request.js';
+import { parseChatRequest } from '../../src/gateway/schema.js';
+import { PlaceholderMapping } from '../../src/redaction/mapping.js';
 import { MAX_HELD_BACK } from '../../src/redaction/variants.js';
 import vitestConfig from '../../vitest.config.js';
 import { MAX_GROWTH_RATIO } from '../support/linear-time.js';
+import { assertTextEqualQuietly } from '../support/quiet-text.js';
 
 const ROOT = join(import.meta.dirname, '..', '..');
 const RAW_README = readFileSync(join(ROOT, 'README.md'), 'utf8');
@@ -239,5 +243,45 @@ describe('the README says what the model measurement stored', () => {
     );
     expect(README).toContain(`\`${stored.model}\``);
     expect(stored.decision).toBe('off');
+  });
+});
+
+// The demo recording's caption (2026-10-16). The GIF's third command prints
+// the request recorded on its way to Gemini on 2026-10-15 (attempt-8, e1),
+// not the one sent on camera, and the caption says today's code redacts the
+// demo request to the same text. That holds only while the fixture carries
+// e1's messages and detection, numbering and the default placeholder
+// instruction stay as they were, so the fixture is redacted here as
+// `npm run dev` would and compared with the recording. Compared quietly: the
+// values are synthetic, but a failure means one may not have been redacted.
+describe("the README's demo recording", () => {
+  interface Body {
+    messages: { role: string; content: string }[];
+  }
+  const body = (path: string): Body =>
+    JSON.parse(readFileSync(join(ROOT, 'test', 'fixtures', path), 'utf8')) as Body;
+  const demo = body('demo-request.json');
+  const recordedRequest = body('gemini-7b/attempt-8/e1.request.json');
+  const recordedSent = body('gemini-7b/attempt-8/e1.sent.json');
+
+  it('the caption makes the claim this checks', () => {
+    expect(README).toContain(
+      "today's code redacts the same message to the same text, byte for byte",
+    );
+  });
+
+  it("the demo request carries the recorded request's messages", () => {
+    assertTextEqualQuietly(JSON.stringify(demo.messages), JSON.stringify(recordedRequest.messages));
+  });
+
+  it("today's code redacts it to what the provider received, with the default settings", () => {
+    const { PSEUDONYM_PLACEHOLDER_INSTRUCTION } = loadEnv({ PSEUDONYM_MODEL: 'm' });
+    const sent = redactRequest(parseChatRequest(demo), new PlaceholderMapping(), {
+      placeholderInstruction: PSEUDONYM_PLACEHOLDER_INSTRUCTION,
+    });
+    expect(sent.messages.map((m) => m.role)).toEqual(recordedSent.messages.map((m) => m.role));
+    sent.messages.forEach((m, i) =>
+      assertTextEqualQuietly(m.content, recordedSent.messages[i]!.content),
+    );
   });
 });

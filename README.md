@@ -29,6 +29,10 @@ Your app ◄── Pseudonym ◄── AI answer
    real values restored in the answer
 ```
 
+<img src="docs/images/demo.gif" alt="Terminal recording of three PowerShell commands. First, a chat request carrying a published test card number, an example.com email address, a documentation IP address and an IFSC code. Second, the answer through Pseudonym from a local Ollama model, with all four values restored. Third, the request body recorded on its way to Gemini on 2026-10-15, where the four values are [CARD_1], [EMAIL_1], [IP_1] and [IFSC_1].">
+
+_The third command prints a recording ([`attempt-8`](test/fixtures/gemini-7b/attempt-8)); today's code redacts the same message to the same text, byte for byte._
+
 **What the user sends:**
 
 > Hi, I'm Priya Sharma (priya.sharma@example.com). My card 4111 1111 1111 1111

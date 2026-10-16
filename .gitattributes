@@ -1,3 +1,6 @@
 * text=auto eol=lf
 # Recorded provider streams are kept byte for byte (no line-ending changes).
 *.sse -text
+# README images: never text, so never a line-ending change.
+*.gif binary
+*.png binary
