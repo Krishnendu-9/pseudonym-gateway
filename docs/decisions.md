@@ -14047,6 +14047,19 @@ failed (M checks made)".
   `checksMade` to it is not covered by a unit test, like the counter
   itself.
 
+**Result: the counter seen on GitHub (observed 2026-10-15, recorded
+2026-10-16; read by the user).** In
+the run for 0937b5e, job `docker`, step "Smoke test the image, names off
+and on", line 44 printed "docker smoke: all 40 checks passed". This is the
+first observation of the counter inside `docker-smoke.ts` and of the
+comparison that uses it, the part this amendment records as unreachable by
+unit tests. **40 checks made, 40 expected** (31 + 9 with `--models`). The
+line is written after the comparison, and "all … passed" is printed only
+with no failure recorded, so the comparison was reached and found the
+count right. It shows one run with the right count; it does not show that
+the comparison would catch a wrong one on GitHub (`countProblem`'s
+rejections are tested as a unit, K1–K5).
+
 ---
 
 <a id="adr-047"></a>
