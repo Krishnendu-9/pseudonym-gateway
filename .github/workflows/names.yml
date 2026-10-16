@@ -73,7 +73,7 @@ jobs:
           ls -l node_modules/onnxruntime-node/bin/napi-v6/linux/x64/
           find node_modules/onnxruntime-node \( -iname '*cuda*' -o -iname '*tensorrt*' \) -exec ls -l {} +
 
-      # The model's four files (181.4 MB) by the cache, keyed by the file
+      # The model's four files (181.5 MB, rounded up) by the cache, keyed by the file
       # that pins them (src/gateway/name-model.ts: repository, commit, each
       # file's SHA-256),
       # with the pinned download as the fallback (options M2 and M1, ADR-036).

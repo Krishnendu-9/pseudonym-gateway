@@ -1,12 +1,16 @@
 // unsafeRegions: where restoration must not write a value back (restoration
-// safety, CLAUDE.md). Conservative on purpose; the known gaps listed in the
-// unsafe-regions.ts header are tested as negatives. Since Phase 4 (ADR-018)
+// safety, CLAUDE.md). Conservative on purpose; the known gaps
+// (test/support/restoration-safety-gaps.ts) are tested as negatives. Since Phase 4 (ADR-018)
 // a left-to-right scanner finds the regions; the differential properties at
 // the end check it against the rules written as regular expressions
 // (test/support/restore-reference.ts).
 
 import fc from 'fast-check';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { PlaceholderMapping } from '../../../src/redaction/mapping.js';
+import { restore } from '../../../src/redaction/restore.js';
 import {
   isInUnsafeRegion,
   isWhitespace,
@@ -16,6 +20,7 @@ import {
 } from '../../../src/redaction/unsafe-regions.js';
 import { assertPropertyQuietly } from '../../support/quiet-property.js';
 import { legacyUnsafeRegions, oracleUnsafeRegions } from '../../support/restore-reference.js';
+import { RESTORATION_SAFETY_GAPS } from '../../support/restoration-safety-gaps.js';
 import { streamedAnswerArb } from '../../support/restoration-text.js';
 
 const coversPlaceholder = (text: string, placeholder = '[AADHAAR_1]'): boolean => {
@@ -124,17 +129,43 @@ describe('unsafeRegions: bare URLs', () => {
   });
 });
 
-// Documented gaps (unsafe-regions.ts header, CLAUDE.md Phase 8 notes). A
-// client never fetches any of these on its own. If one starts being
-// covered, update the docs with it.
-describe('unsafeRegions: known gaps', () => {
-  it.each([
-    ['a bare host with a query but no "/"', 'Visit a.example?d=[AADHAAR_1] now'],
-    ['a bare IP address with no scheme', 'Visit 203.0.113.9/?d=[AADHAAR_1] now'],
-    ['an unquoted relative attribute', '<img src=a.example?d=[AADHAAR_1]>'],
-  ])('does not cover %s', (_name, text) => {
+// The documented gaps, one list used at both ends (ADR-049): each is still
+// a gap, end to end, and the public threat model names each one. A client
+// never fetches any of these on its own. If one starts being covered, its
+// test fails here: take it off the list and out of the threat model.
+describe('restoration safety: known gaps', () => {
+  // An invalid Aadhaar (no Verhoeff check): restore() does not validate.
+  const mapping = new PlaceholderMapping();
+  mapping.getOrAssign('AADHAAR', '234567890123', '234567890123');
+  const threatModel = readFileSync(
+    join(import.meta.dirname, '..', '..', '..', 'docs', 'threat-model.md'),
+    'utf8',
+  ).replace(/\s+/g, ' ');
+  const cases = RESTORATION_SAFETY_GAPS.map((gap) => [gap.name, gap.text] as const);
+
+  it('lists four gaps', () => {
+    expect(RESTORATION_SAFETY_GAPS).toHaveLength(4);
+  });
+
+  it.each(cases)('does not cover %s', (_name, text) => {
     const placeholder = text.indexOf('[AADHAAR_1]');
     expect(isInUnsafeRegion(unsafeRegions(text), placeholder, placeholder + 11)).toBe(false);
+  });
+
+  it.each(cases)('restores the value in %s', (_name, text) => {
+    expect(restore(text, mapping).includes('[AADHAAR_1]')).toBe(false);
+  });
+
+  it.each(cases)('the threat model names %s', (name) => {
+    expect(threatModel.includes(name)).toBe(true);
+  });
+
+  // The brief's own example of the fourth gap, which the threat model says
+  // is not one: the host rule holds a placeholder before "." and a label.
+  it('holds a value followed by "." and a label (the brief\'s old example)', () => {
+    const text = 'Visit x-[AADHAAR_1].example/p now';
+    expect(restore(text, mapping).includes('[AADHAAR_1]')).toBe(true);
+    expect(threatModel.includes('so `x-[AADHAAR_1].example/p` is not a gap')).toBe(true);
   });
 });
 

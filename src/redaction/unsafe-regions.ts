@@ -40,15 +40,17 @@
 //  - Bare hosts with a path (`a.example/…`), the same run after the "/".
 //  - Not here, because it is about the placeholder, not the text around
 //    it: the host rule in `startsHost` below.
-// Known gaps, all outside the automatic image-fetch path (see the Phase 8
-// threat-model notes in CLAUDE.md):
+// Known gaps, all outside the automatic image-fetch path (listed for
+// readers in docs/threat-model.md, "Restoration safety: known gaps", and
+// pinned by test/support/restoration-safety-gaps.ts):
 //  - a bare host with no scheme and no "/" (`a.example?d=…`), and a bare IP
 //    address with no scheme (`203.0.113.9/?d=…`), in plain text: a client
 //    fetches neither on its own; a user would have to click a linkified one;
 //  - an unquoted HTML attribute that does not look like a URL
 //    (`<img src=a.example?d=…>` is relative to the client's own site);
-//  - a value glued to the end of a host label in plain text
-//    (`x-[CARD_1].example/`);
+//  - a value glued to the end of a bare host's last label in plain text
+//    (`a.example-[CARD_1]/p`). Not `x-[CARD_1].example/`: before "." and a
+//    label the host rule holds it (ADR-049's correction);
 //  - an HTML attribute whose value is not a URL at all is still marked
 //    unsafe (any quoted value), the safe side.
 //

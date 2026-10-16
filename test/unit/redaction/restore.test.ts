@@ -204,7 +204,8 @@ describe('restore: restoration safety (design doc)', () => {
   it('leaves the token after "[label]:" in prose unrestored (the cost of the bug-log 14 fix)', () => {
     // Every "[…]:" may be a reference definition, so the token after it is
     // treated as a destination even in ordinary prose. The safe side, and a
-    // documented cost (Phase 8 threat-model notes in CLAUDE.md).
+    // documented cost (docs/results-notes.md, "Known costs of restoration
+    // safety").
     const mapping = mappingWith([['EMAIL', 'asha@example.org']]);
     expect(restore('[Note]: [EMAIL_1] replied.', mapping)).toBe('[Note]: [EMAIL_1] replied.');
     expect(restore('[Note]:\n[EMAIL_1] replied.', mapping)).toBe('[Note]:\n[EMAIL_1] replied.');

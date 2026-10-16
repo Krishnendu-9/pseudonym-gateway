@@ -12,11 +12,12 @@ feature fails closed are in the README; every setting is in the
 
 - **Install:** the runtime (`onnxruntime-node` 1.30.0,
   `@huggingface/tokenizers` 0.2.0) is an exact optional dependency, about
-  302 MB on Windows and 301 MB of it on Linux (measured 2026-10-07), never loaded with names off
+  303 MB on Windows and 302 MB of it on Linux (measured 2026-10-07,
+  rounded up), never loaded with names off
   (on Linux x64 set `ONNXRUNTIME_NODE_INSTALL=skip` when installing, or its
-  install script also downloads 273 MB of GPU libraries that names never
+  install script also downloads 274 MB of GPU libraries that names never
   load: measured, ADR-036);
-  the model comes from `npm run fetch:model` (four files, 181.4 MB, of
+  the model comes from `npm run fetch:model` (four files, 181.5 MB, of
   which the model file is 178.5 MB), each kept only if its SHA-256
   matches, and checked again at start-up: with names on, the
   gateway refuses to start if the list, a file or the runtime is wrong or

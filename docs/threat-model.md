@@ -6,7 +6,8 @@ from the README on 2026-10-14 so that the README stays short. What
 Pseudonym protects against, what it does not, Google's free tier and what
 the logs contain stay in the README; the entries below are the README's
 text as it stood then, with only their links changed to work from this
-folder. The decision behind each part, and what was measured for it, is
+folder, except "Restoration safety: known gaps", written here on
+2026-10-16. The decision behind each part, and what was measured for it, is
 in the [decision record](decisions.md).
 
 ## Inside Pseudonym
@@ -36,6 +37,36 @@ the network in front of it: the Docker networks the container is on, and
 which ports are published on which host interface. The compose file
 publishes on the host's loopback only
 ([ADR-046](decisions.md#adr-046)).
+
+## Restoration safety: known gaps
+
+Written for this page on 2026-10-16 (ADR-049), not moved from the README.
+Restoration safety leaves a placeholder unrestored inside a URL, a markdown
+link or image target, or an HTML attribute value, so that the user's own
+client never fetches a real value when it renders an answer
+([ADR-013](decisions.md#adr-013), [ADR-018](decisions.md#adr-018)). It is
+pattern matching, not a parser. In these shapes the placeholder is still
+restored. Each one was re-derived from the code on 2026-10-16 and is pinned
+by a negative test that runs through restoration end to end; a test also
+checks that this page names each one:
+
+- **a bare host with a query and no path:** `a.example?d=[AADHAAR_1]` in
+  plain text, with no scheme and no "/";
+- **a bare IP address with no scheme:** `203.0.113.9/?d=[AADHAAR_1]` in
+  plain text;
+- **an unquoted HTML attribute that is not a full URL:**
+  `<img src=a.example?d=[AADHAAR_1]>`. An unquoted value is covered only
+  when it is a URL with a scheme, and this one is relative to the client's
+  own site;
+- **a value glued to the end of a bare host's last label:**
+  `a.example-[AADHAAR_1]/p` in plain text. A value followed by "." and a
+  label is held back by the host rule, so `x-[AADHAAR_1].example/p` is not
+  a gap.
+
+No client fetches any of these on its own: a user would have to click a
+linkified one. What restoration safety costs the other way, placeholders
+it leaves unrestored by design, is a separate list:
+[Known costs of restoration safety](results-notes.md#known-costs-of-restoration-safety).
 
 ## A dependency's telemetry
 

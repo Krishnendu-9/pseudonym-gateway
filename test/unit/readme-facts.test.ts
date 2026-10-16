@@ -17,9 +17,38 @@ import { UPI_HANDLES } from '../../src/detection/upi.js';
 import { PROVIDER_RETRY_AFTER_SECONDS } from '../../src/gateway/errors.js';
 import { NAME_MODEL } from '../../src/gateway/name-model.js';
 import { MAX_HELD_BACK } from '../../src/redaction/variants.js';
+import vitestConfig from '../../vitest.config.js';
+import { MAX_GROWTH_RATIO } from '../support/linear-time.js';
 
 const ROOT = join(import.meta.dirname, '..', '..');
-const README = readFileSync(join(ROOT, 'README.md'), 'utf8').replace(/\s+/g, ' ');
+const RAW_README = readFileSync(join(ROOT, 'README.md'), 'utf8');
+const README = RAW_README.replace(/\s+/g, ' ');
+
+/** The status box: the block quote that starts "**Status", as one line. */
+const statusBox = (): string => {
+  const lines = RAW_README.split('\n');
+  const start = lines.findIndex((line) => line.startsWith('> **Status'));
+  if (start === -1) return '';
+  const box: string[] = [];
+  for (let i = start; i < lines.length && lines[i]!.startsWith('>'); i++) {
+    box.push(lines[i]!.replace(/^>\s?/, ''));
+  }
+  return box.join(' ').replace(/\s+/g, ' ');
+};
+
+// A tripwire, not proof (ADR-049): no test can tell whether the project is
+// ready for production, but neither sentence can now vanish in an edit
+// without this test changing too. "Phase N of 8" is not pinned: nothing in
+// the repository holds the phase count to compare with.
+describe("the README's status box", () => {
+  it('says the project is not ready for production use', () => {
+    expect(statusBox()).toContain('Not ready for production use');
+  });
+
+  it('says every figure is measured on synthetic data', () => {
+    expect(statusBox()).toMatch(/every figure here is measured on synthetic data/i);
+  });
+});
 
 /** The number captured by `pattern`'s first group, or NaN if the README lacks it. */
 const numberIn = (pattern: RegExp): number => Number(pattern.exec(README)?.[1]);
@@ -59,14 +88,28 @@ describe('the README says what the code does', () => {
     expect(numberIn(/naming them within (\d+) characters/)).toBe(CONTEXT_WINDOW);
   });
 
+  // ADR-049: these two were pinned nowhere, so the class C ruling ("already
+  // pinned once") did not cover them.
+  it("the timing tests' growth limit", () => {
+    expect(numberIn(/fails if the time grows (\d+) times or more/)).toBe(MAX_GROWTH_RATIO);
+  });
+
+  it("CI's coverage threshold, as vitest.config.ts sets it", () => {
+    const coverage = vitestConfig.test?.coverage as { thresholds?: unknown } | undefined;
+    expect(coverage?.thresholds).toEqual({ 100: true });
+    expect(README).toContain('fails below 100% of lines, branches, functions and statements');
+  });
+
   it("the name detector's default timeout", () => {
     expect(numberIn(/The timeout's default, (\d+) s/) * 1000).toBe(NAMES_TIMEOUT_MS_DEFAULT);
   });
 
   // The download is every pinned file, the model file only one of them: the
   // manual once gave the model file's size as the download's.
+  // A size is a cost, so it is rounded up to the precision shown, never
+  // down (ADR-049): a ceiling at one decimal, not toFixed's nearest.
   it('what fetch:model downloads, and the model file within it', () => {
-    const mb = (bytes: number): string => (bytes / 1e6).toFixed(1);
+    const mb = (bytes: number): string => (Math.ceil(bytes / 1e5) / 10).toFixed(1);
     const total = NAME_MODEL.files.reduce((sum, file) => sum + file.bytes, 0);
     const model = NAME_MODEL.files.find((file) => file.path.endsWith('.onnx'))!;
     expect(NAME_MODEL.files).toHaveLength(4);
@@ -133,14 +176,19 @@ describe('the README says what the evaluation baseline stored', () => {
   const baseline = JSON.parse(readFileSync(join(ROOT, 'eval', 'baseline.json'), 'utf8')) as {
     measuredOn: string;
     generated: {
+      cases: number;
       types: Record<string, { values: number; redacted: number; missed: number }>;
       sent: Record<string, { values: number; sent: number }>;
     };
   };
-  const { types, sent } = baseline.generated;
+  const { cases, types, sent } = baseline.generated;
   const main = sent.main!;
   const names = types.PERSON!;
   const n = (x: number): string => x.toLocaleString('en-US');
+
+  it('the number of main cases', () => {
+    expect(README).toContain(`**${n(cases)} main cases**`);
+  });
 
   it('values sent as written in the main cases, names off', () => {
     expect(README).toContain(

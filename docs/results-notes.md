@@ -176,7 +176,8 @@ could not have been on by default anyway (one request takes seconds).
 **Observed after the measurement, not before:** B alone meets both
 accuracy requirements (62.5% of names, 0.96 false positives per 1,000
 words) and fails only the speed limit. In absolute terms it adds about
-138 ms to a 1 KiB request and 1.1 s to a 4 KiB one, while the local demo
+138 ms to a 1 KiB request and 1.2 s to a 4 KiB one (1,102 ms, rounded
+up), while the local demo
 model itself takes 15.8 s and 66.9 s to its first token on the same
 machine (a hosted model is usually much faster, so there the share would
 be larger). A future revision that set an absolute added-latency budget

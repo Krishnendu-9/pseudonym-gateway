@@ -113,9 +113,10 @@ export function serverConfig(env: Env): ServerConfig {
 // 524.319 + F 1.570, the comparison script's run of 2026-10-03
 // (D:/pseudonym-6a/runs/2026-10-03-move-after); every other full-body run,
 // script or gateway, was between 275.0 and 442.1. 256 KiB at that speed is
-// 134.6 s. The margin, 1.5, covers the gateway's own path being slower than
-// the script's (up to 1.21 times in the one session that measured both)
-// with room to spare: 201.9 s, rounded up to the second. If the body limit
+// 525.889 x 256 = 134,627.6 ms (134.7 s; times shown rounded up, ADR-049).
+// The margin, 1.5, covers the gateway's own path being slower than the
+// script's (up to 1.21 times in the one session that measured both) with
+// room to spare: 201,941.4 ms, rounded up to the second, 202 s. If the body limit
 // is raised, this no longer covers the largest request, and option 1 of
 // ADR-037's step 4b decision (never stop a long call) no longer holds as
 // decided: see PSEUDONYM_MAX_BODY_BYTES in env.ts.

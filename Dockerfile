@@ -17,7 +17,7 @@
 FROM node:22.23.3-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS base
 WORKDIR /app
 # onnxruntime-node's install script would otherwise download CUDA 12
-# libraries from NuGet on linux/x64 (273 MB, ADR-036 run #4); the CPU
+# libraries from NuGet on linux/x64 (274 MB, rounded up; ADR-036 run #4); the CPU
 # runtime is in the package.
 ENV ONNXRUNTIME_NODE_INSTALL=skip
 

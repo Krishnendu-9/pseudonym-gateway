@@ -10,6 +10,8 @@
 // threat model's free-tier figures and eval/baseline.json. R14, R15 and M1
 // (added 2026-10-15) for the name model's download and file sizes: R14 is
 // the error the manual had, the model file's size given as the download's.
+// R16 (added 2026-10-16, ADR-049): sizes are costs and round up, so the
+// download is 181.5 MB; R16 writes the nearest-rounded 181.4 back.
 
 import type { Mutation } from '../mutate.js';
 
@@ -134,14 +136,20 @@ export const MUTATIONS: readonly Mutation[] = [
   readme(
     'R14',
     "the README gives the model file's size as the download's",
-    '181.4 MB, of which the model file is 178.5 MB)',
+    '181.5 MB, of which the model file is 178.5 MB)',
     '178.5 MB, of which the model file is 178.5 MB)',
   ),
   readme(
     'R15',
     "the README gives the download's size as the model file's",
+    '181.5 MB, of which the model file is 178.5 MB)',
+    '181.5 MB, of which the model file is 181.5 MB)',
+  ),
+  readme(
+    'R16',
+    'the README rounds the download to the nearest (181.4), not up (ADR-049)',
+    '181.5 MB, of which the model file is 178.5 MB)',
     '181.4 MB, of which the model file is 178.5 MB)',
-    '181.4 MB, of which the model file is 181.4 MB)',
   ),
   {
     id: 'M1',

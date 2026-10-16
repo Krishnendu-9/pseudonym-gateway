@@ -178,7 +178,7 @@ ADR-041's sections (numbered in the entry; ▸ marks a subsection):
 | [ADR-046](#adr-046) | The container image (Phase 8)                                                                        | 2026-10-10 | accepted                     | in place 2026-10-10 (amendments A to C, D, E), 2026-10-14 (F) and 2026-10-15 (G, H); a note in section 1 superseded by ADR-047 (2026-10-10) |
 | [ADR-047](#adr-047) | The start-up guard is on unless turned off by name                                                   | 2026-10-10 | accepted (the user's ruling) | —                                                                                                                                           |
 | [ADR-048](#adr-048) | The results page: where it lives, what it shows, how it stays true                                   | 2026-10-10 | accepted 2026-10-15 (D)      | ruling in place 2026-10-15 (option D: no page built)                                                                                        |
-| [ADR-049](#adr-049) | What "done" means for Phase 8, set before Phase 8 is checked                                         | 2026-10-16 | accepted 2026-10-16 (D2)     | —                                                                                                                                           |
+| [ADR-049](#adr-049) | What "done" means for Phase 8, set before Phase 8 is checked                                         | 2026-10-16 | accepted 2026-10-16 (D2)     | the check, its rulings and a correction, 2026-10-16                                                                                         |
 
 ¹ No status of its own. The preamble above says each entry records an
 accepted decision, and nothing in the entry says otherwise; where part of
@@ -14899,3 +14899,368 @@ catches either one being deleted.
    of the work is seen first.
 4. Fixes follow the user's rulings on those findings.
 5. Only then is Phase 8 ruled done, here.
+
+### The check against D2 (2026-10-16, after this entry was committed in 3bbf609)
+
+Run on the README at 3bbf609, and reported to the user before anything was
+fixed. Nothing was changed by the check itself.
+
+**Passed:**
+
+- every D1 item but one;
+- all 122 relative links, anchors included. The checker was shown able to
+  fail: it caught three planted bad links and passed a planted good one;
+- the status box.
+
+**Failed:**
+
+- **D1:** the threat model's "unsupported content types if the rejection
+  is bypassed" was missing.
+- **2a and 2b:** no public document listed the restoration-safety gaps as
+  threat-model content. The testing guide named three of them as test
+  descriptions.
+- **2c(i):** there was no instruction about core dumps on the host.
+- **Promises:** three in the user manual. The known one; Aadhaar Virtual
+  IDs promised for "later phases" and never built; names "sent as written
+  until Phase 6", which they still are by default.
+- **Code comments:** three point a public reader at "the Phase 8 notes in
+  CLAUDE.md". Twelve more lines attribute things to the gitignored brief.
+- **A stale statement:** README 942–943 described the model cache as the
+  Names workflow's alone, as it was before amendment G of ADR-046.
+- **Figures.** The counting rule was fixed before counting. A figure is a
+  number that reports something measured or counted about the project,
+  its data or its dependencies. It passes if that occurrence is pinned by
+  `readme-facts.test.ts`, or if its sentence, bullet, table or caption
+  carries both a date and a source (an ADR, a script, a file, or a link to
+  where it is recorded). By that rule:
+  - **class A** (measured or counted, missing a date or a source): 10
+    places;
+  - **class B** (rounded up, which the brief forbids): 3 places;
+  - **class C** (code constants not pinned at that occurrence): 6 places;
+  - **class D** (facts about third parties): 2 places.
+
+  The README's own sentence "Every other figure in this README is a dated
+  observation that nothing re-checks" was false because of class A.
+
+### Rulings on the check (the user, 2026-10-16)
+
+**Class C, code constants: out of D2.** The places, by README line at
+3bbf609:
+
+- 236 "9+-digit";
+- 252 "those 40 characters";
+- 255 "9 or more digits";
+- 314 "256 KiB";
+- 788 "8 times";
+- 919 "100%".
+
+**The user's reason:** each value is already pinned at one occurrence,
+and pinning every repeat buys brittle tests for near-zero risk.
+
+**Correction to that reason (the assistant's, the same day): it holds for
+four of the six, not all of them.**
+
+- **Pinned elsewhere:** 9+, 40 and 256 KiB are pinned at another place in
+  the README.
+- **Pinned nowhere:**
+  - 788's "8 times" (the timing tests' growth limit);
+  - 919's "100%" (CI's coverage threshold, `vitest.config.ts`).
+
+  Neither number appears in any `readme-facts.test.ts` check.
+
+- **The assistant's earlier report caused this:** it said "each value is
+  pinned elsewhere or set by config". That blurred the difference, and the
+  reason was given on that wording.
+- **Whether the ruling stands for those two is put back to the user.**
+  Until the user answers, they stay out as ruled.
+
+**Class D, facts about third parties: in, satisfied by a date and a
+source, never a pin.** Docker's and GitHub's behaviour cannot be pinned.
+A dated claim tells a reader how stale it might be.
+
+**Class B, rounded up: all three fixed.** The brief says to cut, never to
+round up.
+
+- 594 MB becomes 593 (593,772,544 bytes).
+- 115 MB becomes 114 (114,914,209).
+- 572's "310–330" was not a rounding error. It gave a second range for
+  the same measurement as line 306's "308–332". It now gives line 306's
+  range exactly.
+
+**Non-numeric stale statements: D2 reaches them.** D2's clauses are how
+the common cases are checked, not an exhaustive list; its heading is the
+standard. A ruling the other way would let D2 permit known-false sentences
+as long as they contain no digits. So the cache sentence is in scope, and
+now describes the cache as it works since amendment G.
+
+**The twelve other CLAUDE.md attributions in code: out of Phase 8's
+scope.** D2 defines a polished README, not a polished codebase, and the
+standard is not widened on the last item of the last phase. **They are
+done anyway, in their own commit, after the phase work.** Each one points
+at the public document that now carries the content, or the reference is
+dropped where nothing public covers it.
+
+**The user manual's other two promises:**
+
+- **Aadhaar Virtual IDs:** withdrawn and stated as a known gap. They were
+  never built, and no phase remains.
+- **Names "sent as written until Phase 6":** reworded to today's
+  behaviour. Phase 6 shipped the detector off by default; it did not
+  change what is sent by default.
+
+**The gap-name test: yes.** One shared list in `test/support/`, the
+negative tests run over it, and one test that the public document names
+each gap, with mutations.
+
+### Correction (2026-10-16): the brief's claim that every restoration-safety limit is pinned by a negative test
+
+**The claim.** The brief's "Phase 8 notes (README threat model)" say
+that each of its ten limits is "pinned by a negative test in
+`unsafe-regions.test.ts`". The user manual repeated it publicly: the
+known gaps "are listed in `src/redaction/unsafe-regions.ts`, each pinned by
+a negative test". **For item 10 this was false.**
+
+- **Item 10, as the brief worded it:** "A value glued to the _end_ of a
+  host label (`x-[CARD_1].example/`) is not covered".
+- **What the tests had:** the "known gaps" table held three entries, and a
+  search of the tests for the shape found nothing. This is the same class
+  of error as amendment G's "the daily Names run keeps it warm": a claim
+  about the safety net that nothing checked. It is recorded here, not
+  fixed silently.
+
+**Re-derived from today's code, before anything was written.** A scratch
+probe ran `restore()` on each shape, with the published Visa test card
+mapped:
+
+| Shape                                                              | Restored? |
+| ------------------------------------------------------------------ | --------- |
+| the brief's own example, `x-[CARD_1].example/p`                    | **no**    |
+| the bare form, `x-CARD_1.example/p`                                | no        |
+| a middle label, `a.x-[CARD_1].example/?d=1`                        | no        |
+| the end of the last label, before the path: `a.example-[CARD_1]/p` | **yes**   |
+| the same, bare: `a.example-CARD_1/p`                               | yes       |
+| controls: inside a scheme URL / plain prose                        | no / yes  |
+| gaps 2, 3 and 4, end to end                                        | yes       |
+
+**What this shows:**
+
+- **The brief's example was never a gap under today's rules.** The host
+  rule (ADR-018) holds a placeholder followed by "." and a label
+  character, which covers it.
+- **The gap its words describe exists in another place:** a value glued to
+  the end of a bare host's last label, just before its path. That
+  shape is now the fourth entry of the shared list, with a negative test
+  run end to end through `restore()`.
+- **Like gaps 2 and 3, it is plain text that no client fetches on its
+  own.** A user would have to click a linkified one.
+
+### Rulings, second round (the user, 2026-10-16, before part (a) was committed)
+
+**Class C's two unpinned places fall back to the general rule.** The
+ruling rested on "already pinned once", which is not true of 788 and 919,
+so it does not cover them. They must be pinned, or dated with a source.
+
+- **Pinned, if the value is a constant or a configuration entry a test can
+  read; otherwise, class A.** The assistant decided which applies to each.
+- **Both are constants, so both are pinned in `readme-facts.test.ts`:**
+  - 788's "8 times" is `MAX_GROWTH_RATIO` in `test/support/linear-time.ts`;
+  - 919's "100%" is `thresholds: { 100: true }` in `vitest.config.ts`,
+    read from the configuration itself.
+- **The other four stay out,** and the correction above stands.
+
+**The cost figures from ADR-036 step 4b: one stated method, applied to
+every row.**
+
+- **What was wrong:** "1.1 s to 4 KiB" matched a different script's run,
+  and "21 s to 64 KiB" matched only a mean that nothing recorded as the
+  method. Neither derived from any recorded statistic.
+- **The method (the user's):** the slowest (or largest) of the three
+  runs, cut, never rounded up.
+- **The user's reason:** these are costs added to a request, and for a
+  cost the worst observed number is the honest one to quote.
+- **Applied everywhere the table is quoted:** the README's "Cost" bullet,
+  its comparison paragraph, and the user manual's "What it costs". The
+  method is stated once beside each.
+
+Every row, as quoted before and after:
+
+| Row (runs 1, 2, 3)                 | Worst, cut | README before | Manual before |
+| ---------------------------------- | ---------- | ------------- | ------------- |
+| ms per KiB (308.2, 331.9, 321.1)   | 331        | 308–331       | 0.31–0.33 s   |
+| 1 KiB (141, 144, 148 ms)           | 0.14 s     | 0.14 s        | 0.14 s        |
+| 4 KiB (1,076, 1,064, 1,158 ms)     | 1.1 s      | 1.1 s         | 1.1 s         |
+| 16 KiB (4,909, 4,917, 5,461 ms)    | 5 s        | (not quoted)  | 5 s           |
+| 64 KiB (20,441, 22,552, 22,474 ms) | 22 s       | 21 s          | 21 s          |
+| Memory while idle (286, 285, 287)  | 287 MiB    | about 286     | about 290     |
+| Memory at the peak (367, 366, 369) | 369 MiB    | about 367     | about 370     |
+
+**Rows that changed beyond the two ruled** were reported to the user before
+the commit:
+
+- **ms per KiB:** the range becomes the worst run, 331. The README's
+  "308–331" was already a cut of an earlier "308–332".
+- **Memory while idle and at the peak:** in both documents.
+- **The manual's "about 290" and "about 370"** had also rounded up.
+
+**Not changed, put to the user:** the user manual's comparison of machines
+(in "Person names") quotes the i5-12450H as "308–331 ms per KiB" beside
+other machines' ranges ("about 290–306", "about 147–157"). It is a
+different statistic for a different purpose, the spread across machines,
+not the cost table. Changing only the i5 row to its worst run would mix
+methods within that sentence.
+
+### Correction (the user, 2026-10-16, before part (a) was committed): costs round up
+
+**The ruling above had the direction wrong** (the user's words: "I ruled
+the direction wrong").
+
+- **What the brief's rule is for.** "Cut, never round up" is a rule for
+  this project's own results, such as recall and precision percentages.
+  There, cutting understates how well Pseudonym does, which is the
+  cautious side.
+- **What it does to a cost.** Applied to a cost, cutting understates the
+  cost, which flatters Pseudonym. That is the opposite of the rule's
+  intent. The instruction "332 → 331" did exactly that.
+- **The rule from now on.** A result Pseudonym claims is cut. **A cost
+  Pseudonym imposes (time, memory, size) is rounded up to the precision
+  shown, never down.** In both cases the error falls on the side that does
+  not flatter the project.
+
+This distinction is written down because the next person to quote a
+figure will face the same choice.
+
+**Cost figures, ADR-036 step 4b: the worst of three runs, rounded up to the
+precision shown.** The method is stated beside the figures in the README
+and the user manual.
+
+| Row (runs 1, 2, 3)                 | README (precision) | Manual (precision) | Moved from the cut version  |
+| ---------------------------------- | ------------------ | ------------------ | --------------------------- |
+| ms per KiB (308.2, 331.9, 321.1)   | 332 ms (1 ms)      | 0.34 s (0.01 s)    | 331 → 332; 0.33 → 0.34      |
+| 1 KiB (141, 144, 148 ms)           | 0.15 s (0.01 s)    | 0.15 s             | 0.14 → 0.15                 |
+| 4 KiB (1,076, 1,064, 1,158 ms)     | 1.2 s (0.1 s)      | 1.2 s              | 1.1 → 1.2                   |
+| 16 KiB (4,909, 4,917, 5,461 ms)    | (not quoted)       | 6 s (1 s)          | 5 → 6                       |
+| 64 KiB (20,441, 22,552, 22,474 ms) | 23 s (1 s)         | 23 s               | 22 → 23                     |
+| Memory while idle (286, 285, 287)  | 287 MiB            | 287 MiB            | none: recorded in whole MiB |
+| Memory at the peak (367, 366, 369) | 369 MiB            | 369 MiB            | none: recorded in whole MiB |
+
+The manual's 0.34 s per KiB is the same run as the README's 332 ms, shown
+at the manual's own precision.
+
+**Class B's other two fixes stand as made.** The image sizes became 593
+MB and 114 MB. They are sizes of the image, not a cost the gateway adds to
+a request. **Whether a download size is a "cost" in this sense was not
+ruled.**
+
+**Ruled the same day (the user): image sizes are a cost, so they round
+up.** The rule above names size beside time and memory, and cutting them
+would contradict it. The image becomes 594 MB unpacked (593,772,544
+bytes), and the runtime's share of the download becomes 115 MB
+(114,914,209). Those were the README's figures before class B cut them.
+
+**The user manual's comparison of machines: a range, by ruling.** It shows
+the spread across machines, not the cost of a request. So a range is its
+right form, while the cost table's right form is the worst run. Two
+purposes, two forms, each stated beside its figures.
+
+The bounds were checked against the recorded runs:
+
+- **i5-12450H, Windows:** the runs were 308.2 to 331.9. The sentence said
+  "308–331", which cut the top.
+- **GitHub machines without AVX-512:** the recorded runs are #1 292.1, #3
+  293.0, #5 294.5 and #11 306.4; #7 to #9's speeds were not recorded. The
+  sentence said "about 290–306", but 290 was never observed and 306 cut
+  306.4.
+- **GitHub machines with AVX-512:** the recorded runs are #2 147.0, #6
+  152.5 and #10 157.0; #4's speed was not recorded. The sentence said
+  "about 147–157", which matched.
+
+All three ranges now give the observed bounds, to the record's one
+decimal: 308.2–331.9, 292.1–306.4 and 147.0–157.0. The sentence says they
+run from the lowest to the highest recorded run.
+
+### The rounding rule applied across every document (the user, 2026-10-16, before part (a) was committed)
+
+**Every size, time and memory figure that had to be rounded to be readable
+now rounds up from its record, at the precision shown.** No exceptions for
+"close enough". In the user's words: "A cost that reads slightly high never
+misleads; a rule with 'close enough' exceptions is not a rule."
+
+- **Swept:** the README, `docs/user-manual.md`, `docs/person-names.md`,
+  `docs/threat-model.md`, `docs/results-notes.md` and `docs/detection.md`.
+- **Not swept, and why:** the decision record and the bug log are dated
+  records, and are never edited in place. The testing guide's timings are
+  observations of test runs, not costs the gateway imposes on anyone.
+- **The test changed with the rule.** `readme-facts.test.ts` now checks
+  the model sizes with a ceiling at one decimal, not `toFixed(1)`, so the
+  test enforces this rule and not a different one. Mutation R16 writes the
+  nearest-rounded 181.4 back, and the test fails.
+
+| Figure                                         | Record                                          | Before      | Now      | Where                        |
+| ---------------------------------------------- | ----------------------------------------------- | ----------- | -------- | ---------------------------- |
+| Image, unpacked                                | 593,772,544 B                                   | 593         | 594 MB   | README                       |
+| Image, download                                | 200,233,821 B                                   | 200         | 201 MB   | README, manual               |
+| Image, Docker Desktop's disk usage             | 794,006,365 B                                   | 794         | 795 MB   | README                       |
+| Runtime's share of the image, unpacked         | 304,467,968 B                                   | 304         | 305 MB   | README, manual               |
+| Runtime's share of the download                | 114,914,209 B                                   | 114         | 115 MB   | README (manual already 115)  |
+| Image without the runtime, unpacked            | 289,304,576 B                                   | 289         | 290 MB   | README                       |
+| Image without the runtime, download            | 85,319,612 B                                    | 85          | 86 MB    | README                       |
+| Runtime installed, Windows x64                 | 302,509,647 B                                   | 302         | 303 MB   | README, manual (2), names    |
+| Runtime, Linux (`onnxruntime-node`)            | 301,068,136 B (registry); 301,125,480 (`du -b`) | 301         | 302 MB   | person-names                 |
+| GPU libraries a `default` install adds         | 273,153,528 B                                   | 273         | 274 MB   | README, manual, person-names |
+| `fetch:model` download                         | 181,416,359 B                                   | 181.4       | 181.5 MB | README, manual (2), names    |
+| The model file                                 | 178,495,423 B                                   | 178.5       | 178.5 MB | unchanged                    |
+| Redaction of a 256 KiB CSV (ADR-015)           | 1,072 ms                                        | about 1 s   | 1.1 s    | manual                       |
+| Redaction of a 256 KiB chat (ADR-015)          | 247 ms                                          | 0.25 s      | 0.25 s   | unchanged                    |
+| Hashing the model files at start-up            | 242, 195, 186, 181, 183 ms                      | about 0.2 s | 0.3 s    | manual                       |
+| Starting with names on, over names off         | 1,085, 1,319, 1,686 ms                          | 1.1–1.7 s   | 1.7 s    | manual                       |
+| First start after a fresh install (bug-log 66) | 7.9 to 13.2 s                                   | over 10 s   | 14 s     | manual                       |
+| The largest body at the slowest speed          | 256 × 525.889 = 134,627.6 ms                    | 134.6 s     | 134.7 s  | manual                       |
+| B's added latency at 4 KiB (Phase 6a)          | 1,102 ms                                        | 1.1 s       | 1.2 s    | results-notes                |
+
+**Checked and unchanged:**
+
+- **The 6a comparison table's ms per KiB and memory** (416.0, 285.0, 1.0,
+  417.0, 286.0; 245, 325 and 30 MiB). ADR-035 records them at the
+  precision shown.
+- **A thinking model's 13.4 minutes:** 803 s, already rounded up.
+- **The 526 ms per KiB behind the timeout:** 525.889, rounded up.
+- **Two kinds of figure that are not this project's costs:** Ollama's own
+  time to its first token (15.8 s and 66.9 s), and the estimated sizes of a
+  provider's streams ("16.3 MiB", "about 250,000 tokens").
+
+**The rule governs only figures that must be rounded to be readable.
+Exact counts are neither results nor costs, and are never rounded in
+either direction.** Examples:
+
+- 51 UPI handles and 260 IFSC bank codes;
+- a count of paths, tests or files;
+- a limit or setting the code defines (256 KiB, 202 s, 32 MiB);
+- a third party's default (Docker's 10 s).
+
+Rounding any of these would make an exact statement false.
+
+**The testing guide is outside the rule, by ruling (the user, the same
+day).** Its timings are observations of test runs: how long a suite, a
+mutation or a timing test took on a given day. They are not costs the
+gateway imposes on a user, so they keep the form they were recorded in.
+This is written down so that nobody sweeps the guide out of habit. The
+same boundary covers timings in the bug log, which is a dated record in
+any case.
+
+**Code comments the sweep had contradicted, fixed in the same commit:**
+
+- **`src/config/wiring.ts`** derives the names timeout. It said "134.6
+  s", and the user manual now says 134.7. Its next figure, "201.9 s,
+  rounded up to the second", was also a cut: 201.941 s.
+  - **Now:** 525.889 × 256 = 134,627.6 ms (134.7 s), and × 1.5 =
+    201,941.4 ms, rounded up to the second, 202 s.
+  - **`NAMES_TIMEOUT_MS_DEFAULT` does not move.** It is computed from the
+    three constants, not from either intermediate, and is still 202,000
+    ms (checked by running it).
+- **`.github/workflows/names.yml`:** the model's four files, 181.4 MB,
+  become 181.5.
+- **`Dockerfile`:** the GPU libraries, 273 MB, become 274.
+
+`src/config/env.ts` already gave redaction's stall as 0.25 s and 1.1 s,
+the user manual's new figures. A search of the code, tests, scripts and
+configuration for every figure the sweep changed found nothing else.

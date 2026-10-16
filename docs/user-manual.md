@@ -149,8 +149,10 @@ measurements can see how much context matters.
   them.
 - Emails written as "priya at example dot com", with quoted local parts, or
   with IP-literal domains.
-- Aadhaar Virtual IDs (16 digits) and names: later phases. (Secrets, UPI
-  IDs, IFSC codes and IP addresses: Phase 5b, see their sections below.)
+- Aadhaar Virtual IDs (16 digits): a known gap. No detector for them was
+  built, and none is planned. (Names: Phase 6, off by default. Secrets,
+  UPI IDs, IFSC codes and IP addresses: Phase 5b, see their sections
+  below.)
 
 ### It fails closed
 
@@ -265,9 +267,13 @@ and the user's own app would send the real Aadhaar to that server when it
 shows the image. It is pattern matching, not a parser, so it errs towards
 leaving more placeholders unrestored. Pass `{ restoreInUnsafeRegions: true }`
 to switch it off. Its known gaps (all things a client does not fetch on its
-own) are listed in `src/redaction/unsafe-regions.ts`, each pinned by a
-negative test in `unsafe-regions.test.ts`; the README's threat model gains
-the list in Phase 8.
+own) are listed in the threat model,
+[Restoration safety: known gaps](threat-model.md#restoration-safety-known-gaps),
+which the README's threat model points to. Each is pinned by a negative
+test that runs through restoration end to end. (Until 2026-10-16 this said
+every gap listed in `src/redaction/unsafe-regions.ts` was pinned by a
+negative test; one was not, and its example was not a gap. ADR-049 records
+the correction.)
 It protects against this one trick only, not against prompt injection in
 general.
 
@@ -437,9 +443,12 @@ production, or in a `.env` you give to a container.
 - A number split across two messages is not detected. (A number with a
   line break between its digit groups was not detected either until
   Phase 5c item 4; see "Numbers wrapped onto the next line" below.)
-- Names and API keys in messages are sent as written until Phases 6 and 5.
-- Redaction blocks the server while it runs: about 0.25 s for a 256 KiB
-  chat, about 1 s for 256 KiB of dense numbers.
+- Names in messages are sent as written by default. Phase 6 added a name
+  detector, but it ships off (`PSEUDONYM_NAMES`), so the default is
+  unchanged. API keys with a known format or after a keyword have been
+  redacted since Phase 5b.
+- Redaction blocks the server while it runs: 0.25 s for a 256 KiB chat,
+  1.1 s for 256 KiB of dense numbers (one run each, rounded up; ADR-015).
 
 ## Phase 4a — streaming restoration (2026-09-29)
 
@@ -1326,7 +1335,7 @@ make sure they are the ones that were measured (ADR-036).
 
 **The runtime** (`onnxruntime-node` 1.30.0, `@huggingface/tokenizers`
 0.2.0) is an optional dependency, pinned exactly. `npm install` and
-`npm ci` install it (about 302 MB on Windows); with names off it is never
+`npm ci` install it (about 303 MB on Windows); with names off it is never
 loaded. To run the built gateway without it, install with
 `npm ci --omit=optional --omit=dev` after `npm run build`. Do not use
 `--omit=optional` for a development checkout. It omits every optional
@@ -1347,7 +1356,7 @@ npx tsx scripts/fetch-model.ts --dir D:/somewhere     # another root
 npx tsx scripts/fetch-model.ts --from <base URL>      # a mirror of the same files
 ```
 
-It downloads four files (181.4 MB in all, of which the model file is
+It downloads four files (181.5 MB in all, of which the model file is
 178.5 MB) from a pinned commit of
 `Xenova/bert-base-multilingual-cased-ner-hrl` into
 `models/Xenova__bert-base-multilingual-cased-ner-hrl@263e82c06569/`, and
@@ -1373,7 +1382,9 @@ For example:
 `{"fatal":{"name":"NameStartupError","code":"NAME_MODEL_FILE_MISSING","file":"config.json"}}`.
 The fix for the two file refusals is `npm run fetch:model`. The gateway
 looks for the model under `models/` in the directory it is started from.
-Hashing the files takes about 0.2 s at start-up. With names off, none of
+Hashing the files takes up to 0.3 s at start-up (the worst of five runs
+with the files in the operating system's cache, rounded up; a cold read was
+not measured). With names off, none of
 this runs.
 
 ## Person names (Phase 6b, 2026-10-07; ADR-035, ADR-036, ADR-037)
@@ -1386,13 +1397,13 @@ cost: they are slow, and they wrongly redact some ordinary words.
 
 1. Install the default way (`npm install` or `npm ci`): the runtime
    (`onnxruntime-node` 1.30.0, `@huggingface/tokenizers` 0.2.0) comes as an
-   optional dependency, about 302 MB on Windows. `--omit=optional` leaves
+   optional dependency, about 303 MB on Windows. `--omit=optional` leaves
    it out; with names on, the gateway then refuses to start. **On Linux
    x64**, install with `ONNXRUNTIME_NODE_INSTALL=skip` set (as CI does):
-   without it the runtime's install script also downloads about 273 MB of
+   without it the runtime's install script also downloads about 274 MB of
    GPU provider libraries from NuGet, which names never load (measured,
    ADR-036).
-2. `npm run fetch:model`: four files, 181.4 MB in all (the model file is
+2. `npm run fetch:model`: four files, 181.5 MB in all (the model file is
    178.5 MB), from a pinned commit of
    `Xenova/bert-base-multilingual-cased-ner-hrl`, each kept only if its
    SHA-256 matches (licence: below).
@@ -1402,10 +1413,11 @@ At start-up the gateway checks the name list, then the model files, then
 starts the model in a worker thread of its own. If any of them fails it
 does not start: one line on stderr and exit code 1, with the codes in the
 step 4a table above (`NAME_MODEL_LOAD_FAILED` when the runtime is missing
-or the model does not load). Starting takes about 1.1–1.7 s more than with
-names off on a laptop CPU. The first start after an install can take over
-10 s, names on or off (bug-log 66): allow for it in anything that waits for
-the gateway.
+or the model does not load). Starting takes up to 1.7 s more than with
+names off on a laptop CPU (the worst of three runs, rounded up; ADR-036,
+step 4b). The first start after an install can take up to 14 s, names on
+or off (the worst of three fresh installs, 13.2 s, rounded up; bug-log
+66): allow for it in anything that waits for the gateway.
 
 ### Licence
 
@@ -1514,7 +1526,7 @@ at a time; others wait in a queue.
 
 The timeout's default is derived, not picked: the largest request the
 default body limit allows (256 KiB of text) at the slowest speed ever
-measured (526 ms per KiB) takes 134.6 s, and 202 s is that with a margin
+measured (526 ms per KiB) takes 134.7 s, and 202 s is that with a margin
 of 1.5. **If you raise `PSEUDONYM_MAX_BODY_BYTES`**, raise this timeout in
 proportion, and know that the model then works for longer on one request
 than anything measured, with no way to stop it (ADR-037). The queue's 8 is
@@ -1522,11 +1534,12 @@ a choice: it bounds how many requests wait, not how long.
 
 ### What it costs
 
-Measured through the gateway on a laptop (Intel i5-12450H, no GPU; three
-runs): about 0.31–0.33 s per KiB of request text, so about 0.14 s added to
-a 1 KiB request, 1.1 s to 4 KiB, 5 s to 16 KiB and 21 s to 64 KiB, before
-the request is sent; about 290 MiB more memory while idle and up to about
-370 MiB while working.
+Measured through the gateway on a laptop (Intel i5-12450H, no GPU;
+2026-10-07; each figure is the worst of three runs, rounded up to the
+precision shown, never down; ADR-036, step 4b): 0.34 s per KiB of request
+text, so 0.15 s added to a 1 KiB request, 1.2 s to 4 KiB, 6 s to 16 KiB
+and 23 s to 64 KiB, before the request is sent; 287 MiB more memory while
+idle and 369 MiB at its peak.
 
 ### Checking it yourself
 
@@ -1581,10 +1594,11 @@ no run has looked at which kernels were chosen.
 
 The published figures stay as measured, the other figures are reported
 beside them, and the held-out figure (41 of 45) is not re-run on any other
-machine. Speed differs a great deal more than the names: 308–332 ms per
-KiB on the i5-12450H under Windows, 450.7 on it under Linux with 4 CPUs,
-about 290–306 on the machines without AVX-512 on GitHub, and about 147–157
-on those with it.
+machine. Speed differs a great deal more than the names. As ranges, from
+the lowest to the highest run recorded on each kind of machine (a spread,
+not a cost; ADR-036, ADR-049): 308.2–331.9 ms per KiB on the i5-12450H
+under Windows, 450.7 on it under Linux with 4 CPUs, 292.1–306.4 on the
+GitHub machines without AVX-512, and 147.0–157.0 on those with it.
 
 ## Providers (Phase 7, 2026-10-07 to 2026-10-11; ADR-041)
 
@@ -1834,8 +1848,9 @@ loaded only with names on.
   source, not from watching it send. See the README's threat model, entry
   "Disclosed: a dependency's telemetry".
 
-**How big it is.** A 200 MB download, 594 MB unpacked. About 115 MB of the
-download (304 MB unpacked) is the name library, kept so that names can be
+**How big it is** (measured 2026-10-10, rounded up). A 201 MB download,
+594 MB unpacked. About 115 MB of the download (305 MB unpacked) is the
+name library, kept so that names can be
 switched on without another image; with names off it is never loaded
 (ADR-046).
 
