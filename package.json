@@ -30,7 +30,7 @@
     "gen:digits": "tsx scripts/generate-decimal-digit-zeros.ts && prettier --write src/detection/decimal-digit-zeros.ts"
   },
   "dependencies": {
-    "fastify": "5.12.5",
+    "fastify": "5.12.6",
     "libphonenumber-js": "1.13.14",
     "zod": "4.6.5"
   },
