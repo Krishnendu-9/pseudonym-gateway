@@ -1,8 +1,9 @@
 // The machine sampler (scripts/machine-sampler.ts): its parsers on fixed
-// inputs, a fake /proc tree, the summary line, the pruning of old files,
-// and one real run of a few samples.
+// inputs, a fake /proc tree, the summary line and the pruning of old files.
+// The tests that wait on this machine's real process listing are in
+// machine-sampler.timing.test.ts (ADR-032 amendment 2026-11-04).
 
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -10,14 +11,11 @@ import {
   busyPercent,
   filesToRemove,
   HEADER,
-  KEEP_FILES,
   parsePs,
   parseTasklist,
   processes,
   readProc,
-  SAMPLES_DIR,
   sampleLine,
-  startSampling,
   summaryLine,
   type Sample,
 } from '../../../scripts/machine-sampler.js';
@@ -64,16 +62,12 @@ describe('reading the processes', () => {
     expect(readProc(proc)).toEqual({ total: 3, node: 2, nodeMb: 20 });
   });
 
-  it('this machine: some processes, at least one of them Node (this one)', async () => {
-    const found = await processes();
-    expect(found).toBeDefined();
-    expect(found!.total).toBeGreaterThan(1);
-    expect(found!.node).toBeGreaterThanOrEqual(1);
-  });
-
   it('a platform whose command fails: no reading, no error', async () => {
     // "ps" with these options does not exist on Windows; elsewhere the
     // listing works, so only the Windows case is checked for undefined.
+    // It stays in `main`: a failed and a timed-out listing both give
+    // undefined, and the listing's 15 s limit is under the test timeout,
+    // so load cannot change the outcome.
     const found = await processes(process.platform === 'win32' ? 'darwin' : process.platform);
     if (process.platform === 'win32') expect(found).toBeUndefined();
     else expect(found!.total).toBeGreaterThan(0);
@@ -147,36 +141,5 @@ describe('the files', () => {
     ];
     expect(filesToRemove(names, 3)).toEqual(['20261006T235959-9.tsv']);
     expect(filesToRemove(names, 10)).toEqual([]);
-  });
-
-  it('a run shorter than the interval still gets a first and a last sample', async () => {
-    const sampler = startSampling(dir, { intervalMs: 60_000 });
-    const summary = await sampler.stop();
-    expect(readFileSync(sampler.file, 'utf8').trimEnd().split('\n')).toHaveLength(4);
-    expect(summary).toMatch(/^machine: 2 samples every 60 s;/u);
-  });
-
-  it('a real run: a header, then one line per sample, and old files pruned', async () => {
-    const samplesDir = join(dir, SAMPLES_DIR);
-    mkdirSync(samplesDir);
-    for (let i = 0; i < KEEP_FILES + 5; i++) {
-      writeFileSync(join(samplesDir, `20200101T0000${String(i).padStart(2, '0')}-1.tsv`), '');
-    }
-    const sampler = startSampling(dir, { intervalMs: 50 });
-    // A sample waits for the process listing (on Windows a `tasklist` run),
-    // so wait for samples rather than for a fixed time.
-    const read = (): string[] => readFileSync(sampler.file, 'utf8').trimEnd().split('\n');
-    for (let waited = 0; read().length < 4 && waited < 20_000; waited += 50) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-    const summary = await sampler.stop();
-    const lines = read();
-    expect(lines[0]).toMatch(/^# \w+ \d+ logical CPUs, \d+ MB, Node v[\d.]+, every 0\.05 s$/u);
-    expect(lines[1]).toBe(HEADER);
-    expect(lines.length).toBeGreaterThanOrEqual(4);
-    for (const line of lines.slice(2)) expect(line.split('\t')).toHaveLength(8);
-    expect(summary).toMatch(/^machine: \d+ samples every 0\.05 s; free memory lowest \d+ MB/u);
-    expect(summary.endsWith(`${SAMPLES_DIR}/${sampler.file.split(/[\\/]/u).at(-1)}`)).toBe(true);
-    expect(readdirSync(samplesDir)).toHaveLength(KEEP_FILES);
   });
 });

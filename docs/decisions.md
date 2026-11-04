@@ -72,7 +72,7 @@ sections, since those two entries are half of this file.
 | [ADR-029](#adr-029) | Overlaps — the containing span, what losers leave, joined digits, and values glued together                       | 2026-10-01               | accepted¹ | ADR-034                                                                                                                                                                                                                                       |
 | [ADR-030](#adr-030) | Numbers wrapped onto the next line                                                                                | 2026-10-01               | accepted¹ | follow-up in place 2026-10-02 (mutation P5)                                                                                                                                                                                                   |
 | [ADR-031](#adr-031) | Passport numbers, voter IDs and dates of birth — keyword only                                                     | —²                       | accepted¹ | —                                                                                                                                                                                                                                             |
-| [ADR-032](#adr-032) | Timing tests in their own project, run after the rest (Phase 5d part 2)                                           | 2026-10-02               | accepted¹ | in place 2026-10-02 (CI)                                                                                                                                                                                                                      |
+| [ADR-032](#adr-032) | Timing tests in their own project, run after the rest (Phase 5d part 2)                                           | 2026-10-02               | accepted¹ | in place 2026-10-02 (CI) and 2026-11-04 (tests that wait on the real OS)                                                                                                                                                                      |
 | [ADR-033](#adr-033) | The echo measurement — what restoration leaves, by rule, and whether everything else comes back (Phase 5d part 3) | 2026-10-02               | accepted¹ | —                                                                                                                                                                                                                                             |
 | [ADR-034](#adr-034) | An email's local part stops at "/", "=" and "?" (bug-log 49)                                                      | 2026-10-02               | accepted¹ | —                                                                                                                                                                                                                                             |
 | [ADR-035](#adr-035) | Person names, Phase 6a — the comparison, the names dataset, and the stopping rule (written before any model run)  | 2026-10-03               | accepted¹ | in place 2026-10-03 (step 2, before any run; bug-log 53); ADR-036 (a correction by measurement, 2026-10-07)                                                                                                                                   |
@@ -4026,6 +4026,45 @@ flag only reaches the root. The timing step is a step of its own in a
 single job, so nothing else runs on the runner while it does. Whether this
 is stable on GitHub is checked by the user re-running the workflow 3–5
 times.
+
+**Amendment (2026-11-04): tests that wait on the real operating system.**
+The user decided this in principle; I checked which tests it covers.
+
+- **Context.** Three tests of the machine sampler wait on a real process
+  listing (`tasklist` on Windows, limited to 15 s), and each has failed in
+  a full run while passing alone (bug-log 69, second part). They fail for
+  the same reason as this ADR's tests: load from the rest of `main`.
+- **Options.**
+  1. Move them into the timing project (the user's choice).
+  2. Give `startSampling` a fake listing, so two of them stop touching the
+     OS and stay in `main`. That needs a seam in the sampler, and they would
+     no longer check a real run. The third is a real-OS test by definition,
+     so it would still have to move.
+  3. Raise the limits. Rejected, as this ADR rejected a higher ratio
+     limit: no limit bounds a starved listing, and a longer listing limit
+     only delays the sampler's next reading.
+- **Decision: option 1.** The project's membership rule is now **a test
+  whose result can depend on load**: one that times real work (the
+  original rule, with bug-log 48's lesson), or one that waits on the real
+  OS against a fixed limit. A real-OS test whose outcome cannot change
+  under load stays in `main` ("a platform whose command fails": failure
+  and timeout both give `undefined`, and its 15 s limit is under the test
+  timeout). The three moved, names unchanged, to
+  `test/unit/scripts/machine-sampler.timing.test.ts`, following this ADR's
+  naming.
+- **Counts.** Timing: 17 files and 92 tests (89 growth-ratio and helper
+  tests, plus the 3). `main`: 113 files. `npm test`: 130 files, 3,457
+  tests, the same test count as before.
+- **Consequences.**
+  - `npm run test:coverage` runs 3 tests fewer. Coverage is unchanged,
+    since it measures `src` and `eval`, not `scripts/`.
+  - These three now run beside the growth-ratio tests. Each spawns one to
+    a few listings at raised priority. The sampler's own listing every 5 s
+    was measured not to move the ratios (testing guide, "Does the sampler
+    disturb the timing tests?"); these were not measured separately.
+  - In CI (Linux) they read `/proc` and spawn nothing.
+  - Nothing tests the sampler's listing under `main`'s load any more. The
+    design accepts losing a listing there (bug-log 69, second part).
 
 ---
 

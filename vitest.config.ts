@@ -7,6 +7,9 @@ import { configDefaults, defineConfig } from 'vitest/config';
 // 11 workers on 12 logical CPUs inflated ratios to 8.6 and stretched one call
 // to 42.8 s; on their own, three at a time, 267 calls never reached 6.3 and
 // none took over 10 s. Other heavy work on the machine still breaks them.
+// So do tests that wait on the real OS against a fixed limit (the machine
+// sampler's process listings, bug-log 69): they live there too (ADR-032
+// amendment 2026-11-04).
 // PSEUDONYM_TIMING_WORKERS overrides the count: CI sets it to 1, because the
 // three at a time was measured on 12 cores and GitHub's ubuntu-24.04 runner
 // has 4. The --maxWorkers flag cannot do this: a project's own maxWorkers wins.

@@ -2901,6 +2901,68 @@ and the longer gap itself says the machine was struggling.
 which runs inside the full suite (where it failed); and the evidence each
 run now writes (a "-" in the process columns of the `.tsv` file).
 
+### Second part (2026-11-04): the fix held for the sampler, not for its tests
+
+**Symptom.** Two full `npm test` runs on two days, as the user reported
+them, each failed one test in `machine-sampler.test.ts`:
+
+1. "this machine: some processes, at least one of them Node (this one)":
+   `expected undefined to be defined` after 15,090 ms. This is this entry's
+   own symptom, past the 15 s limit the first part chose.
+2. "a run shorter than the interval still gets a first and a last
+   sample": timed out at 30,000 ms (the 2026-11-04 run at 12:43 IST).
+
+In both runs the CPU was at 100%, there were over 320 processes, and the
+run's own sampler line reported a 20 s gap. Run alone, the file passed in
+6.5 s, with test 1 taking 946 ms. In full runs the same test has taken
+946, 4,839, 13,707 and 15,090 ms (the user's figures). The testing guide
+records a third: "a real run …" timed out at 30 s on 2026-10-10 ("Gate,
+and one failure not explained"). So each of the three tests below has now
+failed in a full run.
+
+**Root cause.** The first part's fix (priority raised, 15 s limit) makes
+the listing faster under load. It does not bound it: under heavy enough
+load `tasklist` still takes over 15 s, and the sampler then records no
+listing, by design ("-" and the longer gap are the evidence). The
+sampler's behaviour was right. **Three of its tests asserted more than
+the code promises**, under whatever load the rest of the `main` project
+put on the machine at the time:
+
+| Test                                | Real OS or clock                                                                                 | Its limit                                                                                                                               | Can load fail it?                                          |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| "this machine: some processes …"    | one real `tasklist` (Linux: `/proc`)                                                             | `LISTING_TIMEOUT_MS`, 15 s; past it the result is `undefined` and the test fails                                                        | yes (failure 1)                                            |
+| "a run shorter than the interval …" | two listings in a row: the first sample, then the last one `stop()` takes                        | up to 15 s each, against the 30 s test timeout                                                                                          | yes (failure 2)                                            |
+| "a real run …"                      | listings every 50 ms, one at a time, polled with real `setTimeout` until two samples are written | its own 20 s polling limit (then fewer than 4 lines fails it), plus `stop()`'s wait for the sample in flight and one more, against 30 s | yes (2026-10-10)                                           |
+| "a platform whose command fails …"  | one real command that fails (Windows: `ps` with options it does not have; Linux: `/proc`)        | 15 s, under the 30 s timeout                                                                                                            | no: a failed and a timed-out listing both give `undefined` |
+
+The other eight tests in the file are pure: parsers on fixed text, a fake
+`/proc` tree, the line and summary formats, the pruning rule, a few
+milliseconds each.
+
+**Fix.** The first three moved, names unchanged, to
+`test/unit/scripts/machine-sampler.timing.test.ts`, in the `timing`
+project, which runs after `main` with at most three files at a time
+locally and one in CI (ADR-032, amended 2026-11-04). The fourth stays in
+`main`, with a comment saying why. `machine-sampler.test.ts` keeps 9
+tests. The suite went from 129 to 130 files, with 3,457 tests before and
+after: `main` 113 files, 3,368 → 3,365 tests; `timing` 16 → 17 files, 89 →
+92 tests.
+
+**Guarded by.** The three tests themselves, now in the timing project. In
+the first full run after the move (2026-11-04, 169 s, free memory down to
+2,228 MB, a 20.1 s sampler gap) all 3,457 passed. Run alone, the timing
+project passed 92 of 92, with the three taking 1,978, 3,314 and 2,637 ms.
+Nothing automated keeps a new real-OS test out of `main`; the rule is in
+ADR-032's amendment.
+
+**What this gives up.** The first part named test 1 as the guard _because_
+it ran under the full suite's load. Nothing now asserts that the sampler
+gets a listing under `main`'s load. That is accepted: the design already
+accepts losing one there, and the sampler running in global setup still
+records each loss as "-". In CI, on Linux, these tests read `/proc` and
+spawn nothing, so the move changes little there. **Not fixed:** the
+sampler itself still loses listings under heavy load, as designed.
+
 ## 70. A streamed refusal reaches the client as an empty answer that finished normally (2026-10-10, found while writing the Phase 7c options; fixed and closed the same day)
 
 **Symptom:** no real provider has sent a refusal through the gateway

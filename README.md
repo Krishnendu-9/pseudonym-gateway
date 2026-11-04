@@ -816,7 +816,9 @@ only the symptom; [ADR-036](docs/decisions.md#adr-036), step 4a).
 The timing tests check that detection and restoration take linear time:
 each times the same work on an input and on one four times as long, and
 fails if the time grows 8 times or more (linear code grows about 4
-times, quadratic about 16). They run after the other tests and need the
+times, quadratic about 16). Three tests of the machine sampler, which wait
+on the operating system's real process listing, run with them (since
+2026-11-04). They run after the other tests and need the
 machine mostly to themselves; how often they fail when they do not, and
 what a failure prints:
 [testing guide](docs/testing-guide.md#phase-5d-part-2--timing-tests-in-their-own-project-2026-10-02-adr-032-bug-logs-46-and-47)

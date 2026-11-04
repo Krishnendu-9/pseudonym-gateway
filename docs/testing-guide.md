@@ -98,6 +98,15 @@ given a `comm` like the real one (until then it was skipped for having
 none, so the numeric filter was never tested). The sampler's own first
 full run found bug-log 69.
 
+**Split, 2026-11-04 (bug-log 69, second part; ADR-032 amendment).** Of
+those 12, the three that wait on this machine's real process listing
+moved, names unchanged, to
+`test/unit/scripts/machine-sampler.timing.test.ts` in the timing project:
+this machine's real listing, a run shorter than the interval, and a real
+run. Each had failed in a full run and passed alone. The other 9 stay in
+`machine-sampler.test.ts`, including "a platform whose command fails",
+whose outcome load cannot change.
+
 **Does the sampler disturb the timing tests? Measured: not their ratios
 (2026-10-07, Phase 6c).** A green run would not show it, so the timing
 project was run six times on its own at one worker (as CI runs it),
@@ -2228,6 +2237,12 @@ project; `npm run test:coverage` runs `main` only, which covers 100% on
 its own (2,992 statements, 1,611 branches, 742 functions, 2,524 lines).
 To run one timing file: `npx vitest run test/unit/detection/ip.timing.test.ts`.
 
+**Since 2026-11-04** the timing project has 17 files and 92 tests: the
+89 above plus three machine-sampler tests that wait on the real OS
+(`test/unit/scripts/machine-sampler.timing.test.ts`; ADR-032 amendment).
+`npm test` then reported 130 files and 3,457 tests (129 files before the
+move, the same test count).
+
 **The timing tests need the machine mostly to themselves.** Not beside
 another test suite, a mutation run or other heavy work. Measured before the
 split (ADR-032 table): beside two other suites, even one file at a time,
@@ -3583,6 +3598,13 @@ at 100% for about its first 65 s. The longest hold-up here was a single
 above (longer gaps more often with the guard tests), a heavier or longer
 stall than either arm reached is consistent with everything observed. That
 is a limitation of this comparison, not a finding about the cause.
+
+**Note (2026-11-04).** The tests this comparison counted ran in `main`.
+Since the split (bug-log 69, second part) the load-sensitive three run in
+the timing project, after `main`. `scripts/flake-compare.sh` still counts
+any `machine-sampler` failure, but a re-run now measures them under the
+timing project's load, not `main`'s, so its result is not comparable with
+the 40 runs above.
 
 **Re-running it.** The harness is tracked, per ADR-043 (a harness kept only
 in a scratchpad is lost with it): `scripts/flake-compare.sh`, with the
