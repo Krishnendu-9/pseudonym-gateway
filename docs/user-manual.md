@@ -133,7 +133,9 @@ measurements can see how much context matters.
 
 1. validated beats unvalidated; 2. then the longer one wins; 3. then the
    fixed order Aadhaar > Card > PAN > Phone > UPI > Email > Secret > Number
-   (the safety net). So a 16-digit card beats a
+   (the safety net). This order is superseded: the current one is in
+   [When readings overlap](#when-readings-overlap-phase-5c-item-3-2026-10-01-adr-029).
+   So a 16-digit card beats a
    valid Aadhaar hidden in its first 12 digits (rule 2), and a number that is
    both a valid phone and a valid Aadhaar is labelled Aadhaar (rule 3). It is
    redacted either way.
@@ -617,7 +619,8 @@ The promise says detection is "measured and published, per data type".
   every lookalike (an order number, a timestamp, a PAN-shaped product code).
   The same person wrote this generator and the detectors, so it is good at
   showing that something broke and weak at showing what nobody thought of.
-- **Held-out:** 58 messages in 54 cases. Stated exactly: drafted with AI
+- **Held-out:** 80 messages in 76 cases (the README's results block,
+  2026-10-06; 58 in 54 when this section was written). Stated exactly: drafted with AI
   assistance in a separate session that did not write the detectors, then
   reviewed by the project's author. It is blind (no case was run against the
   detectors before the set was committed), it was committed before the newer
@@ -887,8 +890,8 @@ way it was written).
 | `SBIN0001234 1234 5678 9012` (digits after a space) | one IFSC covering all of it (over-redaction)                       |
 | `password: SBIN0001234`                             | IFSC (the value is redacted either way)                            |
 | `<ifsc>@okaxis`, `<ifsc>@example.com`               | one UPI ID, one email: an IFSC touching `@` is part of the address |
-| `<ifsc>.x@example.com`                              | only the IFSC; `.x@example.com` is sent (known limit, 5c)          |
-| `api_key=<ifsc>-x7`                                 | only the IFSC; `-x7` is sent (known limit, 5c)                     |
+| `<ifsc>.x@example.com`                              | one email covering all of it (since ADR-029)                       |
+| `api_key=<ifsc>-x7`                                 | one secret covering all of it (since ADR-029)                      |
 
 ### What is not found
 
@@ -979,7 +982,7 @@ redacted.
 | `10.1.2.3 4567` (digits after a space)                          | one IP covering both (over-redaction)                   |
 | `10.1.2.3 10.4.5.6` (two addresses, a space between)            | two placeholders, the space kept between them (ADR-028) |
 | `inet 203.0.113.9/24` (address and prefix also read as a phone) | one PHONE covering `203.0.113.9/24` (known limit)       |
-| `api_key=10.1.2.3-x7`                                           | only the address; `-x7` is sent (known limit, 5c)       |
+| `api_key=10.1.2.3-x7`                                           | one secret covering all of it (since ADR-029)           |
 
 ### What is not found
 
