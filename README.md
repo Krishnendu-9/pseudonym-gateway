@@ -1,7 +1,7 @@
 # Pseudonym
 
-**An OpenAI-compatible privacy gateway that pseudonymises personal data before it
-reaches an LLM, and restores it in the reply.**
+**An OpenAI-compatible privacy gateway that pseudonymises the personal data it
+detects before it reaches an LLM, and restores it in the reply.**
 
 > **Status: Phase 8 of 8 done (2026-10-16). Not ready for production use:
 > every figure here is measured on synthetic data.** Detection, the
@@ -259,7 +259,8 @@ Which detected matches count, in short ([ADR-010](docs/decisions.md#adr-010)):
   naming them within 40 characters, before or after, and then anything of
   the same shape within those 40 characters is redacted too.
 - **Detection fails closed:** a value found inside a longer number takes
-  the whole number with it, every stretch of 9 or more digits no detector
+  the whole number with it (except a lone digit and a space before the
+  number, which stay visible: [ADR-029](docs/decisions.md#adr-029)), every stretch of 9 or more digits no detector
   claimed is redacted, and no input is skipped for being too long. So
   ordinary numbers (order IDs, tracking numbers) are replaced too; the
   user still sees them in the reply.
@@ -268,7 +269,9 @@ Which detected matches count, in short ([ADR-010](docs/decisions.md#adr-010)):
 secret with neither a known format nor a keyword directly before it; a UPI
 ID at an unknown handle, or an IFSC code with an unknown bank code, with no
 keyword nearby; a passport number, voter ID or date of birth with no
-keyword nearby; a number split across two messages; emails written as
+keyword nearby; a card from an issuer not on the list (Maestro), written in
+groups, with no keyword nearby, which is sent whole; a number split across
+two messages; emails written as
 "name at example dot com", quoted or IP-literal addresses; MAC addresses;
 numbers written as words or with letters for digits, postal addresses and
 vehicle numbers.
@@ -508,6 +511,10 @@ a markdown link or image target, after `[label]:`, or in a quoted HTML
 attribute value stays a placeholder, by design, and so does a quoted value
 in code (`API_KEY = "[SECRET_1]"`). The held-out set is blind and never
 used for tuning; it is small, so one value moves a row by several points.
+It finds less than the generated set (CARD 4 of 7 with the right type
+against 149 of 153, AADHAAR 7 of 9 against 153 of 153, 2026-10-06), and
+it is the set to quote, since the generated set and the detectors share
+an author.
 How the echo table reads, the full list of restoration safety's costs, and
 exactly how the held-out set was made:
 [Measured results: notes](docs/results-notes.md).
@@ -688,7 +695,7 @@ provider-side logging or training on them.
 every person's name with names off, the default, and with names on the names the model and the list miss: 111 of 612 on the generated set, 4 of 45 on the held-out one (2026-10-03, [ADR-035](docs/decisions.md#adr-035)), an IFSC code with an unknown bank code and no keyword nearby, any secret with neither a known format
 nor a keyword directly before it, a UPI ID at an unknown handle with no
 keyword nearby, a passport number, voter ID or date of birth with no
-keyword nearby, an IP address inside a host name, the part of an email
+keyword nearby, a number split across two messages, an IP address inside a host name, the part of an email
 address before a `/`, `=` or `?` in its local part, a secret after a
 credential word and a placeholder-shaped text with a space in it, numbers
 written as words or with letters for digits, postal addresses and vehicle
@@ -711,7 +718,9 @@ information to the Unpaid Services" (as read on 2026-10-11). Pseudonym
 narrows that exposure to the values it detects; it does not remove it.
 In the generated main cases with names off, the default, 198 of 1,683
 labelled personal values are sent as written: all 153 person names, and
-45 of the other 1,530 values (the results block above, 2026-10-06). That
+45 of the other 1,530 values (the results block above, 2026-10-06). In
+the held-out set, 8 of the 73 values other than names (10.9%) are not
+redacted at all, in the same block. That
 gap is why the figures are published, per type, rather than a claim that
 nothing personal leaves. Names are off by default because they failed the
 speed and false-positive limits set before measuring, not because the gap

@@ -1,7 +1,7 @@
 {
   "name": "pseudonym-gateway",
   "version": "0.1.0",
-  "description": "An OpenAI-compatible privacy gateway that pseudonymises personal data before it reaches an LLM and restores it in the reply.",
+  "description": "An OpenAI-compatible privacy gateway that pseudonymises the personal data it detects before it reaches an LLM and restores it in the reply.",
   "license": "MIT",
   "private": true,
   "type": "module",
