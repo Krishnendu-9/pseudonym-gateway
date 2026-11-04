@@ -1,5 +1,7 @@
 # Pseudonym
 
+[![CI](https://github.com/Krishnendu-9/pseudonym-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/Krishnendu-9/pseudonym-gateway/actions/workflows/ci.yml)
+
 **An OpenAI-compatible privacy gateway that pseudonymises the personal data it
 detects before it reaches an LLM, and restores it in the reply.**
 
