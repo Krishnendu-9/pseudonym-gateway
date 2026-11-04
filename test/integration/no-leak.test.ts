@@ -13,7 +13,7 @@
 // Every planted value is generated in memory from a seed (ADR-009). A
 // failure reports the history, the value's type and the form it leaked in,
 // never the value. How this test is shown to be able to fail (disabling a
-// detector) is recorded in dev_docs/testing-guide.md.
+// detector) is recorded in docs/testing-guide.md.
 //
 // The second block does it all again with stream: true (ADR-019), and
 // checks the streamed answer restores exactly what the user wrote.

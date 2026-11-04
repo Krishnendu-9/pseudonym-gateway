@@ -4,7 +4,7 @@
 // Handling rule: a random Aadhaar, card, PAN or Indian mobile number can
 // coincide with a real one, so generated values live in memory only. They are
 // never written to files or snapshots and never printed, including in test
-// failure output. See dev_docs/decisions.md (ADR-009).
+// failure output. See docs/decisions.md (ADR-009).
 
 import { luhnCheckDigit } from '../detection/luhn.js';
 import { verhoeffCheckDigit } from '../detection/verhoeff.js';
