@@ -61,6 +61,15 @@ character other than zero, three letters instead of four) was touched.
 ("The block below" is the README's generated block, measured on the date
 it states.)
 
+What the generated set cannot measure: which card issuers are found (it
+makes only Visa, Mastercard, Amex, Discover and RuPay, at their usual
+lengths); whether the check digits are computed correctly (it builds
+Aadhaar and card numbers with the detectors' own Verhoeff and Luhn code);
+how complete the UPI handle and IFSC bank lists are; typos that add or
+drop a digit (its only typo is a wrong check digit); and keywords further
+away, misspelt, or in another message (its keywords sit in the value's own
+sentence).
+
 ## Over-redactions, and the held-out set's keyword-only rows
 
 The PHONE and NUMBER rows over-redact on purpose: a 10-digit tracking number
@@ -106,7 +115,13 @@ attribute value, by design; the second placeholder of `[NUMBER_1]([NUMBER_2]`,
 because Pseudonym's own bracket followed by `(` reads as a link target; and
 **code that assigns a quoted string**: a quoted value after `=` is treated
 as an HTML attribute, so `API_KEY = "[SECRET_1]"` stays unrestored. The
-echo table cannot show that last one, because neither dataset
+three rules added for streaming cost more
+([ADR-018](decisions.md#adr-018)): after an unclosed `="` (even in prose,
+`width="100`), every later placeholder in the answer stays unrestored;
+after an unclosed `<` destination, every later placeholder on that line;
+and the host rule keeps a placeholder followed by what could continue a
+host name (`[CARD_1].com`, `CARD_1-x`, `Aadhaar 1.5`). The
+echo table cannot show the code case, because neither dataset
 contains code; the README's
 [model measurement](../README.md#what-a-real-model-does-with-placeholders)
 found it (2 of 34 values in one
