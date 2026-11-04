@@ -1,0 +1,51 @@
+# Dependency audit (ADR-050): two tiers, on every push and pull request and
+# once a week. Its own workflow, not a job in ci.yml, so that the weekly run
+# is this job and nothing else: a schedule belongs to a whole workflow file,
+# and putting it in ci.yml would run the full suite, the evaluation and the
+# Docker job weekly unless every job, including any added later, opted out.
+name: Audit
+
+on:
+  push:
+  pull_request:
+  # New advisories are published whether or not anyone pushes. Monday 06:23
+  # UTC, off the top of the hour, when GitHub delays scheduled runs most.
+  # GitHub runs this on the default branch only, and switches it off in a
+  # public repository after 60 days with no repository activity.
+  schedule:
+    - cron: '23 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The npm that comes with the Node in .nvmrc, so the audit runs with the
+      # same npm as the rest of CI. No `cache: npm`: nothing is installed.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      # npm audit reads package-lock.json and asks the registry; it does not
+      # need node_modules, so there is no `npm ci` here.
+
+      # What the Docker image installs (npm ci --omit=dev, optional
+      # dependencies included, so the name-detection runtime is audited too)
+      # and what handles every request.
+      - name: Audit runtime dependencies (fail on moderate or above)
+        run: npm audit --omit=dev --audit-level=moderate
+
+      # Build and test tooling never reaches the image. Only critical fails
+      # here; lower findings stay visible as Dependabot alerts.
+      - name: Audit all dependencies including dev (fail on critical)
+        if: ${{ !cancelled() }}
+        run: npm audit --audit-level=critical

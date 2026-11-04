@@ -994,6 +994,15 @@ Windows-only check compiled as Linux's, fails exactly the telemetry-line
 check), and a seventh, with `NODE_ENV=development`, passes it, as it
 should since ADR-047 ([ADR-046](docs/decisions.md#adr-046), amendment D).
 
+A separate workflow, [.github/workflows/audit.yml](.github/workflows/audit.yml),
+runs `npm audit` in two tiers on every push and pull request and once a
+week: the runtime dependencies (what the Docker image installs) fail on a
+moderate advisory or above, the whole tree including dev tooling only on a
+critical one. The weekly run is the audit alone, not the rest of CI, so a
+new advisory shows up on a quiet repository. GitHub switches scheduled
+workflows off in a public repository after 60 days without activity
+([ADR-050](docs/decisions.md#adr-050)).
+
 Not covered by CI:
 
 - **The model measurement** (`scripts/measure-rewrites.ts`, the table
@@ -1037,6 +1046,8 @@ Not covered by CI:
 - [Threat model: detail](docs/threat-model.md): the mapping in memory, the
   start-up guard, the container, restoration safety's known gaps, and a
   dependency's telemetry.
+- [Security policy](SECURITY.md): what counts as a vulnerability here and
+  how to report one.
 
 ## Tech stack
 

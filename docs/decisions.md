@@ -179,6 +179,7 @@ ADR-041's sections (numbered in the entry; ▸ marks a subsection):
 | [ADR-047](#adr-047) | The start-up guard is on unless turned off by name                                                   | 2026-10-10 | accepted (the user's ruling)                                          | —                                                                                                                                                                                                       |
 | [ADR-048](#adr-048) | The results page: where it lives, what it shows, how it stays true                                   | 2026-10-10 | accepted 2026-10-15 (D)                                               | ruling in place 2026-10-15 (option D: no page built)                                                                                                                                                    |
 | [ADR-049](#adr-049) | What "done" means for Phase 8, set before Phase 8 is checked                                         | 2026-10-16 | accepted 2026-10-16 (D2); Phase 8 done 2026-10-16 (the user's ruling) | the check, its rulings, two corrections and the final re-check, 2026-10-16                                                                                                                              |
+| [ADR-050](#adr-050) | A dependency audit gate in CI, and a weekly audit on its own                                         | 2026-11-04 | accepted (the user's decision)                                        | —                                                                                                                                                                                                       |
 
 ¹ No status of its own. The preamble above says each entry records an
 accepted decision, and nothing in the entry says otherwise; where part of
@@ -15478,3 +15479,109 @@ mobile is found, the rest is sent (known limit)".
   mutation shows the new test is needed on its own.
 
 The manual now says both of its cases are held by that test file.
+
+---
+
+<a id="adr-050"></a>
+
+## ADR-050: A dependency audit gate in CI, and a weekly audit on its own (2026-11-04; the user's decision)
+
+**Status.** Accepted. The gate's shape was decided by the user: the
+two-tier gate of the author's other project, burn-after-reading, plus a
+weekly run. The mechanism for the weekly run was left to me, with one
+constraint: it must not run the full CI.
+
+**Context.**
+
+- **19 Dependabot alerts sat on this repository for about two weeks.**
+  Nothing in CI looked at advisories, so they surfaced only on GitHub's
+  security tab. 16 were cleared on 2026-11-04 by merging four Dependabot
+  pull requests (#2 to #5). 3 remain (`minimatch` and `@vitest/mocker`,
+  both dev-only, neither with a fix in range).
+- **Checked before any change**, on the tree at 681b083:
+  - `npm audit --omit=dev --audit-level=moderate`: 0 vulnerabilities,
+    exit 0;
+  - `npm audit --audit-level=critical`: 15 moderate, all dev, none
+    critical, exit 0.
+- **The same two commands on the lockfile before the merges** (313f11a),
+  with the advisory data of 2026-11-04:
+  - the runtime tier **fails** (exit 1): 3 runtime findings, `fast-uri`
+    moderate, `fastify` low, `zod` high;
+  - the whole-tree tier passes (19 findings: 1 low, 16 moderate, 2 high;
+    none critical).
+
+  So the gate would have failed every push while the runtime advisories
+  were open, and the dev-only ones would not have. This was run against
+  today's advisory database, not the one of each past push.
+
+- **CI here is expensive.** `ci.yml` runs the full suite, the 100% coverage
+  gate, the timing tests, the evaluation, and a Docker job that restores or
+  downloads the name model (four files, 181.4 MB). A weekly run must not
+  bring that along.
+- **`npm audit` needs no `node_modules`.** It reads `package-lock.json`
+  and asks the registry. Run in a folder holding only `package.json` and
+  `package-lock.json`, it gave both tiers' results above unchanged.
+- **GitHub's limits on scheduled workflows** (its "Events that trigger
+  workflows" page, read 2026-11-04): they run on the default branch only;
+  they "can be delayed during periods of high loads", which "include the
+  start of every hour"; "in a public repository, scheduled workflows are
+  automatically disabled when no repository activity has occurred in 60
+  days"; notifications go "to the user who last modified the cron syntax".
+
+**Options for the weekly run.**
+
+1. **A separate workflow file**, `audit.yml`, holding only the audit job,
+   triggered on push, pull request, a weekly schedule and by hand. A
+   schedule applies to a whole workflow file, so the weekly run is this
+   job and nothing else, by construction. Cost per run: checkout, Node,
+   two `npm audit` calls; no install.
+2. **An audit job in `ci.yml`, with `schedule` added there and
+   `if: github.event_name != 'schedule'` on `check` and `docker`.** One
+   file. But the cost constraint becomes something every future job must
+   remember: a job added without the condition runs weekly, and nothing
+   fails when that happens. Weekly runs would also appear in the CI
+   history as "CI" runs with most jobs skipped.
+3. **As option 2, but the audit as a step in `check`.** The schedule
+   cannot then be separated from the rest of `check` at all; and a failing
+   audit would stop or hide the test steps, or the reverse.
+4. **No gate: rely on Dependabot alerts.** The status quo that let 19
+   alerts sit.
+
+burn-after-reading uses option 2 without the conditions: its whole CI runs
+weekly. That is cheap there and is what this repository cannot afford.
+
+**Decision: option 1** (`.github/workflows/audit.yml`).
+
+- Triggers: `push`, `pull_request`, `schedule` (`23 6 * * 1`: Mondays at
+  06:23 UTC, off the top of the hour) and `workflow_dispatch`.
+- `permissions: contents: read`; `ubuntu-24.04`; `timeout-minutes: 5`.
+- The same pinned actions as `ci.yml` (`actions/checkout` v7.0.1,
+  `actions/setup-node` v7.0.0 with `.nvmrc`); no `cache: npm`, since
+  nothing is installed.
+- **Step 1, runtime:** `npm audit --omit=dev --audit-level=moderate`.
+  `--omit=dev` keeps optional dependencies, so the name-detection runtime
+  (`onnxruntime-node`, `@huggingface/tokenizers`; ADR-036), which the
+  Docker image installs, is audited at this level too.
+- **Step 2, whole tree:** `npm audit --audit-level=critical`, with
+  `if: ${{ !cancelled() }}` so that it runs and reports even when step 1
+  failed.
+
+**Consequences.**
+
+- **A push can fail for a reason unrelated to its change**: an advisory
+  published since the last push. That is the point of a gate. The fix is
+  a dependency update, or, when no fixed version exists, a decision
+  recorded here.
+- **Dev-only findings below critical never fail anything.** Today's 15
+  moderate (3 alerts) pass. They stay visible as Dependabot alerts, which
+  is what let 19 sit; the gate narrows that gap, it does not close it.
+- **The weekly run depends on repository activity.** GitHub switches it
+  off after 60 days without any, which is exactly the quiet repository it
+  is for. Re-enabling it is a click on the Actions tab. When it fails, the
+  notification goes to whoever last edited its cron line.
+- **The audit depends on the npm registry being reachable.** A registry
+  outage fails the job; re-run it.
+- **Not checked here:** whether branch protection makes the Audit check
+  required for merging. That is a repository setting, not in the tree.
+- **Not covered:** advisories outside npm's database, and the base image's
+  operating-system packages (ADR-046). Nothing in CI scans the image.
